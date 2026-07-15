@@ -15,6 +15,13 @@ import MediaPlayer
 @MainActor
 struct NowPlayingCommandsTests {
 
+    @Test func playbackSessionActivationRestoresCategoryAndMode() {
+        #expect(PlaybackViewModel.activatePlaybackAudioSession(reason: "unit test"))
+        let session = AVAudioSession.sharedInstance()
+        #expect(session.category == .playback)
+        #expect(session.mode == .spokenAudio)
+    }
+
     // MARK: - Next/previous command registration
 
     /// After setupRemoteCommandCenter(), nextTrackCommand must be registered and

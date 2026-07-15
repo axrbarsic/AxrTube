@@ -163,7 +163,7 @@ public final class PlaybackViewModel {
             playerLog.recordNonFatal(error, userInfo: [
                 "video_id":          currentVideo?.id    ?? "unknown",
                 "video_title":       currentVideo?.title ?? "unknown",
-                "stream_url":        lastAttemptedStreamURL?.absoluteString ?? "none",
+                "stream_source":     PlaybackURLDiagnostics.safeSummary(lastAttemptedStreamURL),
                 "error_message":     error.localizedDescription,
                 "error_domain":      nsError.domain,
                 "error_code":        "\(nsError.code)",
@@ -249,6 +249,9 @@ public final class PlaybackViewModel {
     public let player = AVPlayer()
     @ObservationIgnored nonisolated(unsafe) var timeObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var audioSessionObserver: Any?
+    @ObservationIgnored nonisolated(unsafe) var audioRouteChangeObserver: Any?
+    @ObservationIgnored nonisolated(unsafe) var mediaServicesLostObserver: Any?
+    @ObservationIgnored nonisolated(unsafe) var mediaServicesResetObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var rateObserver: NSKeyValueObservation?
     /// True while the video is being routed to an external display via AirPlay.
     public internal(set) var isAirPlaying: Bool = false
@@ -305,13 +308,19 @@ public final class PlaybackViewModel {
     /// True while `replaceCurrentItem` is executing; guards the rate observer from
     /// treating the transient rate-drop as an unexpected external pause.
     var isSwappingItem: Bool = false
-    /// True while an AVAudioSession interruption (e.g. an incoming phone call) is in
-    /// progress. Suppresses the rate-observer's stall detection/recovery so a
-    /// deliberate interruption-pause isn't mistaken for a playback stall (#244).
-    var isHandlingAudioInterruption: Bool = false
-    /// Captures `isPlaying` at the start of an audio interruption so playback can be
-    /// resumed on `.ended` only if it was actually playing before the call (#244).
-    var wasPlayingBeforeInterruption: Bool = false
+    @ObservationIgnored var audioInterruptionState = AudioInterruptionStateMachine()
+    /// True while an AVAudioSession interruption owns the route. Suppresses stall
+    /// recovery so an intentional pause is never turned into ghost playback.
+    var isHandlingAudioInterruption: Bool { audioInterruptionState.isHandling }
+    /// Snapshot used to resume only when playback was active before interruption.
+    var wasPlayingBeforeInterruption: Bool { audioInterruptionState.wasPlaying }
+    /// Invalidates delayed stall recovery scheduled before interruption/reset.
+    var audioInterruptionGeneration: UInt { audioInterruptionState.generation }
+    /// Counts successful automatic resumes for the current player lifetime. Kept
+    /// internal so regression tests can prove duplicate ended notifications do not
+    /// trigger a second resume.
+    var audioInterruptionResumeCount: UInt = 0
+    var wasPlayingBeforeMediaServicesLoss: Bool = false
     #if canImport(WebKit)
     /// Set to true when BotGuardWebViewRunner successfully produces a minted (non-websafe-fallback)
     /// PO token for the current video. Allows the inner rqh=1 guard in attemptComposition to
@@ -388,6 +397,10 @@ public final class PlaybackViewModel {
     /// The videoId for which `wkHLSEarlyTask` was last started.
     /// Allows load() to skip cancellation when the same video is re-tapped after stop().
     var wkHLSEarlyTaskVideoId: String?
+    /// Set when the early extractor did not resolve within the fallback race's bounded
+    /// wait. The extractor may continue warming, but exhaustiveRetry must skip the second
+    /// serial WebView wait and proceed to native client/muxed fallbacks.
+    var wkHLSEarlyWaitTimedOut: Bool = false
     #endif
     /// fix2/fix30: TVEmbedded PlayerInfo pre-fetch started concurrently with the race paths.
     /// On tvOS: started inside tryAllStreams alongside the AndroidVR rqh=1 timeout (fix2).
@@ -460,22 +473,14 @@ public final class PlaybackViewModel {
 
         player.allowsExternalPlayback = true
         #if canImport(UIKit)
-        do {
-            // Only configure the audio category at init time. setActive(true) is
-            // deliberately deferred to loadAsync (PlaybackViewModel+Loading.swift ~line 494)
-            // so that cold-launching the app does not interrupt background audio from
-            // other apps before the user starts a video (GitHub issue #54).
-            // setCategory alone does not interrupt other apps per AVAudioSession docs.
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-        } catch {
-            playerLog.error("AVAudioSession category setup failed: \(error.localizedDescription)")
-        }
+        // Configure without activating: cold launch must not interrupt another app.
+        // Every later activation reasserts the same playback/spokenAudio contract.
+        _ = Self.configurePlaybackAudioSession(reason: "player initialization")
         #endif
         setupTimeObserver()
         setupRateObserver()
         #if canImport(UIKit)
         setupRemoteCommandCenter()
-        setupAudioSessionObserver()
         setupAirPlayObserver()
         #endif
 
@@ -497,6 +502,9 @@ public final class PlaybackViewModel {
         rateObserver?.invalidate()
         airPlayObserver?.invalidate()
         if let obs = audioSessionObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = audioRouteChangeObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = mediaServicesLostObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
         #if canImport(UIKit)
         let center = MPRemoteCommandCenter.shared()
         center.playCommand.removeTarget(nil)

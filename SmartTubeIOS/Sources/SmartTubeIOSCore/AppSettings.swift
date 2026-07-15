@@ -148,16 +148,14 @@ public struct AppSettings: Codable {
     /// Opt-in experiment — has no effect on tvOS.
     public var useTOSPlayerOnMac: Bool
 
-    // Note: there is no `useTOSPlayerOnIOS` setting. The TOS-compliant player is
-    // always used on iOS (PlayerRouter.open(), gated #if os(iOS)) — see
-    // SettingsStore.useTOSPlayerOnIOS, which is a non-persisted, hardcoded-true
-    // property (overridable only by UI test launch arguments). It has no effect
-    // on macOS or tvOS. Automatically falls back to the AVPlayer pipeline for a
-    // given video if the embed reports a fatal error (TOSPlayerStateStore.markFallback
-    // — see TOSPlayerView.onFallback).
+    // Note: there is no user-facing `useTOSPlayerOnIOS` setting. iOS uses the
+    // native AVPlayer pipeline by default because WKWebView media is suspended by
+    // iOS when the device locks and therefore cannot satisfy background-audio or
+    // Lock Screen control requirements. The TOS player remains available to its
+    // targeted UI tests through SettingsStore.useTOSPlayerOnIOS.
 
     // MARK: Schema version
-    /// Persisted schema version. Starts at 1 for newly stored settings.
+    /// Persisted schema version. Version 2 enables background playback by default.
     /// Old JSON lacking this key decodes as 0, signalling a pre-migration store.
     /// Increment when a breaking schema change requires a migration step.
     public var settingsVersion: Int
@@ -224,7 +222,7 @@ public struct AppSettings: Codable {
         playbackSpeed        = 1.0
         autoplayEnabled      = true
         subtitlesLanguage    = nil
-        backgroundPlaybackEnabled = false
+        backgroundPlaybackEnabled = true
         landscapeAlwaysPlay  = false
         pipEnabled           = true
         miniPlayerEnabled    = true
@@ -273,7 +271,7 @@ public struct AppSettings: Codable {
         #else
         useTOSPlayerOnMac    = false
         #endif
-        settingsVersion      = 1
+        settingsVersion      = 2
     }
 }
 

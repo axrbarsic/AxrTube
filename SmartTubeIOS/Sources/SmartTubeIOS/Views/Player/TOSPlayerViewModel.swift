@@ -472,15 +472,10 @@ final class TOSPlayerViewModel: NSObject {
         // engine can grab a brief moment of audio during init and then lose the
         // route — mirrors PlaybackViewModel+Loading's setActive(true) call.
         #if os(iOS)
-        // Same .playback/.moviePlayback category PlaybackViewModel uses — more
-        // correct than leaving the category unset, though confirmed (#283) this
-        // alone does not make TOS audio survive backgrounding; see task-283.
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            tosLog.error("[audioSession] setCategory/setActive failed: \(error.localizedDescription, privacy: .public)")
-        }
+        // Keep fallback playback on the same spokenAudio contract as AVPlayer.
+        // This still does not make WKWebView background-capable; it only keeps
+        // prompt/interruption behaviour consistent while the fallback is active.
+        _ = PlaybackViewModel.activatePlaybackAudioSession(reason: "TOS playback")
         #endif
         var comps = URLComponents(string: "https://www.youtube.com/embed/\(videoId)")!
         comps.queryItems = [

@@ -14,11 +14,10 @@ import SmartTubeIOSCore
 // place instead of duplicated across every view.
 //
 // Routing rules:
-//   - If `settingsStore.useTOSPlayerOnIOS` is true (the default — always on except
-//     for UI tests that opt out) and this video hasn't previously hit a fatal embed
-//     error (TOSPlayerStateStore.fallbackVideoId), present the WKWebView-based
-//     TOS-compliant player.
-//   - Otherwise present the AVPlayer-based pipeline.
+//   - Production uses the AVPlayer-based pipeline so audio can survive a real
+//     device lock and remain controllable through MPRemoteCommandCenter.
+//   - Targeted TOS tests can opt into the WKWebView pipeline; a fatal embed error
+//     still falls back to AVPlayer.
 // In both cases, any active mini-player for the *other* pipeline is stopped
 // first — AVPlayer and TOS playback are mutually exclusive.
 @MainActor

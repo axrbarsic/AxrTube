@@ -211,8 +211,15 @@ extension PlaybackViewModel {
             playerLog.notice("⚠️ [webView] race failed but task is cancelled — skipping serial extraction for \(video.id)")
             return
         }
-        if wkHLSPermissionDenied {
-            playerLog.notice("⚠️ [webView] race Path B hit CDN permission error — skipping serial extraction, going straight to client chain")
+        if !PlaybackFallbackPolicy.shouldAttemptSerialWebView(
+            permissionDenied: wkHLSPermissionDenied,
+            earlyWaitTimedOut: wkHLSEarlyWaitTimedOut
+        ) {
+            if wkHLSEarlyWaitTimedOut {
+                playerLog.notice("⚠️ [webView] Path B deadline reached — skipping duplicate serial extraction and continuing with client chain")
+            } else {
+                playerLog.notice("⚠️ [webView] race Path B hit CDN permission error — skipping serial extraction, going straight to client chain")
+            }
         } else {
             playerLog.notice("⚠️ [webView] race failed — attempting serial WKWebView extraction")
             isLoading = true
@@ -619,8 +626,22 @@ extension PlaybackViewModel {
             playerLog.notice("⚠️ [webView] no earlyTask — Path B done")
             return false
         }
-        playerLog.notice("⚠️ [webView] Path B awaiting early WKWebView HLS task…")
-        guard let url = await earlyTask.value, !Task.isCancelled else {
+        playerLog.notice("⚠️ [webView] Path B awaiting early WKWebView HLS task (bounded)…")
+        let waitResult = await BoundedTaskWait.value(
+            from: earlyTask,
+            timeoutNanoseconds: PlaybackFallbackPolicy.earlyWebViewWaitNanoseconds
+        )
+        let extractedURL: URL?
+        switch waitResult {
+        case .value(let value):
+            extractedURL = value
+        case .timedOut:
+            wkHLSEarlyWaitTimedOut = true
+            playerLog.error("❌ [webView] Path B did not resolve within 10s — releasing fallback race")
+            logSafePlaybackDiagnostic(stage: "early-webview-deadline")
+            return false
+        }
+        guard let url = extractedURL, !Task.isCancelled else {
             playerLog.notice("⚠️ [webView] earlyTask returned nil or cancelled — Path B done")
             return false
         }
@@ -769,6 +790,51 @@ extension PlaybackViewModel {
         await exhaustiveRetry(video: video, originalError: originalError)
     }
 
+    // MARK: - Safe Playback Diagnostics
+
+    /// Logs state needed to distinguish an extractor/fallback stall from an AVPlayer stall.
+    /// Deliberately excludes stream URLs, request headers, cookies and error comments because
+    /// those fields can contain signed query parameters or account data.
+    func logSafePlaybackDiagnostic(stage: String) {
+        let item = player.currentItem
+        let itemStatus: String
+        switch item?.status {
+        case .readyToPlay: itemStatus = "readyToPlay"
+        case .failed: itemStatus = "failed"
+        case .unknown: itemStatus = "unknown"
+        case nil: itemStatus = "none"
+        @unknown default: itemStatus = "future"
+        }
+        let itemError = item?.error as NSError?
+        playerLog.notice(
+            "[playbackDiagnostic] stage=\(stage) itemStatus=\(itemStatus) " +
+            "errorDomain=\(itemError?.domain ?? "none") errorCode=\(itemError?.code ?? 0) " +
+            "bufferEmpty=\(item?.isPlaybackBufferEmpty ?? false) " +
+            "bufferFull=\(item?.isPlaybackBufferFull ?? false) " +
+            "likelyToKeepUp=\(item?.isPlaybackLikelyToKeepUp ?? false) " +
+            "timeControl=\(player.timeControlStatus.rawValue) rate=\(player.rate) " +
+            "isLoading=\(isLoading) retryAttempt=\(retryAttempts)"
+        )
+        if let access = item?.accessLog()?.events.last {
+            playerLog.notice(
+                "[playbackDiagnostic/access] requests=\(access.numberOfMediaRequests) " +
+                "bytes=\(access.numberOfBytesTransferred) transferDuration=\(access.transferDuration) " +
+                "indicatedBitrate=\(Int(access.indicatedBitrate)) " +
+                "observedBitrate=\(Int(access.observedBitrate)) stalls=\(access.numberOfStalls)"
+            )
+        } else {
+            playerLog.notice("[playbackDiagnostic/access] none")
+        }
+        if let errorEvent = item?.errorLog()?.events.last {
+            playerLog.notice(
+                "[playbackDiagnostic/error] domain=\(errorEvent.errorDomain) " +
+                "status=\(errorEvent.errorStatusCode)"
+            )
+        } else {
+            playerLog.notice("[playbackDiagnostic/error] none")
+        }
+    }
+
     // MARK: - Stream Exhaustion
 
     /// Tries HLS → adaptive composition → (optionally) muxed direct from one PlayerInfo.
@@ -782,11 +848,11 @@ extension PlaybackViewModel {
         let hasAdaptiveVideo = qualityCapVideoURL(from: info.formats) != nil
         let hasAdaptiveAudio = info.bestAdaptiveAudioURL != nil
         let hasMuxed = info.bestMuxedDownloadURL != nil
-        // Diagnostic: show first adaptive video URL prefix to detect SABR (c=TVHTML5) vs standard
+        // Diagnostic source class only; never expose signed CDN query values.
         let firstAdaptiveURL = info.formats.first(where: {
             $0.mimeType.hasPrefix("video/mp4") && !$0.mimeType.contains(", ") && $0.url != nil
-        })?.url?.absoluteString.prefix(200) ?? "none"
-        playerLog.notice("[\(label)] streams: HLS=\(hasHLS) DASH=\(hasDASH) adaptiveVideo=\(hasAdaptiveVideo) adaptiveAudio=\(hasAdaptiveAudio) muxed=\(hasMuxed) skipMuxed=\(skipMuxed) firstAdaptiveURL=\(firstAdaptiveURL)")
+        })?.url
+        playerLog.notice("[\(label)] streams: HLS=\(hasHLS) DASH=\(hasDASH) adaptiveVideo=\(hasAdaptiveVideo) adaptiveAudio=\(hasAdaptiveAudio) muxed=\(hasMuxed) skipMuxed=\(skipMuxed) firstAdaptive=\(PlaybackURLDiagnostics.safeSummary(firstAdaptiveURL))")
 
         // 1. HLS manifest — best quality, native AVPlayer ABR, alternate audio renditions
         if let hlsURL = info.hlsURL {
@@ -873,7 +939,7 @@ extension PlaybackViewModel {
                     .first(where: { $0.contains("itag=") })
                     .flatMap { $0.components(separatedBy: "=").last } ?? "?"
                 let muxedBitrate = info.formats.first(where: { $0.url == muxedURL })?.bitrate.map { "\($0/1000)kbps" } ?? "?"
-                playerLog.notice("[\(label)] muxed candidate: itag=\(muxedItag) bitrate=\(muxedBitrate) url=\(muxedURL.absoluteString.prefix(100))")
+                playerLog.notice("[\(label)] muxed candidate: itag=\(muxedItag) bitrate=\(muxedBitrate) source=\(PlaybackURLDiagnostics.safeSummary(muxedURL))")
                 if await attemptURL(muxedURL, for: video, info: info, label: "\(label)/muxed") { return true }
                 playerLog.notice("[\(label)] Muxed failed — no more alternatives for this client")
             }
@@ -887,7 +953,7 @@ extension PlaybackViewModel {
     /// Tries a single URL in AVPlayer. Returns true if `.readyToPlay` is received.
     /// `statusStream` finishes after `.readyToPlay` or `.failed`, making it safe to await inline.
     private func attemptURL(_ url: URL, for video: Video, info: PlayerInfo, label: String) async -> Bool {
-        playerLog.notice("[\(label)]: \(url.absoluteString.prefix(120))")
+        playerLog.notice("[\(label)] source=\(PlaybackURLDiagnostics.safeSummary(url))")
 
         playerInfo = info
         let newFormats = Self.deduplicatedVideoFormats(info.formats)
@@ -1048,7 +1114,7 @@ extension PlaybackViewModel {
             // fail regardless of the io_open callback approach.
             let uaOpts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": hlsHeaders]
             let asset = AVURLAsset(url: effectiveURL, options: uaOpts)
-            playerLog.notice("[\(label)] HLS via AVURLAsset (native stack) url=\(effectiveURL.lastPathComponent)")
+            playerLog.notice("[\(label)] HLS via AVURLAsset (native stack) source=\(PlaybackURLDiagnostics.safeSummary(effectiveURL))")
             item = AVPlayerItem(asset: asset)
         } else {
             // Non-HLS (muxed / DASH): direct AVURLAsset with iOS UA headers.
@@ -1984,7 +2050,7 @@ extension PlaybackViewModel {
     ///   a STALE `xpc=` credential that CDN always rejects for pfa/1 videos. Racing paths and
     ///   serial-extraction paths pass `false` because those use a FRESH `xpc=` URL (earlyTask).
     private func tryWebViewHLS(_ masterURL: URL, nSolver: (unsolved: String, solved: String)?, poToken: String? = nil, skipIfPfa1: Bool = false, for video: Video) async -> Bool {
-        playerLog.notice("[webView/HLS] fetching master manifest: \(masterURL.absoluteString.prefix(120))")
+        playerLog.notice("[webView/HLS] fetching master manifest \(PlaybackURLDiagnostics.safeSummary(masterURL))")
 
         let ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
 
@@ -2008,7 +2074,7 @@ extension PlaybackViewModel {
             playerLog.error("❌ [webView/HLS] no quality URL found in master manifest")
             return false
         }
-        playerLog.notice("[webView/HLS] selected per-quality URL: \(bestURL.absoluteString.prefix(200))")
+        playerLog.notice("[webView/HLS] selected per-quality source \(PlaybackURLDiagnostics.safeSummary(bestURL))")
 
         // fix28: Fast-fail for pfa/1 urls in Phase -1a when no pot= is available.
         //
@@ -2386,7 +2452,7 @@ extension PlaybackViewModel {
     private func parseHLSBestVariant(from manifest: String, baseURL: URL, minHeight: Int) -> URL? {
         let result = SmartTubeIOSCore.parseHLSBestVariant(from: manifest, baseURL: baseURL, minHeight: minHeight)
         if let result {
-            playerLog.notice("[webView/HLS] best variant ≥\(minHeight)p: \(result.absoluteString.prefix(80))")
+            playerLog.notice("[webView/HLS] best variant ≥\(minHeight)p: \(PlaybackURLDiagnostics.safeSummary(result))")
         }
         return result
     }
@@ -2415,7 +2481,7 @@ extension PlaybackViewModel {
     #if targetEnvironment(simulator)
     /// Loads a yt-dlp `hls_playlist` URL directly into AVPlayer. Kept for backward compatibility.
     private func tryYtDlpHLS(_ url: URL, for video: Video) async -> Bool {
-        playerLog.notice("[ytDlp[sim]/HLS]: \(url.absoluteString.prefix(120))")
+        playerLog.notice("[ytDlp[sim]/HLS] source=\(PlaybackURLDiagnostics.safeSummary(url))")
         let ua = "com.google.ios.youtube/19.45.4 (iPhone16,2; U; CPU iOS 18_1_0 like Mac OS X)"
         let uaOpts: [String: Any] = ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": ua]]
         let asset = AVURLAsset(url: url, options: uaOpts)

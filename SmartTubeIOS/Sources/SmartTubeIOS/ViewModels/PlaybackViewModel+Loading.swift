@@ -33,6 +33,9 @@ extension PlaybackViewModel {
             playerLog.notice("[load] already loading \(video.id) — ignoring duplicate call")
             return
         }
+        #if canImport(WebKit)
+        wkHLSEarlyWaitTimedOut = false
+        #endif
         CrashlyticsLogger.setVideoContext(id: video.id, title: video.title)
         // Cancel any previous in-flight load so we never have two concurrent API
         // fetches for the same (or different) video running at the same time.
@@ -95,11 +98,7 @@ extension PlaybackViewModel {
                 }
             }
             #if canImport(UIKit)
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-            } catch {
-                playerLog.error("[fix12] AVAudioSession setActive failed: \(error.localizedDescription)")
-            }
+            Self.activatePlaybackAudioSession(reason: "same-video resume")
             setupRemoteCommandCenter()
             UIApplication.shared.isIdleTimerDisabled = true
             #endif
@@ -132,6 +131,8 @@ extension PlaybackViewModel {
         player.pause()
         player.replaceCurrentItem(with: nil)
         isPlaying = false
+        audioInterruptionState.reset()
+        wasPlayingBeforeMediaServicesLoss = false
         videoEnded = false
         wasPlayingBeforeSuspend = false
         currentTime = 0
@@ -241,11 +242,7 @@ extension PlaybackViewModel {
     public func handleForeground() {
         guard player.currentItem != nil else { return }
         #if canImport(UIKit)
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {
-            playerLog.error("AVAudioSession reactivation failed: \(error.localizedDescription)")
-        }
+        Self.activatePlaybackAudioSession(reason: "foreground transition")
         #endif
         // Resume only if we consider ourselves to be in playing state.
         // isPlaying is kept in sync with player.rate via KVO, so this only fires
@@ -372,11 +369,8 @@ extension PlaybackViewModel {
         // re-activating here (rather than waiting until readyToPlay) closes the gap
         // during which PlayerRemoteXPC reports err=-12860/-12785 and the widget is absent.
         setupRemoteCommandCenter()
-        do {
-            try AVAudioSession.sharedInstance().setActive(true)
+        if Self.activatePlaybackAudioSession(reason: "load pre-seed") {
             playerLog.notice("[loadAsync] AVAudioSession activated early (lock-screen pre-seed)")
-        } catch {
-            playerLog.error("[loadAsync] early setActive failed: \(error.localizedDescription)")
         }
         updateNowPlayingInfo()
         #endif
@@ -529,11 +523,7 @@ extension PlaybackViewModel {
                 }
                 #if canImport(UIKit)
                 setupRemoteCommandCenter()
-                do {
-                    try AVAudioSession.sharedInstance().setActive(true)
-                } catch {
-                    playerLog.error("[loadAsync] local: AVAudioSession setActive failed: \(error.localizedDescription)")
-                }
+                Self.activatePlaybackAudioSession(reason: "local-file playback")
                 #endif
                 player.rate = Float(settings.playbackSpeed)
                 isPlaying = true
@@ -664,13 +654,13 @@ extension PlaybackViewModel {
             autoApplyCaptionPreference(tracks: info.captionTracks)
             selectedFormat = nil
 
-            playerLog.notice("playerInfo: formats=\(info.formats.count) hlsURL=\(info.hlsURL?.absoluteString ?? "nil") dashURL=\(info.dashURL?.absoluteString ?? "nil")")
+            playerLog.notice("playerInfo: formats=\(info.formats.count) hls=\(PlaybackURLDiagnostics.safeSummary(info.hlsURL)) dash=\(PlaybackURLDiagnostics.safeSummary(info.dashURL))")
             for (i, fmt) in info.formats.enumerated() {
-                playerLog.notice("  format[\(i)] mimeType=\(fmt.mimeType) quality=\(fmt.label) url=\(fmt.url?.absoluteString.prefix(80) ?? "nil")")
+                playerLog.notice("  format[\(i)] mimeType=\(fmt.mimeType) quality=\(fmt.label) source=\(PlaybackURLDiagnostics.safeSummary(fmt.url))")
             }
 
             let prefURL = info.preferredStreamURL
-            playerLog.notice("preferredStreamURL=\(prefURL?.absoluteString.prefix(120) ?? "nil")")
+            playerLog.notice("preferredStream=\(PlaybackURLDiagnostics.safeSummary(prefURL))")
 
             // --- SponsorBlock ---
             // Segments from the cache are applied inline (fast path, zero network cost).
@@ -777,7 +767,7 @@ extension PlaybackViewModel {
                 initialMaxH = 0  // unconstrained — resolved to .zero / 0 below
                 playerLog.notice("Initial quality Auto — unconstrained (no resolution/bitrate cap)")
             }
-            playerLog.notice("Starting AVPlayer with: \(initialStreamURL.absoluteString.prefix(120))")
+            playerLog.notice("Starting AVPlayer with \(PlaybackURLDiagnostics.safeSummary(initialStreamURL))")
             lastAttemptedStreamURL = initialStreamURL
             // HLS manifests are signed by WEB_EMBEDDED_PLAYER (web client) — use browser UA
             // plus Origin + Referer matching the embed context to unlock higher-quality variants.
@@ -1004,12 +994,7 @@ extension PlaybackViewModel {
             // Re-activate the audio session. stop() calls setActive(false) to release
             // the session to other apps; without this call on the next load() the player
             // starts silently because AVFoundation cannot acquire the inactive session.
-            do {
-                try AVAudioSession.sharedInstance().setActive(true)
-                playerLog.notice("[loadAsync] AVAudioSession activated before playback")
-            } catch {
-                playerLog.error("[loadAsync] AVAudioSession setActive(true) failed: \(error.localizedDescription)")
-            }
+            Self.activatePlaybackAudioSession(reason: "network playback")
             #endif
             playerLog.notice("[loadAsync] setting rate=\(self.settings.playbackSpeed) — player.timeControlStatus=\(self.player.timeControlStatus.rawValue) isAudioOnlyMode=\(self.isAudioOnlyMode)")
             player.rate = Float(settings.playbackSpeed)
@@ -1109,12 +1094,10 @@ extension PlaybackViewModel {
         // load() calls replaceCurrentItem(nil) when a different video is requested.
         parkedVideoId = currentVideo?.id
         isPlaying = false
+        audioInterruptionState.reset()
+        wasPlayingBeforeMediaServicesLoss = false
         #if canImport(UIKit)
-        do {
-            try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        } catch {
-            playerLog.error("AVAudioSession deactivation failed: \(error.localizedDescription)")
-        }
+        Self.deactivatePlaybackAudioSession(reason: "player stop")
         #endif
         loadTask?.cancel()
         loadTask = nil
@@ -1196,6 +1179,18 @@ extension PlaybackViewModel {
         if let obs = audioSessionObserver {
             NotificationCenter.default.removeObserver(obs)
             audioSessionObserver = nil
+        }
+        if let obs = audioRouteChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+            audioRouteChangeObserver = nil
+        }
+        if let obs = mediaServicesLostObserver {
+            NotificationCenter.default.removeObserver(obs)
+            mediaServicesLostObserver = nil
+        }
+        if let obs = mediaServicesResetObserver {
+            NotificationCenter.default.removeObserver(obs)
+            mediaServicesResetObserver = nil
         }
     }
 

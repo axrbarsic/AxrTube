@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 @testable import SmartTubeIOSCore
+@testable import SmartTubeIOS
 
 // MARK: - AppSettingsMigrationTests
 //
@@ -18,6 +19,33 @@ import Testing
 
 @Suite("AppSettings forward-compatible decoding (#181)")
 struct AppSettingsMigrationTests {
+
+    @Test("Current defaults enable background playback")
+    func currentDefaultsEnableBackgroundPlayback() {
+        let settings = AppSettings()
+        #expect(settings.backgroundPlaybackEnabled)
+        #expect(settings.settingsVersion == 2)
+    }
+
+    @Test("Version 1 settings migrate background playback exactly once")
+    @MainActor
+    func versionOneEnablesBackgroundPlayback() {
+        var stored = AppSettings()
+        stored.settingsVersion = 1
+        stored.backgroundPlaybackEnabled = false
+
+        let first = SettingsStore.migrateToCurrentSchema(stored)
+        #expect(first.changed)
+        #expect(first.settings.backgroundPlaybackEnabled)
+        #expect(first.settings.settingsVersion == 2)
+
+        var userDisabled = first.settings
+        userDisabled.backgroundPlaybackEnabled = false
+        let second = SettingsStore.migrateToCurrentSchema(userDisabled)
+        #expect(!second.changed)
+        #expect(!second.settings.backgroundPlaybackEnabled,
+                "After migration, the user-facing toggle must remain authoritative")
+    }
 
     // MARK: - Missing new field → default, other fields preserved
 

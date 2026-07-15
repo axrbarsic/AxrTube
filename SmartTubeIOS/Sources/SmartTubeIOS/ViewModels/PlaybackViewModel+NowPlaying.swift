@@ -24,54 +24,249 @@ private func makeNonisolatedArtworkProvider(image: UIImage) -> (CGSize) -> UIIma
 #if canImport(UIKit)
 extension PlaybackViewModel {
 
+    /// Restores the category and mode that media-services reset or another app may
+    /// have cleared, without taking ownership of the route.
+    @discardableResult
+    nonisolated static func configurePlaybackAudioSession(reason: String) -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        do {
+            // Ask iOS to interrupt this continuous-content session for short spoken
+            // prompts (for example AirPods announcements) instead of ducking it.
+            try session.setCategory(.playback, mode: .spokenAudio)
+            playerLog.notice("[audioSession] configured for \(reason)")
+            return true
+        } catch {
+            playerLog.error("[audioSession] configuration failed for \(reason): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Reasserts the complete playback-session contract before any remote resume.
+    /// iOS may leave the session inactive after a device-lock transition even though
+    /// AVPlayer still accepts a new rate; that produces a moving timeline with no
+    /// audible route. This method is nonisolated so the MediaPlayer command callback
+    /// can finish activation before it reports `.success` to the Lock Screen.
+    @discardableResult
+    nonisolated static func activatePlaybackAudioSession(reason: String) -> Bool {
+        let session = AVAudioSession.sharedInstance()
+        guard configurePlaybackAudioSession(reason: reason) else { return false }
+        do {
+            try session.setActive(true)
+            playerLog.notice("[audioSession] active for \(reason)")
+            return true
+        } catch {
+            playerLog.error("[audioSession] activation failed for \(reason): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    /// Stops owning the route so microphone/call sessions can start without SmartTube
+    /// repeatedly reacquiring audio in the background.
+    @discardableResult
+    nonisolated static func deactivatePlaybackAudioSession(reason: String) -> Bool {
+        do {
+            try AVAudioSession.sharedInstance().setActive(
+                false,
+                options: .notifyOthersOnDeactivation
+            )
+            playerLog.notice("[audioSession] yielded route for \(reason)")
+            return true
+        } catch {
+            playerLog.error("[audioSession] deactivation failed for \(reason): \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    @discardableResult
+    private func resumeAudiblePlayback(reason: String) -> Bool {
+        guard player.currentItem != nil else {
+            playerLog.error("[audioSession] resume ignored for \(reason): AVPlayer has no current item")
+            return false
+        }
+        if videoEnded {
+            videoEnded = false
+            seek(to: 0)
+        }
+        player.playImmediately(atRate: Float(settings.playbackSpeed))
+        isPlaying = true
+        updateNowPlayingPlayback()
+        playerLog.notice("[audioSession] audible playback resumed for \(reason)")
+        return true
+    }
+
+    func handleAudioInterruption(
+        type: AVAudioSession.InterruptionType,
+        options: AVAudioSession.InterruptionOptions = []
+    ) {
+        switch type {
+        case .began:
+            // Duplicate began notifications are possible while voice input negotiates
+            // its route. Never overwrite the original was-playing snapshot with the
+            // paused state from a later duplicate.
+            let action = audioInterruptionState.began(
+                wasPlaying: isPlaying || player.rate > 0
+            )
+            guard action == .pauseAndYield else {
+                playerLog.notice("[interruption] duplicate began ignored")
+                return
+            }
+            // A previously scheduled stall retry must never restart playback while
+            // the microphone owns the route.
+            exhaustiveRetryTask?.cancel()
+            exhaustiveRetryTask = nil
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlayback()
+            _ = Self.deactivatePlaybackAudioSession(reason: "interruption began")
+            playerLog.notice("[interruption] began — player paused and route yielded; wasPlaying=\(self.wasPlayingBeforeInterruption)")
+
+        case .ended:
+            let action = audioInterruptionState.ended(
+                shouldResume: options.contains(.shouldResume)
+            )
+            guard action != .ignore else {
+                playerLog.notice("[interruption] ended without active interruption — ignored")
+                return
+            }
+            let shouldResume = action == .activateAndResume
+            playerLog.notice("[interruption] ended — shouldResume=\(shouldResume)")
+
+            if shouldResume,
+               Self.activatePlaybackAudioSession(reason: "interruption ended") {
+                if resumeAudiblePlayback(reason: "interruption ended") {
+                    audioInterruptionResumeCount &+= 1
+                } else {
+                    player.pause()
+                    isPlaying = false
+                    _ = Self.deactivatePlaybackAudioSession(reason: "interruption resume unavailable")
+                }
+            } else {
+                // Keep AVPlayer and the public state honestly paused. A later remote
+                // Play will activate the session synchronously before changing rate.
+                player.pause()
+                isPlaying = false
+                updateNowPlayingPlayback()
+            }
+
+        @unknown default:
+            break
+        }
+    }
+
+    func handleAudioRouteChange(reason: AVAudioSession.RouteChangeReason) {
+        guard (reason == .oldDeviceUnavailable || reason == .noSuitableRouteForCategory),
+              !isHandlingAudioInterruption else { return }
+        audioInterruptionState.invalidatePendingRecovery()
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlayback()
+        _ = Self.deactivatePlaybackAudioSession(reason: "old route unavailable")
+        playerLog.notice("[audioSession] old output route unavailable — staying paused")
+    }
+
+    func handleMediaServicesLost() {
+        guard !isHandlingAudioInterruption else { return }
+        audioInterruptionState.invalidatePendingRecovery()
+        wasPlayingBeforeMediaServicesLoss = isPlaying || player.rate > 0
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlayback()
+        playerLog.notice("[audioSession] media services lost — paused; wasPlaying=\(self.wasPlayingBeforeMediaServicesLoss)")
+    }
+
+    func handleMediaServicesReset() {
+        audioInterruptionState.invalidatePendingRecovery()
+        let shouldResume = !isHandlingAudioInterruption
+            && (wasPlayingBeforeMediaServicesLoss || isPlaying || player.rate > 0)
+        wasPlayingBeforeMediaServicesLoss = false
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlayback()
+
+        // During an interruption only restore the category. Activating here would
+        // steal the microphone route; the matching .ended notification owns resume.
+        guard !isHandlingAudioInterruption else {
+            _ = Self.configurePlaybackAudioSession(reason: "media services reset during interruption")
+            return
+        }
+
+        if shouldResume,
+           Self.activatePlaybackAudioSession(reason: "media services reset"),
+           resumeAudiblePlayback(reason: "media services reset") {
+            return
+        }
+
+        _ = Self.configurePlaybackAudioSession(reason: "media services reset while paused")
+        if shouldResume {
+            _ = Self.deactivatePlaybackAudioSession(reason: "media services reset resume failed")
+        }
+    }
+
     func setupAudioSessionObserver() {
+        if let observer = audioSessionObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = audioRouteChangeObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = mediaServicesLostObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+        if let observer = mediaServicesResetObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
+
         audioSessionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
             object: AVAudioSession.sharedInstance(),
             queue: .main
         ) { [weak self] notification in
-            guard let self,
-                  let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+            guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
-            switch type {
-            case .began:
-                // System (phone call, Siri, etc.) took the audio session — note we
-                // were playing so we can resume when it ends.
-                playerLog.notice("[interruption] began — pausing player")
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.wasPlayingBeforeInterruption = self.isPlaying
-                    self.isHandlingAudioInterruption = true
-                    self.player.pause()
-                    self.isPlaying = false
-                    self.updateNowPlayingPlayback()
-                }
-            case .ended:
-                let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
-                let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
-                playerLog.notice("[interruption] ended — shouldResume=\(options.contains(.shouldResume))")
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    do {
-                        try AVAudioSession.sharedInstance().setActive(true)
-                    } catch {
-                        playerLog.error("[interruption] setActive failed: \(error.localizedDescription)")
-                    }
-                    if options.contains(.shouldResume) && self.wasPlayingBeforeInterruption {
-                        self.player.rate = Float(self.settings.playbackSpeed)
-                        self.isPlaying = true
-                        self.updateNowPlayingPlayback()
-                    }
-                    self.isHandlingAudioInterruption = false
-                    self.wasPlayingBeforeInterruption = false
-                }
-            @unknown default:
-                break
+            let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+            let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            Task { @MainActor [weak self] in
+                self?.handleAudioInterruption(type: type, options: options)
+            }
+        }
+
+        audioRouteChangeObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let reasonValue = notification.userInfo?[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                  let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else { return }
+            Task { @MainActor [weak self] in
+                self?.handleAudioRouteChange(reason: reason)
+            }
+        }
+
+        mediaServicesLostObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereLostNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleMediaServicesLost()
+            }
+        }
+
+        mediaServicesResetObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.mediaServicesWereResetNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.handleMediaServicesReset()
             }
         }
     }
 
     func setupRemoteCommandCenter() {
+        // stop() removes audio observers. Re-registering here keeps every new load
+        // covered while setupAudioSessionObserver() remains idempotent.
+        setupAudioSessionObserver()
         let center = MPRemoteCommandCenter.shared()
         // Remove any existing targets first so this function is safe to call
         // multiple times (e.g. early in loadAsync AND at readyToPlay) without
@@ -86,11 +281,11 @@ extension PlaybackViewModel {
         center.previousTrackCommand.removeTarget(nil)
 
         center.playCommand.addTarget { [weak self] _ in
+            guard Self.activatePlaybackAudioSession(reason: "Lock Screen Play") else {
+                return .commandFailed
+            }
             Task { @MainActor [weak self] in
-                guard let self else { return }
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
-                updateNowPlayingPlayback()
+                self?.resumeAudiblePlayback(reason: "Lock Screen Play")
             }
             return .success
         }
@@ -103,7 +298,21 @@ extension PlaybackViewModel {
             return .success
         }
         center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in self?.togglePlayPause() }
+            // Activation is harmless for the pause half of Toggle and necessary for
+            // the play half; doing it synchronously prevents a silent fake-resume.
+            guard Self.activatePlaybackAudioSession(reason: "Lock Screen Toggle") else {
+                return .commandFailed
+            }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if self.isPlaying {
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.updateNowPlayingPlayback()
+                } else {
+                    self.resumeAudiblePlayback(reason: "Lock Screen Toggle")
+                }
+            }
             return .success
         }
         center.skipForwardCommand.preferredIntervals = [10]

@@ -1,5 +1,4 @@
 import SwiftUI
-import FirebaseCore
 import SmartTubeIOS
 import SmartTubeIOSCore
 import os
@@ -11,9 +10,6 @@ struct AppEntry: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
 
-    // Declared without default values so that init() can call FirebaseApp.configure()
-    // before any of these objects are instantiated. @State default values are evaluated
-    // before init() runs, which would trigger Firebase before it is configured.
     @State private var api: InnerTubeAPI
     @State private var authService: AuthService
     @State private var browseViewModel: BrowseViewModel
@@ -39,14 +35,13 @@ struct AppEntry: App {
     }
     #endif
 
-    private static let appGroup             = "group.com.void.smarttube"
+    private static let appGroup             = "group.com.alexlane.smarttube.local"
     private static let pendingKey           = "pendingVideoID"
     private static let pendingWatchLaterKey = "pendingWatchLaterVideoID"
     private static let pendingQueueKey      = "pendingQueueVideoID"
     private static let pendingRSSFeedKey    = "pendingRSSFeedURL"
 
     init() {
-        FirebaseApp.configure()
         let settingsStore = SettingsStore()
         let poTokenProvider: (any PoTokenProvider)? = {
             if let url = settingsStore.settings.poTokenServiceURL {

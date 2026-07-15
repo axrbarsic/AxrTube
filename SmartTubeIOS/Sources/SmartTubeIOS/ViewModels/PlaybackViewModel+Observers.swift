@@ -105,10 +105,13 @@ extension PlaybackViewModel {
                             self.exhaustiveRetryTask = Task { await self.exhaustiveRetry(video: video, originalError: loopError) }
                         }
                     } else if recoveryCount <= 3 {
+                        let interruptionGeneration = self.audioInterruptionGeneration
                         Task { @MainActor [weak self] in
                             try? await Task.sleep(nanoseconds: 2_000_000_000)
                             guard let self, !self.isPlaying, self.player.rate == 0,
-                                  !self.isQualityChangePending, !self.isSwappingItem else { return }
+                                  !self.isQualityChangePending, !self.isSwappingItem,
+                                  !self.isHandlingAudioInterruption,
+                                  self.audioInterruptionGeneration == interruptionGeneration else { return }
                             let seekT = self.currentTime
                             playerLog.notice("[rateObserver] recovery#\(recoveryCount): seeking to \(seekT)s to flush pipeline")
                             self.player.seek(
@@ -117,7 +120,9 @@ extension PlaybackViewModel {
                                 toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600)
                             ) { [weak self] _ in
                                 Task { @MainActor [weak self] in
-                                    guard let self, !self.isPlaying, self.player.rate == 0 else { return }
+                                    guard let self, !self.isPlaying, self.player.rate == 0,
+                                          !self.isHandlingAudioInterruption,
+                                          self.audioInterruptionGeneration == interruptionGeneration else { return }
                                     self.player.rate = Float(self.settings.playbackSpeed)
                                     self.isPlaying = true
                                     playerLog.notice("[rateObserver] recovery#\(recoveryCount): rate restored, isPlaying=true")

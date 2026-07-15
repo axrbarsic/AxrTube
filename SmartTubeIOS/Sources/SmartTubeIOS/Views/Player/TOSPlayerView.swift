@@ -30,7 +30,7 @@ private let tosViewLog = Logger(subsystem: "com.void.smarttube.app", category: "
 //
 // Entry path (iOS):
 //   PlayerRouter.open(video:api:)
-//     └─ store.useTOSPlayerOnIOS == true (always, by default — no user setting)
+//     └─ store.useTOSPlayerOnIOS == true (targeted TOS tests only)
 //          └─ TOSPlayerStateStore.play(video:api:) → .landscapePlayerCover
 //               └─ TOSPlayerView(video:api:)
 //
