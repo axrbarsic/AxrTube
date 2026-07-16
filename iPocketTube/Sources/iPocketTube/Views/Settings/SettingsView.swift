@@ -111,13 +111,19 @@ public struct SettingsView: View {
                 Spacer()
             }
             Divider().overlay(iPocketTubeVisualTokens.stroke)
-            Button(role: .destructive) { auth.signOut() } label: {
+            Button(role: .destructive) {
+                iPocketTubeHaptics.shared.perform(.signOut)
+                auth.signOut()
+            } label: {
                 Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .buttonStyle(.plain)
         } else {
-            Button { showSignIn = true } label: {
+            Button {
+                iPocketTubeHaptics.shared.perform(.signIn)
+                showSignIn = true
+            } label: {
                 Label("Sign in with Google", systemImage: "person.badge.key")
                     .font(.headline)
                     .foregroundStyle(.black)
@@ -143,7 +149,7 @@ public struct SettingsView: View {
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
-            Toggle(isOn: $store.settings.downloadsWiFiOnly) {
+            Toggle(isOn: hapticBinding($store.settings.downloadsWiFiOnly)) {
                 Label("Wi-Fi Only Downloads", systemImage: "wifi")
             }
             .tint(iPocketTubeVisualTokens.mint)
@@ -155,7 +161,7 @@ public struct SettingsView: View {
     private var matrixContentContent: some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
-            Toggle(isOn: $store.settings.compactSearchCards) {
+            Toggle(isOn: hapticBinding($store.settings.compactSearchCards)) {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Compact Search Cards", systemImage: "rectangle.compress.vertical")
                     Text("Half the vertical height")
@@ -169,7 +175,7 @@ public struct SettingsView: View {
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
-            Toggle(isOn: $store.settings.compactMediaLibraryCards) {
+            Toggle(isOn: hapticBinding($store.settings.compactMediaLibraryCards)) {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Compact Media Library Cards", systemImage: "rectangle.stack")
                     Text("Half the vertical height")
@@ -185,7 +191,11 @@ public struct SettingsView: View {
 
             Toggle(isOn: Binding(
                 get: { store.settings.showShorts },
-                set: { store.settings.showShorts = $0 }
+                set: {
+                    guard $0 != store.settings.showShorts else { return }
+                    iPocketTubeHaptics.shared.perform(.settingsToggle)
+                    store.settings.showShorts = $0
+                }
             )) {
                 VStack(alignment: .leading, spacing: 3) {
                     Label("Show Shorts", systemImage: "rectangle.portrait.on.rectangle.portrait")
@@ -214,6 +224,7 @@ public struct SettingsView: View {
             Button {
                 CrashlyticsLogger.sendDiagnosticReport()
                 reportSent = true
+                iPocketTubeHaptics.shared.perform(.operationSucceeded)
             } label: {
                 Label(reportSent ? "Report Sent" : "Send Diagnostic Report", systemImage: reportSent ? "checkmark.circle.fill" : "ladybug")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -592,6 +603,17 @@ public struct SettingsView: View {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let b = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
         return "\(v) (\(b))"
+    }
+
+    private func hapticBinding<Value: Equatable>(_ binding: Binding<Value>) -> Binding<Value> {
+        Binding(
+            get: { binding.wrappedValue },
+            set: { newValue in
+                guard newValue != binding.wrappedValue else { return }
+                iPocketTubeHaptics.shared.perform(.settingsToggle)
+                binding.wrappedValue = newValue
+            }
+        )
     }
 }
 

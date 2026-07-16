@@ -48,6 +48,7 @@ struct MiniPlayerView: View {
                 Spacer(minLength: 0)
 
                 Button {
+                    iPocketTubeHaptics.shared.perform(.playbackTransport)
                     playerState.vm.togglePlayPause()
                 } label: {
                     Image(systemName: playerState.vm.isPlaying ? "pause.fill" : "play.fill")
@@ -61,6 +62,7 @@ struct MiniPlayerView: View {
                 .accessibilityIdentifier("miniPlayer.playPauseButton")
 
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     playerRouter.closeAudioFirst()
                 } label: {
                     Image(systemName: "xmark")

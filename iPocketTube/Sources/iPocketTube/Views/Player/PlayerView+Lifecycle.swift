@@ -21,6 +21,7 @@ extension PlayerView {
     private var titleAndBackButtonOverlay: some View {
         HStack(spacing: 0) {
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 #if os(iOS)
                 swipeLog.notice("[PlayerView] backButton tapped — miniPlayerEnabled=\(store.settings.miniPlayerEnabled) presentation=\(String(describing: playerState.presentation))")
                 if store.settings.miniPlayerEnabled { playerState.minimize() } else { playerState.stop() }
@@ -119,27 +120,39 @@ extension PlayerView {
                     onSwipeLeft: {
                         swipeLog.debug("[swipe-overlay] onSwipeLeft — isTransitioning=\(isTransitioning) isScrubbing=\(vm.isScrubbing) controlsVisible=\(vm.controlsVisible) hasNext=\(vm.hasNext)")
                         guard !isTransitioning else { return }
-                        if vm.hasNext { performHorizontalTransition(direction: -1, screenWidth: geo.size.width) { vm.playNext() } }
+                        if vm.hasNext {
+                            iPocketTubeHaptics.shared.perform(.playbackTransport)
+                            performHorizontalTransition(direction: -1, screenWidth: geo.size.width) { vm.playNext() }
+                        }
                         else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 } }
                     },
                     onSwipeRight: {
                         swipeLog.debug("[swipe-overlay] onSwipeRight — isTransitioning=\(isTransitioning) isScrubbing=\(vm.isScrubbing) controlsVisible=\(vm.controlsVisible) hasPrevious=\(vm.hasPrevious)")
                         guard !isTransitioning else { return }
-                        if vm.hasPrevious { performHorizontalTransition(direction: 1, screenWidth: geo.size.width) { vm.playPrevious() } }
+                        if vm.hasPrevious {
+                            iPocketTubeHaptics.shared.perform(.playbackTransport)
+                            performHorizontalTransition(direction: 1, screenWidth: geo.size.width) { vm.playPrevious() }
+                        }
                         else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 } }
                     },
                     onTap: {
                         // Suppress toggle-controls when end cards are active — taps belong to the cards.
-                        if !vm.hasVisibleEndCards { vm.toggleControls() }
+                        if !vm.hasVisibleEndCards {
+                            iPocketTubeHaptics.shared.perform(.primaryAction)
+                            vm.toggleControls()
+                        }
                     },
                     onDoubleTap: { normalizedX in
                         if normalizedX < 1.0 / 3.0 {
+                            iPocketTubeHaptics.shared.perform(.seekCommit)
                             vm.seekRelative(seconds: -Double(store.settings.seekBackSeconds))
                             seekToastMessage = "← \(store.settings.seekBackSeconds)s"
                         } else if normalizedX > 2.0 / 3.0 {
+                            iPocketTubeHaptics.shared.perform(.seekCommit)
                             vm.seekRelative(seconds: Double(store.settings.seekForwardSeconds))
                             seekToastMessage = "\(store.settings.seekForwardSeconds)s →"
                         } else {
+                            iPocketTubeHaptics.shared.perform(.settingsToggle)
                             let newMode: AppSettings.VideoGravityMode =
                                 store.settings.videoGravityMode == .fit ? .fill : .fit
                             store.settings.videoGravityMode = newMode

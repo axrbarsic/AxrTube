@@ -139,6 +139,7 @@ public struct ShortsPlayerView: View {
                 onSwipeUp: {
                     guard !isTransitioning else { return }
                     if let next = ShortsNavigation.targetIndex(vertical: -100, horizontal: 0, current: currentIndex, count: videos.count) {
+                        iPocketTubeHaptics.shared.perform(.contentSelection)
                         performVerticalTransition(direction: -1) { goTo(next) }
                     } else {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 }
@@ -147,6 +148,7 @@ public struct ShortsPlayerView: View {
                 onSwipeDown: {
                     guard !isTransitioning else { return }
                     if let prev = ShortsNavigation.targetIndex(vertical: 100, horizontal: 0, current: currentIndex, count: videos.count) {
+                        iPocketTubeHaptics.shared.perform(.contentSelection)
                         performVerticalTransition(direction: 1) { goTo(prev) }
                     } else {
                         loadMoreAtStart()
@@ -160,6 +162,7 @@ public struct ShortsPlayerView: View {
                     let screenH = UIScreen.main.bounds.height
                     let inNativeControlsArea = point.y / screenH > 0.88
                     if vm.playerState == .paused && inNativeControlsArea { return }
+                    iPocketTubeHaptics.shared.perform(.playbackTransport)
                     vm.togglePlayPause()
                 },
                 onTwoFingerTap: {},

@@ -18,7 +18,10 @@ struct ChannelListView: View {
         ScrollView {
             LazyVStack(spacing: 8) {
                 ForEach(channels) { channel in
-                    Button { onSelect(channel) } label: {
+                    Button {
+                        iPocketTubeHaptics.shared.perform(.channelSelection)
+                        onSelect(channel)
+                    } label: {
                         ChannelListRow(channel: channel)
                             #if os(tvOS)
                             .background(

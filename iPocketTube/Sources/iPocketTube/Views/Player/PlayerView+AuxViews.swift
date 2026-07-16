@@ -98,7 +98,10 @@ struct RelatedVideosView: View {
                 ForEach(videos) { video in
                     VideoCardView(video: video, compact: true)
                         .padding(.horizontal)
-                        .onTapGesture { onSelect(video) }
+                        .onTapGesture {
+                            iPocketTubeHaptics.shared.perform(.contentSelection)
+                            onSelect(video)
+                        }
                 }
             }
         }
@@ -201,7 +204,10 @@ struct EndCardButton: View {
     let onSelect: (EndCard) -> Void
 
     var body: some View {
-        Button { onSelect(card) } label: {
+        Button {
+            iPocketTubeHaptics.shared.perform(.contentSelection)
+            onSelect(card)
+        } label: {
             ZStack(alignment: .bottom) {
                 AsyncImage(url: card.thumbnailURL) { phase in
                     switch phase {

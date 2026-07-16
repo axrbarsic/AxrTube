@@ -44,6 +44,7 @@ extension PlayerView {
                 ScrollView {
                     VStack(spacing: 0) {
                         Button {
+                            iPocketTubeHaptics.shared.perform(.settingsPicker)
                             pickerLog.notice("[qualityPicker] selected Auto (was: \(vm.selectedFormat?.qualityLabel ?? "Auto"))")
                             vm.selectFormat(nil)
                             store.settings.preferredQuality = .auto
@@ -71,6 +72,7 @@ extension PlayerView {
                         Divider()
                         ForEach(vm.availableFormats) { fmt in
                             Button {
+                                iPocketTubeHaptics.shared.perform(.settingsPicker)
                                 pickerLog.notice("[qualityPicker] selected \(fmt.qualityLabel) (was: \(vm.selectedFormat?.qualityLabel ?? "Auto"))")
                                 vm.selectFormat(fmt)
                                 if let q = AppSettings.VideoQuality.from(height: fmt.height) {
@@ -161,6 +163,7 @@ extension PlayerView {
                     VStack(spacing: 0) {
                         ForEach(AppSettings.availableSpeeds, id: \.self) { (speed: Double) in
                             Button {
+                                iPocketTubeHaptics.shared.perform(.settingsPicker)
                                 store.settings.playbackSpeed = speed
                                 vm.setPlaybackSpeed(speed)
                                 showSpeedPicker = false
@@ -226,6 +229,7 @@ extension PlayerView {
                 Divider()
                 VStack(spacing: 0) {
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsPicker)
                         vm.setSleepTimer(minutes: nil)
                         showSleepTimerPicker = false
                     } label: {
@@ -250,6 +254,7 @@ extension PlayerView {
                     Divider()
                     ForEach(PlaybackViewModel.sleepTimerOptions, id: \.self) { mins in
                         Button {
+                            iPocketTubeHaptics.shared.perform(.settingsPicker)
                             vm.setSleepTimer(minutes: mins)
                             showSleepTimerPicker = false
                         } label: {
@@ -311,6 +316,7 @@ extension PlayerView {
                     VStack(spacing: 0) {
                         // Off row
                         Button {
+                            iPocketTubeHaptics.shared.perform(.settingsPicker)
                             vm.selectCaption(nil)
                             showCaptionPicker = false
                         } label: {
@@ -334,6 +340,7 @@ extension PlayerView {
                         Divider()
                         ForEach(vm.availableCaptions) { track in
                             Button {
+                                iPocketTubeHaptics.shared.perform(.settingsPicker)
                                 vm.selectCaption(track)
                                 showCaptionPicker = false
                             } label: {
@@ -400,6 +407,7 @@ extension PlayerView {
                     VStack(spacing: 0) {
                         // "Auto" row — resets to HLS default and clears the saved preference
                         Button {
+                            iPocketTubeHaptics.shared.perform(.settingsPicker)
                             vm.selectAudioTrack(nil)
                             showAudioTrackPicker = false
                         } label: {
@@ -423,6 +431,7 @@ extension PlayerView {
                         Divider()
                         ForEach(vm.availableAudioTracks) { track in
                             Button {
+                                iPocketTubeHaptics.shared.perform(.settingsPicker)
                                 vm.selectAudioTrack(track)
                                 showAudioTrackPicker = false
                             } label: {

@@ -113,9 +113,14 @@ public struct SearchView: View {
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 #endif
-                .onSubmit { vm.search(); isSearchFocused = false }
+                .onSubmit {
+                    iPocketTubeHaptics.shared.perform(.searchSubmit)
+                    vm.search()
+                    isSearchFocused = false
+                }
             if !vm.query.isEmpty {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.searchClear)
                     vm.resetToDiscovery()
                 } label: {
                     Image(systemName: AppSymbol.xmarkCircle)
@@ -131,6 +136,7 @@ public struct SearchView: View {
                 } else {
                     ForEach(vm.history.prefix(10)) { entry in
                         Button {
+                            iPocketTubeHaptics.shared.perform(.searchHistorySelection)
                             vm.query = entry.query
                             vm.search()
                             isSearchFocused = false
@@ -140,6 +146,7 @@ public struct SearchView: View {
                     }
                     Divider()
                     Button("Clear History", role: .destructive) {
+                        iPocketTubeHaptics.shared.perform(.searchHistoryDelete)
                         vm.clearHistory()
                     }
                 }
@@ -151,6 +158,7 @@ public struct SearchView: View {
             .accessibilityLabel("Recent Searches")
             .accessibilityIdentifier("search.historyMenu")
             Button {
+                iPocketTubeHaptics.shared.perform(.filterPresentation)
                 showFilterSheet = true
             } label: {
                 Image(systemName: vm.filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
@@ -195,21 +203,25 @@ public struct SearchView: View {
                 HStack(spacing: 8) {
                     if vm.filter.sortOrder != .relevance {
                         FilterChip(label: LocalizedStringKey(vm.filter.sortOrder.label)) {
+                            iPocketTubeHaptics.shared.perform(.filterChange)
                             var f = vm.filter; f.sortOrder = .relevance; vm.applyFilter(f)
                         }
                     }
                     if vm.filter.uploadDate != .anytime {
                         FilterChip(label: LocalizedStringKey(vm.filter.uploadDate.label)) {
+                            iPocketTubeHaptics.shared.perform(.filterChange)
                             var f = vm.filter; f.uploadDate = .anytime; vm.applyFilter(f)
                         }
                     }
                     if vm.filter.type != .any {
                         FilterChip(label: LocalizedStringKey(vm.filter.type.label)) {
+                            iPocketTubeHaptics.shared.perform(.filterChange)
                             var f = vm.filter; f.type = .any; vm.applyFilter(f)
                         }
                     }
                     if vm.filter.duration != .any {
                         FilterChip(label: LocalizedStringKey(vm.filter.duration.label)) {
+                            iPocketTubeHaptics.shared.perform(.filterChange)
                             var f = vm.filter; f.duration = .any; vm.applyFilter(f)
                         }
                     }
@@ -241,6 +253,7 @@ public struct SearchView: View {
             VideoGridSection(
                 videos: displayResults,
                 onSelect: { video in
+                    iPocketTubeHaptics.shared.perform(.contentSelection)
                     let captured = displayResults
                     Task { @MainActor in
                         await CurrentQueueStore.shared.replaceAll(with: captured)
@@ -279,6 +292,7 @@ public struct SearchView: View {
                 Section(header: Text("Recent").font(.caption).foregroundStyle(.secondary)) {
                     ForEach(vm.filteredHistory) { entry in
                         Button {
+                            iPocketTubeHaptics.shared.perform(.searchHistorySelection)
                             vm.query = entry.query
                             vm.search()
                             isSearchFocused = false
@@ -292,6 +306,7 @@ public struct SearchView: View {
                                 Spacer()
                                 #if os(iOS)
                                 Button {
+                                    iPocketTubeHaptics.shared.perform(.searchHistoryDelete)
                                     vm.removeHistoryEntry(entry.query)
                                 } label: {
                                     Image(systemName: AppSymbol.xmark)
@@ -308,6 +323,7 @@ public struct SearchView: View {
                         .accessibilityIdentifier("search.history.\(entry.query)")
                     }
                     Button(role: .destructive) {
+                        iPocketTubeHaptics.shared.perform(.searchHistoryDelete)
                         vm.clearHistory()
                     } label: {
                         Text("Clear History")
@@ -324,6 +340,7 @@ public struct SearchView: View {
                 Section(header: Text(LocalizedStringKey(suggestionsHeader), bundle: .module).font(.caption).foregroundStyle(.secondary)) {
                     ForEach(vm.suggestions, id: \.self) { suggestion in
                     Button {
+                        iPocketTubeHaptics.shared.perform(.searchSuggestionSelection)
                         vm.query = suggestion
                         vm.search()
                         isSearchFocused = false
@@ -336,6 +353,7 @@ public struct SearchView: View {
                                 .foregroundStyle(.primary)
                             Spacer()
                             Button {
+                                iPocketTubeHaptics.shared.perform(.searchSuggestionSelection)
                                 vm.query = suggestion
                             } label: {
                                 Image(systemName: "arrow.up.left")
@@ -442,6 +460,9 @@ struct SearchFilterSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    .onChange(of: draft.sortOrder) { _, _ in
+                        iPocketTubeHaptics.shared.perform(.filterChange)
+                    }
                 }
 
                 Section("Upload date") {
@@ -452,6 +473,9 @@ struct SearchFilterSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    .onChange(of: draft.uploadDate) { _, _ in
+                        iPocketTubeHaptics.shared.perform(.filterChange)
+                    }
                 }
 
                 Section(String(localized: "search.filter.type", bundle: .module)) {
@@ -462,6 +486,9 @@ struct SearchFilterSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    .onChange(of: draft.type) { _, _ in
+                        iPocketTubeHaptics.shared.perform(.filterChange)
+                    }
                 }
 
                 Section("Duration") {
@@ -472,6 +499,9 @@ struct SearchFilterSheet: View {
                     }
                     .pickerStyle(.inline)
                     .labelsHidden()
+                    .onChange(of: draft.duration) { _, _ in
+                        iPocketTubeHaptics.shared.perform(.filterChange)
+                    }
                 }
             }
             .navigationTitle("Search filters")
@@ -480,17 +510,24 @@ struct SearchFilterSheet: View {
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Apply") {
+                        iPocketTubeHaptics.shared.perform(.filterApply)
                         onApply(draft)
                         dismiss()
                     }
                 }
                 #if os(iOS)
                 ToolbarItem(placement: .bottomBar) {
-                    Button("Reset") { draft = .default }
+                    Button("Reset") {
+                        iPocketTubeHaptics.shared.perform(.settingsReset)
+                        draft = .default
+                    }
                         .disabled(draft.isDefault)
                 }
                 #endif

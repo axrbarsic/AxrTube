@@ -121,6 +121,7 @@ public struct PlaylistView: View {
                             .padding(.vertical, 6)
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onTapGesture {
+                                iPocketTubeHaptics.shared.perform(.contentSelection)
                                 #if os(iOS)
                                 Task { @MainActor in
                                     let captured = displayVideos
@@ -180,6 +181,7 @@ public struct PlaylistView: View {
                         VideoCardView(video: video, compact: false, currentPlaylistId: playlistId)
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onTapGesture {
+                                iPocketTubeHaptics.shared.perform(.contentSelection)
                                 #if os(iOS)
                                 Task { @MainActor in
                                     let captured = displayVideos

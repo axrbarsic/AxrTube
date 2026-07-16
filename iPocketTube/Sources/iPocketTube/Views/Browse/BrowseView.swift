@@ -209,7 +209,7 @@ struct VideoGridSection: View {
             LazyVStack(spacing: 8) {
                 ForEach(videos) { video in
                     #if os(tvOS)
-                    VideoCardView(video: video, compact: true, onSelect: { onSelect(video) })
+                    VideoCardView(video: video, compact: true, onSelect: { select(video) })
                         .padding(.horizontal)
                         .padding(.vertical, 2)
                         .accessibilityIdentifier("video.card.\(video.id)")
@@ -223,7 +223,7 @@ struct VideoGridSection: View {
                         .padding(.vertical, 2)
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .accessibilityValue(video.isShort ? "short" : "")
-                        .onTapGesture { onSelect(video) }
+                        .onTapGesture { select(video) }
                         .onAppear {
                             if video.id == videos.last?.id { loadMore?() }
                         }
@@ -245,7 +245,7 @@ struct VideoGridSection: View {
                     let rowVideos = Array(videos[startIdx..<min(startIdx + columnCount, videos.count)])
                     HStack(alignment: .top, spacing: videoGridRowSpacing) {
                         ForEach(rowVideos) { video in
-                            VideoCardView(video: video, compact: false, onSelect: { onSelect(video) })
+                            VideoCardView(video: video, compact: false, onSelect: { select(video) })
                                 .frame(maxWidth: .infinity)
                                 .accessibilityIdentifier("video.card.\(video.id)")
                         }
@@ -276,7 +276,7 @@ struct VideoGridSection: View {
                     VideoCardView(video: video, compact: false)
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .accessibilityValue(video.isShort ? "short" : "")
-                        .onTapGesture { onSelect(video) }
+                        .onTapGesture { select(video) }
                         .onAppear {
                             if video.id == videos.last?.id { loadMore?() }
                         }
@@ -286,6 +286,11 @@ struct VideoGridSection: View {
             .padding(.vertical, 8)
             #endif
         }
+    }
+
+    private func select(_ video: Video) {
+        iPocketTubeHaptics.shared.perform(.contentSelection)
+        onSelect(video)
     }
 }
 
@@ -301,14 +306,14 @@ struct VideoRowSection: View {
             HStack(alignment: .top, spacing: videoGridRowSpacing) {
                 ForEach(videos) { video in
                     #if os(tvOS)
-                    VideoCardView(video: video, compact: false, onSelect: { onSelect(video) })
+                    VideoCardView(video: video, compact: false, onSelect: { select(video) })
                         .frame(width: 360)
                         .accessibilityIdentifier("video.card.\(video.id)")
                     #else
                     VideoCardView(video: video, compact: false)
                         .frame(width: 220)
                         .accessibilityIdentifier("video.card.\(video.id)")
-                        .onTapGesture { onSelect(video) }
+                        .onTapGesture { select(video) }
                     #endif
                 }
             }
@@ -318,5 +323,11 @@ struct VideoRowSection: View {
         #if os(tvOS)
         .focusSection()
         #endif
+    }
+
+
+    private func select(_ video: Video) {
+        iPocketTubeHaptics.shared.perform(.contentSelection)
+        onSelect(video)
     }
 }

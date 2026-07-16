@@ -30,6 +30,7 @@ struct AddRSSFeedView: View {
 
                 Section {
                     Button {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
                         addFeed()
                     } label: {
                         if isAdding {

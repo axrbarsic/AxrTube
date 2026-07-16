@@ -64,7 +64,10 @@ struct ShortsCardView: View {
             }
         }
         .contentShape(Rectangle())
-        .onTapGesture(perform: onTap)
+        .onTapGesture {
+            iPocketTubeHaptics.shared.perform(.contentSelection)
+            onTap()
+        }
         .iPocketTubeCardSurface(cornerRadius: 10, contentPadding: 3)
         .contextMenu {
             #if !os(tvOS)
@@ -76,6 +79,7 @@ struct ShortsCardView: View {
             #endif
             if let channelId = video.channelId, !channelId.isEmpty {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.channelSelection)
                     NotificationCenter.default.post(
                         name: .openChannel,
                         object: nil,
@@ -87,6 +91,7 @@ struct ShortsCardView: View {
             }
             if authService.isSignedIn {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     Task {
                         do {
                             try await api.addToWatchLater(videoId: video.id)
@@ -106,11 +111,13 @@ struct ShortsCardView: View {
                 }
             }
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 Task { await CurrentQueueStore.shared.append(video) }
             } label: {
                 Label("Add to Queue", systemImage: "text.badge.plus")
             }
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 Task {
                     let count = await CurrentQueueStore.shared.videos.count
                     await CurrentQueueStore.shared.insertNext(video, afterIndex: count - 1)
@@ -173,6 +180,7 @@ struct ShortsCardView: View {
             }
             #if !os(tvOS)
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 downloadService.download(
                     video: video,
                     kind: .video,

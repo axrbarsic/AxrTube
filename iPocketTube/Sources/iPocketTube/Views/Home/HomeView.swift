@@ -179,11 +179,15 @@ public struct HomeView: View {
         let localizedTitle = section.type.localizedTitle
         let action = {
             let isNewSection = selectedSection != section
-            if isNewSection { selectedSection = section }
+            if isNewSection {
+                iPocketTubeHaptics.shared.perform(.segmentSelection)
+                selectedSection = section
+            }
             guard section.type != .home else { return }
             if isNewSection {
                 sectionVM.select(section: section)
             } else if sectionVM.videoGroups.isEmpty && !sectionVM.isLoading {
+                iPocketTubeHaptics.shared.perform(.downloadRetry)
                 // Same chip re-tapped on an empty section — retry the load.
                 // This handles failed fetches or cases where an observation gap
                 // left the view showing an empty state despite data being available.
@@ -645,6 +649,7 @@ public struct HomeView: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture {
+            iPocketTubeHaptics.shared.perform(.playlistSelection)
             selectedPlaylist = Video(
                 id: CurrentQueueStore.playlistID,
                 title: String(localized: "Current Queue", bundle: .module),

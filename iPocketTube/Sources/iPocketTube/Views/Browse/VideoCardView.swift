@@ -146,6 +146,7 @@ public struct VideoCardView: View {
             #endif
             if let channelId = video.channelId, !channelId.isEmpty {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.channelSelection)
                     NotificationCenter.default.post(
                         name: .openChannel,
                         object: nil,
@@ -158,6 +159,7 @@ public struct VideoCardView: View {
             if authService.isSignedIn {
                 if currentPlaylistId == "WL" {
                     Button(role: .destructive) {
+                        iPocketTubeHaptics.shared.perform(.downloadDelete)
                         Task {
                             do {
                                 try await api.removeFromWatchLater(videoId: video.id)
@@ -177,6 +179,7 @@ public struct VideoCardView: View {
                     }
                 } else {
                     Button {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
                         Task {
                             do {
                                 try await api.addToWatchLater(videoId: video.id)
@@ -197,11 +200,13 @@ public struct VideoCardView: View {
                 }
             }
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 Task { await CurrentQueueStore.shared.append(video) }
             } label: {
                 Label("Add to Queue", systemImage: "text.badge.plus")
             }
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 Task {
                     let count = await CurrentQueueStore.shared.videos.count
                     await CurrentQueueStore.shared.insertNext(video, afterIndex: count - 1)
@@ -211,6 +216,7 @@ public struct VideoCardView: View {
             }
             if authService.isSignedIn {
                 Button(role: .destructive) {
+                    iPocketTubeHaptics.shared.perform(.downloadDelete)
                     Task {
                         if let token = video.notInterestedToken {
                             try? await api.sendFeedback(token: token)
@@ -228,6 +234,7 @@ public struct VideoCardView: View {
                 }
                 if let channelId = video.channelId, !channelId.isEmpty {
                     Button(role: .destructive) {
+                        iPocketTubeHaptics.shared.perform(.downloadDelete)
                         Task {
                             if let token = video.hideChannelToken {
                                 try? await api.sendFeedback(token: token)
@@ -248,6 +255,7 @@ public struct VideoCardView: View {
             }
             #if !os(tvOS)
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 downloadService.download(
                     video: video,
                     kind: .video,
@@ -308,7 +316,10 @@ public struct VideoCardView: View {
         cardContent
             .iPocketTubeCardSurface(cornerRadius: 12)
             .focusable()
-            .onTapGesture { onSelect?() }
+            .onTapGesture {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
+                onSelect?()
+            }
             .focused($isFocused)
             .onAppear { feedLog.info("[feed] id=\(self.video.id) title=\(self.video.title)") }
             .onChange(of: isFocused) { _, newValue in
@@ -371,6 +382,7 @@ public struct VideoCardView: View {
                     .lineLimit(1)
                     .onTapGesture {
                         guard let channelId = video.channelId, !channelId.isEmpty else { return }
+                        iPocketTubeHaptics.shared.perform(.channelSelection)
                         NotificationCenter.default.post(
                             name: .openChannel,
                             object: nil,
@@ -426,6 +438,7 @@ public struct VideoCardView: View {
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                     .onTapGesture {
                         guard let channelId = video.channelId, !channelId.isEmpty else { return }
+                        iPocketTubeHaptics.shared.perform(.channelSelection)
                         NotificationCenter.default.post(
                             name: .openChannel,
                             object: nil,

@@ -45,10 +45,16 @@ struct DownloadsView: View {
                                     bufferedProgress: playerRouter.audioFirst.playbackBufferedProgress,
                                     isScrubbing: playerState.vm.isScrubbing,
                                     isPlaying: playerState.vm.isPlaying,
-                                    onPlayPause: { playerRouter.audioFirst.togglePlayPauseByUser() },
+                                    onPlayPause: {
+                                        iPocketTubeHaptics.shared.perform(.playbackTransport)
+                                        playerRouter.audioFirst.togglePlayPauseByUser()
+                                    },
                                     onScrubBegan: { playerRouter.audioFirst.beginScrubbing() },
                                     onScrubChanged: { playerRouter.audioFirst.updateScrubbing(to: $0) },
-                                    onScrubEnded: { playerRouter.audioFirst.commitScrubbing() },
+                                    onScrubEnded: {
+                                        iPocketTubeHaptics.shared.perform(.seekCommit)
+                                        playerRouter.audioFirst.commitScrubbing()
+                                    },
                                     onRetry: { retry(entry) }
                                 )
                             } else {
@@ -56,12 +62,19 @@ struct DownloadsView: View {
                                     entry: entry,
                                     edrEnabled: settingsStore.settings.experimentalEDRPressGlowEnabled,
                                     onRetry: { retry(entry) },
-                                    onCancel: { playerRouter.audioFirst.pauseDownload(entry) },
-                                    onPlay: { playerRouter.open(video: entry.video, api: api) }
+                                    onCancel: {
+                                        iPocketTubeHaptics.shared.perform(.downloadPauseResume)
+                                        playerRouter.audioFirst.pauseDownload(entry)
+                                    },
+                                    onPlay: {
+                                        iPocketTubeHaptics.shared.perform(.downloadSelection)
+                                        playerRouter.open(video: entry.video, api: api)
+                                    }
                                 )
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     guard entry.status == .completed else { return }
+                                    iPocketTubeHaptics.shared.perform(.downloadSelection)
                                     playerRouter.open(video: entry.video, api: api)
                                 }
                             }
@@ -70,12 +83,18 @@ struct DownloadsView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) { deleteConfirmationEntry = entry } label: {
+                            Button(role: .destructive) {
+                                iPocketTubeHaptics.shared.perform(.primaryAction)
+                                deleteConfirmationEntry = entry
+                            } label: {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
                         .contextMenu {
-                            Button(role: .destructive) { deleteConfirmationEntry = entry } label: {
+                            Button(role: .destructive) {
+                                iPocketTubeHaptics.shared.perform(.primaryAction)
+                                deleteConfirmationEntry = entry
+                            } label: {
                                 Label("Delete", systemImage: "trash")
                             }
                         }
@@ -100,18 +119,27 @@ struct DownloadsView: View {
             )
         ) {
             Button("Delete", role: .destructive) {
+                iPocketTubeHaptics.shared.perform(.downloadDelete)
                 if let entry = deleteConfirmationEntry {
                     downloadStore.remove(videoId: entry.videoId, kind: entry.kind)
                 }
                 deleteConfirmationEntry = nil
             }
-            Button("Cancel", role: .cancel) { deleteConfirmationEntry = nil }
+            Button("Cancel", role: .cancel) {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+                deleteConfirmationEntry = nil
+            }
         } message: {
             Text("The local copy will be removed from this device.")
         }
         .alert("Clear Offline Collection", isPresented: $showClearConfirmation) {
-            Button("Clear All", role: .destructive) { downloadStore.clearAll() }
-            Button("Cancel", role: .cancel) {}
+            Button("Clear All", role: .destructive) {
+                iPocketTubeHaptics.shared.perform(.downloadClear)
+                downloadStore.clearAll()
+            }
+            Button("Cancel", role: .cancel) {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+            }
         } message: {
             Text("All downloaded video and audio files will be removed from iPocketTube.")
         }
@@ -127,7 +155,11 @@ struct DownloadsView: View {
                 Menu {
                     Picker("Storage Limit", selection: Binding(
                         get: { settingsStore.settings.offlineStorageLimitMB },
-                        set: { settingsStore.settings.offlineStorageLimitMB = $0 }
+                        set: {
+                            guard $0 != settingsStore.settings.offlineStorageLimitMB else { return }
+                            iPocketTubeHaptics.shared.perform(.settingsPicker)
+                            settingsStore.settings.offlineStorageLimitMB = $0
+                        }
                     )) {
                         Text("1 GB").tag(1024)
                         Text("2 GB").tag(2048)
@@ -138,6 +170,7 @@ struct DownloadsView: View {
                     if !downloadStore.entries.isEmpty {
                         Divider()
                         Button("Clear Offline Collection", role: .destructive) {
+                            iPocketTubeHaptics.shared.perform(.primaryAction)
                             showClearConfirmation = true
                         }
                     }
@@ -168,6 +201,7 @@ struct DownloadsView: View {
     }
 
     private func retry(_ entry: DownloadedVideo) {
+        iPocketTubeHaptics.shared.perform(.downloadRetry)
         if entry.kind == .audio {
             playerRouter.open(video: entry.video, api: api)
             return

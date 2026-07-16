@@ -37,7 +37,10 @@ struct ManageRSSFeedsView: View {
 #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Done") {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
+                        dismiss()
+                    }
                 }
             }
             .task {
@@ -62,6 +65,7 @@ struct ManageRSSFeedsView: View {
             Toggle("", isOn: Binding(
                 get: { feed.isActive },
                 set: { newValue in
+                    iPocketTubeHaptics.shared.perform(.settingsToggle)
                     Task {
                         await RSSFeedStore.shared.setActive(feed.id, newValue)
                         await reloadFeeds()
@@ -74,6 +78,7 @@ struct ManageRSSFeedsView: View {
     }
 
     private func deleteFeeds(at offsets: IndexSet) {
+        iPocketTubeHaptics.shared.perform(.downloadDelete)
         let toDelete = offsets.map { feeds[$0] }
         Task {
             for feed in toDelete {

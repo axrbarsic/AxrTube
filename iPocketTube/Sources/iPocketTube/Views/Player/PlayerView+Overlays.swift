@@ -336,6 +336,7 @@ extension PlayerView {
 
     @ViewBuilder private var moreMenuSpeedRow: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
             menuLog.notice("[moreMenu] Speed row tapped — closing moreMenu, opening speedPicker")
             showMoreMenu = false
             showSpeedPicker = true
@@ -378,6 +379,7 @@ extension PlayerView {
         if authService.isSignedIn {
             HStack(spacing: 0) {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     vm.like()
                     showMoreMenu = false
                 } label: {
@@ -400,6 +402,7 @@ extension PlayerView {
                 #endif
                 Divider().frame(height: 44)
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     vm.dislike()
                     showMoreMenu = false
                 } label: {
@@ -428,6 +431,7 @@ extension PlayerView {
     @ViewBuilder private var moreMenuShareRow: some View {
         #if os(iOS)
         Button {
+            iPocketTubeHaptics.shared.perform(.share)
             showMoreMenu = false
             if let url = URL(string: "https://www.youtube.com/watch?v=\((vm.playerInfo?.video ?? video).id)") {
                 presentShareSheet(url: url)
@@ -446,6 +450,7 @@ extension PlayerView {
 
     @ViewBuilder private var moreMenuSleepTimerRow: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
             menuLog.notice("[moreMenu] Sleep Timer row tapped — closing moreMenu, opening sleepTimerPicker")
             showMoreMenu = false
             showSleepTimerPicker = true
@@ -477,6 +482,7 @@ extension PlayerView {
 
     @ViewBuilder private var moreMenuAudioOnlyRow: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.settingsToggle)
             menuLog.notice("[moreMenu] Audio-Only row tapped — toggling audioOnlyMode: \(store.settings.audioOnlyMode) → \(!store.settings.audioOnlyMode)")
             vm.toggleAudioOnlyLive()
             store.settings.audioOnlyMode = vm.isAudioOnlyMode
@@ -512,6 +518,7 @@ extension PlayerView {
     @ViewBuilder private var moreMenuQueueShuffleRow: some View {
         if (vm.playerInfo?.video ?? video).playlistId == CurrentQueueStore.playlistID {
             Button {
+                iPocketTubeHaptics.shared.perform(.settingsToggle)
                 menuLog.notice("[moreMenu] Queue Shuffle row tapped — toggling queueShuffleEnabled: \(store.settings.queueShuffleEnabled) → \(!store.settings.queueShuffleEnabled)")
                 store.settings.queueShuffleEnabled.toggle()
                 showMoreMenu = false
@@ -547,6 +554,7 @@ extension PlayerView {
     @ViewBuilder private var moreMenuDownloadRow: some View {
         #if !os(tvOS)
         Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
             showMoreMenu = false
             showDownloadFormatPicker = true
         } label: {
@@ -576,6 +584,7 @@ extension PlayerView {
     @ViewBuilder private var moreMenuCaptionsRow: some View {
         if !vm.availableCaptions.isEmpty {
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 showMoreMenu = false
                 showCaptionPicker = true
             } label: {
@@ -605,6 +614,7 @@ extension PlayerView {
     @ViewBuilder private var moreMenuAudioTrackRow: some View {
         if shouldShowAudioTrackInMoreMenu {
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 showMoreMenu = false
                 showAudioTrackPicker = true
             } label: {
@@ -635,6 +645,7 @@ extension PlayerView {
         let currentVideo = vm.playerInfo?.video ?? video
         if !(currentVideo.description ?? "").isEmpty {
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 showMoreMenu = false
                 showDescriptionSheet = true
             } label: {
@@ -657,6 +668,7 @@ extension PlayerView {
 
     @ViewBuilder private var moreMenuCommentsRow: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
             showMoreMenu = false
             showCommentsSheet = true
             loadComments()
@@ -679,6 +691,7 @@ extension PlayerView {
 
     @ViewBuilder private var moreMenuStatsForNerdsRow: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.settingsToggle)
             vm.toggleStatsForNerds()
             showMoreMenu = false
         } label: {
@@ -705,7 +718,10 @@ extension PlayerView {
     }
 
     @ViewBuilder private var moreMenuCancelRow: some View {
-        Button { showMoreMenu = false } label: {
+        Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
+            showMoreMenu = false
+        } label: {
             Text("Cancel")
                 .frame(maxWidth: .infinity)
                 .padding()

@@ -88,6 +88,7 @@ public struct LibraryView: View {
                     let isSelected = selectedSection == sec
                     Button {
                         guard selectedSection != sec else { return }
+                        iPocketTubeHaptics.shared.perform(.segmentSelection)
                         selectedSection = sec
                     } label: {
                         Text(verbatim: sec.localizedTitle)
@@ -123,6 +124,8 @@ public struct LibraryView: View {
                 ForEach(LibrarySection.allCases) { sec in
                     let selected = selectedSection == sec
                     Button {
+                        guard selectedSection != sec else { return }
+                        iPocketTubeHaptics.shared.perform(.segmentSelection)
                         selectedSection = sec
                     } label: {
                         Text(verbatim: sec.localizedTitle)
@@ -177,6 +180,9 @@ public struct LibraryView: View {
                         VideoGridSection(
                             videos: videos,
                             onSelect: { video in
+                                iPocketTubeHaptics.shared.perform(
+                                    video.playlistId == video.id ? .playlistSelection : .contentSelection
+                                )
                                 if video.playlistId == video.id {
                                     selectedPlaylist = video
                                 } else {
@@ -299,7 +305,10 @@ public struct LibraryView: View {
                     .font(.subheadline)
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                     .multilineTextAlignment(.center)
-                Button("Retry") { reloadChannels() }
+                Button("Retry") {
+                    iPocketTubeHaptics.shared.perform(.downloadRetry)
+                    reloadChannels()
+                }
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -355,6 +364,7 @@ public struct LibraryView: View {
         .padding(.vertical, 10)
         .contentShape(Rectangle())
         .onTapGesture {
+            iPocketTubeHaptics.shared.perform(.playlistSelection)
             selectedPlaylist = Video(
                 id: CurrentQueueStore.playlistID,
                 title: String(localized: "Current Queue", bundle: .module),
@@ -376,6 +386,7 @@ public struct LibraryView: View {
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                 Button("Search") {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     NotificationCenter.default.post(name: .navigateToSearch, object: nil)
                 }
                 .buttonStyle(.borderedProminent)

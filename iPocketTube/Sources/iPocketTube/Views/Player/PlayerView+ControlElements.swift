@@ -47,6 +47,7 @@ struct PlayerControlsOverlay: View {
             // Top bar: back + title
             HStack {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     #if os(iOS)
                     if store.settings.miniPlayerEnabled { playerState.minimize() } else { playerState.stop() }
                     #else
@@ -77,6 +78,7 @@ struct PlayerControlsOverlay: View {
                     let channelTitle = vm.playerInfo?.video.channelTitle ?? video.channelTitle
                     Button {
                         guard let cid = channelId, !cid.isEmpty else { return }
+                        iPocketTubeHaptics.shared.perform(.channelSelection)
                         #if os(iOS)
                         // PlayerView is presented via fullScreenCover — there is no
                         // NavigationStack, so setting channelDestination is a no-op.
@@ -113,6 +115,7 @@ struct PlayerControlsOverlay: View {
                 // Picture-in-Picture button — shown when PiP is enabled in settings and supported on this device
                 if store.settings.pipEnabled, let pip = pipController {
                     Button {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
                         if isPiPActive {
                             pip.stopPictureInPicture()
                         } else {
@@ -136,6 +139,7 @@ struct PlayerControlsOverlay: View {
                 #endif
                 // Share / Download menu
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     controlsLog.notice("[menu] ... button tapped — controlsVisible=\(vm.controlsVisible) showMoreMenu=\(showMoreMenu)")
                     showMoreMenu = true
                 } label: {
@@ -209,6 +213,7 @@ struct PlayerControlsOverlay: View {
                 HStack {
                     // Previous video button
                     Button {
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
                         vm.playPrevious()
                     } label: {
                         Image(systemName: AppSymbol.previousTrack)
@@ -233,6 +238,7 @@ struct PlayerControlsOverlay: View {
                     // Previous chapter button — only present when the video has chapters
                     if !vm.chapters.isEmpty {
                         Button {
+                            iPocketTubeHaptics.shared.perform(.seekCommit)
                             vm.skipToPreviousChapter()
                         } label: {
                             Image(systemName: AppSymbol.previousChapter)
@@ -265,6 +271,7 @@ struct PlayerControlsOverlay: View {
                     // Next chapter button — only present when the video has chapters
                     if !vm.chapters.isEmpty {
                         Button {
+                            iPocketTubeHaptics.shared.perform(.seekCommit)
                             vm.skipToNextChapter()
                         } label: {
                             Image(systemName: AppSymbol.nextChapter)
@@ -285,6 +292,7 @@ struct PlayerControlsOverlay: View {
                     #if os(iOS)
                     // Landscape lock button
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsToggle)
                         isLandscapeLocked.toggle()
                     } label: {
                         Image(systemName: isLandscapeLocked ? "lock.rotation" : "lock.rotation.open")
@@ -299,6 +307,7 @@ struct PlayerControlsOverlay: View {
 
                     // Audio-only button
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsToggle)
                         vm.toggleAudioOnlyLive()
                         store.settings.audioOnlyMode = vm.isAudioOnlyMode
                     } label: {
@@ -315,6 +324,7 @@ struct PlayerControlsOverlay: View {
 
                     // Next video button
                     Button {
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
                         vm.playNext()
                     } label: {
                         Image(systemName: AppSymbol.nextTrack)
@@ -372,7 +382,10 @@ extension PlayerControlsOverlay {
     // MARK: - Play / Pause
 
     var playPauseButton: some View {
-        Button { vm.togglePlayPause() } label: {
+        Button {
+            iPocketTubeHaptics.shared.perform(.playbackTransport)
+            vm.togglePlayPause()
+        } label: {
             Image(systemName: vm.videoEnded ? "arrow.counterclockwise" : (vm.isPlaying ? "pause.fill" : "play.fill"))
                 // .original preserves the white foreground on tvOS even when the focus
                 // engine or button state tries to apply a system tint colour.
@@ -403,7 +416,10 @@ extension PlayerControlsOverlay {
     // MARK: - Seek buttons
 
     func seekButton(symbol: String, seconds: TimeInterval, tvHighlighted: Bool = false) -> some View {
-        Button { vm.seekRelative(seconds: seconds) } label: {
+        Button {
+            iPocketTubeHaptics.shared.perform(.seekCommit)
+            vm.seekRelative(seconds: seconds)
+        } label: {
             Image(systemName: symbol)
                 // .original preserves the white foreground on tvOS — prevents system
                 // tinting from turning the icon into a white rectangle when highlighted.
@@ -526,7 +542,10 @@ extension PlayerControlsOverlay {
                         if !vm.isScrubbing { vm.beginScrubbing() }
                         vm.updateScrub(to: Double(fraction) * vm.duration)
                     }
-                    .onEnded { _ in vm.commitScrub() }
+                    .onEnded { _ in
+                        iPocketTubeHaptics.shared.perform(.seekCommit)
+                        vm.commitScrub()
+                    }
             )
             #endif
         }
@@ -554,6 +573,7 @@ extension PlayerControlsOverlay {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     guard !vm.isScrubbing else { return }
+                    iPocketTubeHaptics.shared.perform(.seekCommit)
                     vm.seek(to: chapter.startTime)
                 }
                 .position(x: x, y: geo.size.height / 2)
@@ -619,6 +639,7 @@ extension PlayerView {
                 Spacer()
                 if let seg = vm.currentToastSegment {
                     Button("Skip \(seg.category.displayName)") {
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
                         vm.skipToastSegment()
                     }
                     .buttonStyle(.borderedProminent)
@@ -678,6 +699,7 @@ extension PlayerView {
             }
             if !isIPBlock && !isSignInRequired {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.downloadRetry)
                     vm.retryLoad()
                 } label: {
                     Text("Try Again")
@@ -777,7 +799,10 @@ extension PlayerControlsOverlay {
         accessibilityId: String,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
+            action()
+        } label: {
             Label(label, systemImage: systemImage)
                 .lineLimit(1)
                 .font(.caption.weight(.medium))
@@ -803,6 +828,7 @@ private struct SignInButtonView: View {
 
     var body: some View {
         Button {
+            iPocketTubeHaptics.shared.perform(.signIn)
             showSignIn = true
         } label: {
             Text("Sign In")

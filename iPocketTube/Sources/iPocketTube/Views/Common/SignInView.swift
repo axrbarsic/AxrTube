@@ -1,6 +1,7 @@
 import SwiftUI
 import CoreImage
 import CoreImage.CIFilterBuiltins
+import iPocketTubeCore
 #if os(macOS)
 import AppKit
 #endif
@@ -38,19 +39,26 @@ public struct SignInView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
                         auth.cancelSignIn()
                         dismiss()
                     }
                 }
             }
             .alert("Sign-In Failed", isPresented: $showError, presenting: auth.error) { _ in
-                Button("Try Again") { Task { await auth.beginSignIn() } }
+                Button("Try Again") {
+                    iPocketTubeHaptics.shared.perform(.downloadRetry)
+                    Task { await auth.beginSignIn() }
+                }
                 Button("Cancel", role: .cancel) { auth.error = nil }
             } message: { err in
                 Text(err.localizedDescription)
             }
             .onChange(of: auth.error == nil ? 0 : 1) { _, hasError in
-                if hasError == 1 { showError = true }
+                if hasError == 1 {
+                    iPocketTubeHaptics.shared.perform(.operationFailed)
+                    showError = true
+                }
             }
         }
         .iPocketTubeScreenSurface()
@@ -58,7 +66,10 @@ public struct SignInView: View {
             await auth.beginSignIn()
         }
         .onChange(of: auth.isSignedIn) { _, signedIn in
-            if signedIn { dismiss() }
+            if signedIn {
+                iPocketTubeHaptics.shared.perform(.operationSucceeded)
+                dismiss()
+            }
         }
         #endif
     }
@@ -238,6 +249,7 @@ public struct SignInView: View {
                 // On macOS use ASWebAuthenticationSession so the page opens in an
                 // in-app browser sheet rather than the external default browser.
                 Button {
+                    iPocketTubeHaptics.shared.perform(.safariOpen)
                     #if os(macOS)
                     openActivationPageMac(info: info)
                     #else
@@ -286,6 +298,7 @@ public struct SignInView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16))
 
                 Button {
+                    iPocketTubeHaptics.shared.perform(.operationSucceeded)
                     #if os(iOS)
                     UIPasteboard.general.string = info.userCode
                     #elseif os(macOS)
@@ -312,6 +325,7 @@ public struct SignInView: View {
                 .padding(.top, 8)
 
                 Button(role: .cancel) {
+                    iPocketTubeHaptics.shared.perform(.signOut)
                     auth.cancelSignIn()
                 } label: {
                     Text("Use a different account")

@@ -22,11 +22,17 @@ struct CommentsOverlayView: View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(0.5)
                 .ignoresSafeArea()
-                .onTapGesture { onDismiss() }
+                .onTapGesture {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    onDismiss()
+                }
 
             VStack(spacing: 0) {
                 HStack {
-                    Button { onDismiss() } label: {
+                    Button {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
+                        onDismiss()
+                    } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .semibold))
                             .padding(12)

@@ -250,6 +250,7 @@ final class ShareViewController: UIViewController {
     // MARK: - Close
 
     @objc private func closeButtonTapped() {
+        iPocketTubeHaptics.shared.perform(.primaryAction)
         shareLog.notice("closeButtonTapped")
         cancel()
     }
@@ -266,6 +267,7 @@ final class ShareViewController: UIViewController {
 
     @objc private func watchLaterButtonTapped() {
         guard let videoID = resolvedVideoID else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("⚠️ no video ID — cannot queue")
             return
         }
@@ -277,7 +279,9 @@ final class ShareViewController: UIViewController {
             var cfg = watchLaterButton.configuration
             cfg?.title = String(localized: "Added to Watch Later")
             watchLaterButton.configuration = cfg
+            iPocketTubeHaptics.shared.perform(.operationSucceeded)
         } else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("❌ Could not write to shared storage")
         }
     }
@@ -286,6 +290,7 @@ final class ShareViewController: UIViewController {
 
     @objc private func addToQueueButtonTapped() {
         guard let videoID = resolvedVideoID else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("⚠️ no video ID — cannot add to queue")
             return
         }
@@ -297,7 +302,9 @@ final class ShareViewController: UIViewController {
             var cfg = addToQueueButton.configuration
             cfg?.title = String(localized: "Added to Queue")
             addToQueueButton.configuration = cfg
+            iPocketTubeHaptics.shared.perform(.operationSucceeded)
         } else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("❌ Could not write to shared storage")
         }
     }
@@ -306,10 +313,12 @@ final class ShareViewController: UIViewController {
 
     @objc private func openButtonTapped() {
         guard let deeplink else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             shareLog.error("openButtonTapped — deeplink is nil")
             logEntry("⚠️ deeplink is nil — nothing to open")
             return
         }
+        iPocketTubeHaptics.shared.perform(.safariOpen)
         logEntry("Tap → \(deeplink.absoluteString)")
         shareLog.notice("openButtonTapped — \(deeplink.absoluteString, privacy: .public)")
 
@@ -456,6 +465,7 @@ final class ShareViewController: UIViewController {
 
     @objc private func addToRSSButtonTapped() {
         guard let feedURL = deeplink else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("⚠️ no feed URL")
             return
         }
@@ -467,7 +477,9 @@ final class ShareViewController: UIViewController {
             var cfg = addToRSSButton.configuration
             cfg?.title = String(localized: "Added to RSS Feeds")
             addToRSSButton.configuration = cfg
+            iPocketTubeHaptics.shared.perform(.operationSucceeded)
         } else {
+            iPocketTubeHaptics.shared.perform(.operationFailed)
             logEntry("❌ Could not write to shared storage")
         }
     }

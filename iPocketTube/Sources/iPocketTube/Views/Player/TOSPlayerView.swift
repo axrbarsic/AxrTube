@@ -185,9 +185,16 @@ public struct TOSPlayerView: View {
                 // AVPlayer pipeline. Restricted to the top portion of the screen so
                 // YouTube's own bottom scrubber/control-bar drags are unaffected.
                 TOSSwipeNavigationOverlay(
-                    onSwipeLeft: { vm.playNext() },
-                    onSwipeRight: { vm.playPrevious() },
+                    onSwipeLeft: {
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
+                        vm.playNext()
+                    },
+                    onSwipeRight: {
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
+                        vm.playPrevious()
+                    },
                     onTap: { _ in
+                        iPocketTubeHaptics.shared.perform(.playbackTransport)
                         // #111 history: we tried to undo YouTube's tap-to-pause so that
                         // tapping to reveal controls wouldn't also pause playback. But the
                         // undo misfired on the user's first *intentional* pause (controls
@@ -395,6 +402,7 @@ public struct TOSPlayerView: View {
             // visible gap before YouTube's own controls start.
             HStack(spacing: 4) {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     tosState.minimize()
                 } label: {
                     Image(systemName: AppSymbol.chevronLeft)
@@ -418,6 +426,7 @@ public struct TOSPlayerView: View {
                 // this was never carried over when TOS became the iOS default,
                 // which is why it disappeared for users who had it before.
                 Button {
+                    iPocketTubeHaptics.shared.perform(.settingsToggle)
                     isLandscapeLocked.toggle()
                 } label: {
                     Image(systemName: isLandscapeLocked ? "lock.rotation" : "lock.rotation.open")
@@ -470,6 +479,7 @@ public struct TOSPlayerView: View {
         Menu {
             ForEach(AppSettings.availableSpeeds, id: \.self) { speed in
                 Button {
+                    iPocketTubeHaptics.shared.perform(.settingsPicker)
                     store.settings.playbackSpeed = speed
                     vm.setPlaybackRate(speed)
                 } label: {
@@ -515,6 +525,7 @@ public struct TOSPlayerView: View {
         Menu {
             if authService.isSignedIn {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     vm.like()
                 } label: {
                     Label(vm.likeStatus == .like ? "Liked" : "Like",
@@ -523,6 +534,7 @@ public struct TOSPlayerView: View {
                 .accessibilityIdentifier("tosPlayer.moreMenu.likeRow")
 
                 Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
                     vm.dislike()
                 } label: {
                     Label(vm.likeStatus == .dislike ? "Disliked" : "Dislike",
@@ -535,6 +547,7 @@ public struct TOSPlayerView: View {
 
             Menu {
                 Button {
+                    iPocketTubeHaptics.shared.perform(.settingsPicker)
                     vm.setSleepTimer(minutes: nil)
                 } label: {
                     if vm.sleepTimerMinutes == nil {
@@ -545,6 +558,7 @@ public struct TOSPlayerView: View {
                 }
                 ForEach(PlaybackViewModel.sleepTimerOptions, id: \.self) { mins in
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsPicker)
                         vm.setSleepTimer(minutes: mins)
                     } label: {
                         if vm.sleepTimerMinutes == mins {
@@ -567,6 +581,7 @@ public struct TOSPlayerView: View {
             }
 
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 showCommentsSheet = true
                 vm.loadComments()
             } label: {
@@ -613,6 +628,7 @@ public struct TOSPlayerView: View {
             HStack {
                 Spacer()
                 Button {
+                    iPocketTubeHaptics.shared.perform(.seekCommit)
                     vm.seekTo(segment.end)
                     vm.currentToastSegment = nil
                 } label: {

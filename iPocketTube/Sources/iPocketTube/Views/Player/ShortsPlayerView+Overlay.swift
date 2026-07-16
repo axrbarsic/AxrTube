@@ -56,7 +56,10 @@ extension ShortsPlayerView {
     private var overlayStack: some View {
         VStack(spacing: 0) {
             HStack {
-                Button { dismiss() } label: {
+                Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    dismiss()
+                } label: {
                     Image(systemName: AppSymbol.chevronLeft)
                         .font(.title2)
                         .foregroundStyle(.white)

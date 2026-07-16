@@ -22,6 +22,7 @@ struct TOSMiniPlayerView: View {
         HStack(spacing: 0) {
             // Play / pause
             Button {
+                iPocketTubeHaptics.shared.perform(.playbackTransport)
                 if tosState.vm?.playerState == .playing || tosState.vm?.playerState == .buffering {
                     tosState.vm?.pause()
                 } else {
@@ -38,6 +39,7 @@ struct TOSMiniPlayerView: View {
 
             // Thumbnail + title → tap to expand
             Button {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
                 tosState.expand()
             } label: {
                 HStack(spacing: 10) {
@@ -79,6 +81,7 @@ struct TOSMiniPlayerView: View {
 
             // Dismiss
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 tosState.stop()
             } label: {
                 Image(systemName: "xmark")

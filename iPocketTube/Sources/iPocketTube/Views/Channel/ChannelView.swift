@@ -78,6 +78,7 @@ public struct ChannelView: View {
                 ToolbarItem(placement: .automatic) {
                     let isExcluded = store.settings.sponsorBlockExcludedChannels[channel.id] != nil
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsToggle)
                         toggleSponsorBlockExclusion(for: channel)
                     } label: {
                         Label(
@@ -90,6 +91,7 @@ public struct ChannelView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     let isExcluded = store.settings.sponsorBlockExcludedChannels[channel.id] != nil
                     Button {
+                        iPocketTubeHaptics.shared.perform(.settingsToggle)
                         toggleSponsorBlockExclusion(for: channel)
                     } label: {
                         Label(
@@ -115,7 +117,14 @@ public struct ChannelView: View {
                 // All / Shorts filter. When Shorts are hidden globally, the
                 // dedicated route disappears too; a stale selection is reset below.
                 if store.settings.showShorts {
-                    Picker("Filter", selection: $filter) {
+                    Picker("Filter", selection: Binding(
+                        get: { filter },
+                        set: { newValue in
+                            guard newValue != filter else { return }
+                            iPocketTubeHaptics.shared.perform(.segmentSelection)
+                            filter = newValue
+                        }
+                    )) {
                         ForEach(ChannelFilter.allCases, id: \.self) { tab in
                             Text(LocalizedStringKey(tab.rawValue), bundle: .module).tag(tab)
                         }
@@ -165,7 +174,10 @@ public struct ChannelView: View {
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
             Text("Could not load channel")
                 .font(.headline)
-            Button("Retry") { vm.load(channelId: channelId) }
+            Button("Retry") {
+                iPocketTubeHaptics.shared.perform(.downloadRetry)
+                vm.load(channelId: channelId)
+            }
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity)
@@ -200,6 +212,7 @@ public struct ChannelView: View {
                             .padding(.vertical, 6)
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onTapGesture {
+                                iPocketTubeHaptics.shared.perform(.contentSelection)
                                 #if os(iOS)
                                 playerRouter.open(video: video, api: api)
                                 #else
@@ -243,6 +256,7 @@ public struct ChannelView: View {
                         VideoCardView(video: video, compact: false)
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onTapGesture {
+                                iPocketTubeHaptics.shared.perform(.contentSelection)
                                 #if os(iOS)
                                 playerRouter.open(video: video, api: api)
                                 #else
@@ -278,7 +292,10 @@ public struct ChannelView: View {
             ForEach(videos) { video in
                 VideoCardView(video: video)
                     .aspectRatio(9/16, contentMode: .fit)
-                    .onTapGesture { selectShort(video, from: videos) }
+                    .onTapGesture {
+                        iPocketTubeHaptics.shared.perform(.contentSelection)
+                        selectShort(video, from: videos)
+                    }
                     .onAppear {
                         if video.id == vm.videos.last?.id { vm.loadMore() }
                     }
@@ -335,7 +352,11 @@ public struct ChannelView: View {
             Spacer()
             if !auth.isSignedIn {
                 Button {
-                    Task { await toggleFollow(channel) }
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    Task {
+                        await toggleFollow(channel)
+                        iPocketTubeHaptics.shared.perform(.operationSucceeded)
+                    }
                 } label: {
                     Label(
                         isFollowedLocally ? "Unfollow" : "Follow",

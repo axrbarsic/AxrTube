@@ -55,6 +55,7 @@ public struct RootView: View {
                         ? String(localized: "The video is in Photos and iPocketTube's offline collection.", bundle: .module)
                         : String(localized: "The item is available in iPocketTube's offline collection.", bundle: .module)
                 )
+                iPocketTubeHaptics.shared.perform(.operationSucceeded)
                 cardDownloadService.reset()
             case .failed(let reason):
                 if cardDownloadService.lastWasAutomatic {
@@ -65,6 +66,7 @@ public struct RootView: View {
                     title: String(localized: "Download Failed", bundle: .module),
                     message: reason
                 )
+                iPocketTubeHaptics.shared.perform(.operationFailed)
                 cardDownloadService.reset()
             default:
                 break
@@ -78,7 +80,10 @@ public struct RootView: View {
             ),
             presenting: cardDownloadAlertItem
         ) { _ in
-            Button("OK") { cardDownloadAlertItem = nil }
+            Button("OK") {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+                cardDownloadAlertItem = nil
+            }
         } message: { item in
             Text(item.message)
         }
@@ -213,7 +218,14 @@ struct MainTabView: View {
             }
         )
         #endif
-        TabView(selection: $selectedTab) {
+        TabView(selection: Binding(
+            get: { selectedTab },
+            set: { newValue in
+                guard newValue != selectedTab else { return }
+                iPocketTubeHaptics.shared.perform(.tabSelection)
+                selectedTab = newValue
+            }
+        )) {
             ForEach(AppSection.allCases) { section in
                 NavigationStack { section.destination(api: api) }
                     #if os(iOS)
@@ -243,6 +255,9 @@ struct MainTabView: View {
         #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in
+            if selectedTab != .search {
+                iPocketTubeHaptics.shared.perform(.tabSelection)
+            }
             selectedTab = .search
         }
         #if os(iOS)

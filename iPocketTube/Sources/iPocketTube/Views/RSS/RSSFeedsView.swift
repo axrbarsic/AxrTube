@@ -27,12 +27,18 @@ struct RSSFeedsView: View {
                 Text("RSS Feeds")
                     .font(.headline)
                 Spacer()
-                Button { showManageFeeds = true } label: {
+                Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    showManageFeeds = true
+                } label: {
                     Image(systemName: "list.bullet.indent")
                 }
                 .accessibilityLabel("Manage RSS Feeds")
                 .accessibilityIdentifier("rss.manageFeedsButton")
-                Button { showAddFeed = true } label: {
+                Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    showAddFeed = true
+                } label: {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel("Add RSS Feed")
@@ -89,6 +95,7 @@ struct RSSFeedsView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
             Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
                 showAddFeed = true
             } label: {
                 Label("Add RSS Feed", systemImage: "plus")
