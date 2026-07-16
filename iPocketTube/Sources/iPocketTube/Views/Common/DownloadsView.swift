@@ -284,7 +284,7 @@ private struct DownloadedNowPlayingCard: View {
                 Button(action: onPlayPause) {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.headline)
-                        .foregroundStyle(.black)
+                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                         .frame(width: 44, height: 44)
                         .background(iPocketTubeVisualTokens.mint, in: Circle())
                 }
@@ -300,7 +300,7 @@ private struct DownloadedNowPlayingCard: View {
                 Button("Retry", action: onRetry)
                     .buttonStyle(.borderedProminent)
                     .tint(iPocketTubeVisualTokens.mint)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                     .frame(minHeight: 44)
             } else {
                 playbackTimeline
@@ -324,7 +324,7 @@ private struct DownloadedNowPlayingCard: View {
                     Button("Retry Offline Saving", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .tint(iPocketTubeVisualTokens.mint)
-                        .foregroundStyle(.black)
+                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                         .frame(minHeight: 44)
                 }
             }
@@ -334,7 +334,7 @@ private struct DownloadedNowPlayingCard: View {
             Text("Now Playing")
                 .font(.caption2.weight(.black))
                 .textCase(.uppercase)
-                .foregroundStyle(.black)
+                .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 4)
                 .background(iPocketTubeVisualTokens.mint, in: Capsule())
@@ -456,7 +456,7 @@ private struct DownloadedMediaRow: View {
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(iPocketTubeVisualTokens.mint)
-                        .foregroundStyle(.black)
+                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                 }
             }
         case .finalizationPending:
@@ -468,7 +468,7 @@ private struct DownloadedMediaRow: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(iPocketTubeVisualTokens.mint)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
             }
         case .waitingForWiFi:
             Label("Waiting for Wi-Fi", systemImage: "wifi")
@@ -488,7 +488,7 @@ private struct DownloadedMediaRow: View {
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(iPocketTubeVisualTokens.mint)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                     .iPocketTubeEDRPressEffect(enabled: edrEnabled, cornerRadius: 8)
             }
         default:

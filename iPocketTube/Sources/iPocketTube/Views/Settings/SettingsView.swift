@@ -66,6 +66,10 @@ public struct SettingsView: View {
                     matrixAccountContent
                 }
 
+                iPocketTubeMatrixSection("Theme", systemImage: "circle.lefthalf.filled") {
+                    matrixAppearanceContent
+                }
+
                 iPocketTubeMatrixSection("Audio", systemImage: "waveform") {
                     matrixAudioContent
                 }
@@ -126,13 +130,31 @@ public struct SettingsView: View {
             } label: {
                 Label("Sign in with Google", systemImage: "person.badge.key")
                     .font(.headline)
-                    .foregroundStyle(.black)
+                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                     .frame(maxWidth: .infinity, minHeight: 48)
                     .background(iPocketTubeVisualTokens.mint, in: RoundedRectangle(cornerRadius: 14))
             }
             .buttonStyle(.plain)
             .sheet(isPresented: $showSignIn) { SignInView() }
         }
+    }
+
+    private var matrixAppearanceContent: some View {
+        @Bindable var store = store
+        return Picker("Theme", selection: Binding(
+            get: { store.settings.themeName },
+            set: { newValue in
+                guard newValue != store.settings.themeName else { return }
+                iPocketTubeHaptics.shared.perform(.settingsPicker)
+                store.settings.themeName = newValue
+            }
+        )) {
+            ForEach(AppSettings.ThemeName.allCases, id: \.self) { theme in
+                Text(LocalizedStringKey(theme.rawValue), bundle: .module).tag(theme)
+            }
+        }
+        .pickerStyle(.segmented)
+        .accessibilityIdentifier("settings.themePicker")
     }
 
     private var matrixAudioContent: some View {
@@ -583,7 +605,7 @@ public struct SettingsView: View {
             } label: {
                 if reportSent {
                     Label("Report Sent", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
+                        .foregroundStyle(iPocketTubeVisualTokens.success)
                 } else {
                     Label("Send Diagnostic Report", systemImage: "ladybug")
                 }

@@ -127,7 +127,7 @@ public struct SignInView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Image(systemName: AppSymbol.tvMediabox)
                         .font(.system(size: 56))
-                        .foregroundStyle(.red)
+                        .foregroundStyle(iPocketTubeVisualTokens.redAccent)
 
                     Text("Sign in to iPocketTube")
                         .font(.largeTitle).fontWeight(.bold)
@@ -234,7 +234,7 @@ public struct SignInView: View {
 
                 Image(systemName: AppSymbol.tvMediabox)
                     .font(.system(size: 64))
-                    .foregroundStyle(.red)
+                    .foregroundStyle(iPocketTubeVisualTokens.redAccent)
 
                 VStack(spacing: 6) {
                     Text("Activate iPocketTube")
@@ -404,7 +404,7 @@ private struct CountdownView: View {
             } else {
                 Text("Code expired")
                     .font(.caption)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(iPocketTubeVisualTokens.error)
             }
         }
         .task {

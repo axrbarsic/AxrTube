@@ -16,7 +16,6 @@ public struct HomeView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SettingsStore.self) private var store
     @Environment(\.innerTubeAPI) private var api
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @Environment(PlayerRouter.self) private var playerRouter
@@ -203,14 +202,14 @@ public struct HomeView: View {
                 .padding(.vertical, 12)
                 .background(
                     (isSelected || isFocused)
-                        ? (colorScheme == .dark ? iPocketTubeVisualTokens.mint : Color.primary)
-                        : (colorScheme == .dark ? iPocketTubeVisualTokens.panel.opacity(0.9) : Color.secondary.opacity(0.15)),
+                        ? iPocketTubeVisualTokens.mint
+                        : iPocketTubeVisualTokens.panelElevated,
                     in: Capsule()
                 )
                 .foregroundStyle(
                     (isSelected || isFocused)
-                        ? Color(white: colorScheme == .dark ? 0 : 1)
-                        : Color.primary
+                        ? iPocketTubeVisualTokens.accentForeground
+                        : iPocketTubeVisualTokens.primaryText
                 )
                 .focusEffectDisabled()
         }
@@ -234,14 +233,14 @@ public struct HomeView: View {
                 .frame(minHeight: 44)
                 .background(
                     isSelected
-                        ? (colorScheme == .dark ? iPocketTubeVisualTokens.mint : Color.primary)
-                        : (colorScheme == .dark ? iPocketTubeVisualTokens.panel.opacity(0.9) : Color.secondary.opacity(0.15)),
+                        ? iPocketTubeVisualTokens.mint
+                        : iPocketTubeVisualTokens.panelElevated,
                     in: Capsule()
                 )
                 .foregroundStyle(
                     isSelected
-                        ? Color(white: colorScheme == .dark ? 0 : 1)
-                        : Color.primary
+                        ? iPocketTubeVisualTokens.accentForeground
+                        : iPocketTubeVisualTokens.primaryText
                 )
         }
         .buttonStyle(.plain)

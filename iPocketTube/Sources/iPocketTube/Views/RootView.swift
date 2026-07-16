@@ -38,8 +38,7 @@ public struct RootView: View {
             #endif
         }
         .iPocketTubeScreenSurface()
-        // Matrix is iPocketTube's product identity, independent of the system theme.
-        .preferredColorScheme(.dark)
+        .preferredColorScheme(store.settings.themeName.colorScheme)
         #if !os(tvOS)
         .onChange(of: cardDownloadService.state) { _, newState in
             switch newState {
@@ -177,6 +176,8 @@ struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
     @State private var selectedTab: AppSection = .search
     @Environment(\.innerTubeAPI) private var api
+    @Environment(SettingsStore.self) private var settingsStore
+    @Environment(\.colorScheme) private var colorScheme
     #if os(iOS)
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(TOSPlayerStateStore.self) private var tosState
@@ -251,7 +252,7 @@ struct MainTabView: View {
         .tint(iPocketTubeVisualTokens.mint)
         .toolbarBackground(iPocketTubeVisualTokens.tabBar, for: .tabBar)
         .toolbarBackground(.visible, for: .tabBar)
-        .toolbarColorScheme(.dark, for: .tabBar)
+        .toolbarColorScheme(settingsStore.settings.themeName.colorScheme ?? colorScheme, for: .tabBar)
         #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in

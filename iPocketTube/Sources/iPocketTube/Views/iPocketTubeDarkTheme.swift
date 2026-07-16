@@ -1,28 +1,156 @@
 import SwiftUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
+#endif
+
+struct iPocketTubeThemeRGBA: Equatable, Sendable {
+    let red: Double
+    let green: Double
+    let blue: Double
+    let alpha: Double
+
+    init(_ red: Double, _ green: Double, _ blue: Double, _ alpha: Double = 1) {
+        self.red = red
+        self.green = green
+        self.blue = blue
+        self.alpha = alpha
+    }
+
+    private var relativeLuminance: Double {
+        func linear(_ component: Double) -> Double {
+            component <= 0.04045 ? component / 12.92 : pow((component + 0.055) / 1.055, 2.4)
+        }
+        return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+    }
+
+    func contrastRatio(with other: Self) -> Double {
+        let brighter = max(relativeLuminance, other.relativeLuminance)
+        let darker = min(relativeLuminance, other.relativeLuminance)
+        return (brighter + 0.05) / (darker + 0.05)
+    }
+}
+
+struct iPocketTubeThemePalette: Equatable, Sendable {
+    let background: iPocketTubeThemeRGBA
+    let backgroundDepth: iPocketTubeThemeRGBA
+    let panel: iPocketTubeThemeRGBA
+    let panelElevated: iPocketTubeThemeRGBA
+    let tabBar: iPocketTubeThemeRGBA
+    let primaryText: iPocketTubeThemeRGBA
+    let secondaryText: iPocketTubeThemeRGBA
+    let accent: iPocketTubeThemeRGBA
+    let accentSoft: iPocketTubeThemeRGBA
+    let accentForeground: iPocketTubeThemeRGBA
+    let stroke: iPocketTubeThemeRGBA
+    let success: iPocketTubeThemeRGBA
+    let warning: iPocketTubeThemeRGBA
+    let error: iPocketTubeThemeRGBA
+    let disabled: iPocketTubeThemeRGBA
+
+    static let dark = Self(
+        background: .init(0.004, 0.020, 0.014),
+        backgroundDepth: .init(0.000, 0.115, 0.058),
+        panel: .init(0.010, 0.042, 0.029),
+        panelElevated: .init(0.018, 0.068, 0.044),
+        tabBar: .init(0.006, 0.030, 0.020),
+        primaryText: .init(0.956, 0.988, 0.969),
+        secondaryText: .init(0.650, 0.780, 0.690),
+        accent: .init(0.310, 1.000, 0.580),
+        accentSoft: .init(0.570, 0.910, 0.690),
+        accentForeground: .init(0.000, 0.090, 0.040),
+        stroke: .init(0.280, 0.950, 0.550, 0.32),
+        success: .init(0.310, 1.000, 0.580),
+        warning: .init(1.000, 0.670, 0.240),
+        error: .init(1.000, 0.310, 0.300),
+        disabled: .init(0.390, 0.470, 0.420)
+    )
+
+    static let light = Self(
+        background: .init(0.953, 0.980, 0.961),
+        backgroundDepth: .init(0.835, 0.945, 0.870),
+        panel: .init(1.000, 1.000, 1.000),
+        panelElevated: .init(0.900, 0.958, 0.918),
+        tabBar: .init(0.972, 0.992, 0.976),
+        primaryText: .init(0.035, 0.110, 0.070),
+        secondaryText: .init(0.250, 0.350, 0.290),
+        accent: .init(0.025, 0.430, 0.225),
+        accentSoft: .init(0.055, 0.380, 0.220),
+        accentForeground: .init(1.000, 1.000, 1.000),
+        stroke: .init(0.045, 0.430, 0.225, 0.26),
+        success: .init(0.020, 0.420, 0.215),
+        warning: .init(0.650, 0.340, 0.020),
+        error: .init(0.710, 0.080, 0.080),
+        disabled: .init(0.560, 0.620, 0.580)
+    )
+}
+
+private extension Color {
+    static func iPocketTubeAdaptive(
+        light: iPocketTubeThemeRGBA,
+        dark: iPocketTubeThemeRGBA
+    ) -> Color {
+        #if canImport(UIKit)
+        Color(uiColor: UIColor { traits in
+            let value = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(
+                red: CGFloat(value.red),
+                green: CGFloat(value.green),
+                blue: CGFloat(value.blue),
+                alpha: CGFloat(value.alpha)
+            )
+        })
+        #elseif canImport(AppKit)
+        Color(nsColor: NSColor(name: nil) { appearance in
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let value = isDark ? dark : light
+            return NSColor(
+                red: CGFloat(value.red),
+                green: CGFloat(value.green),
+                blue: CGFloat(value.blue),
+                alpha: CGFloat(value.alpha)
+            )
+        })
+        #else
+        Color(red: light.red, green: light.green, blue: light.blue, opacity: light.alpha)
+        #endif
+    }
+}
 
 /// iPocketTube-specific visual language. These tokens intentionally stay in the
 /// app target: they encode iPocketTube identity rather than reusable foundation.
 enum iPocketTubeVisualTokens {
-    static let background = Color(red: 0.004, green: 0.020, blue: 0.014)
-    static let backgroundDepth = Color(red: 0.0, green: 0.115, blue: 0.058)
-    static let panel = Color(red: 0.010, green: 0.042, blue: 0.029)
-    static let panelElevated = Color(red: 0.018, green: 0.068, blue: 0.044)
-    static let tabBar = Color(red: 0.006, green: 0.030, blue: 0.020)
-    static let mint = Color(red: 0.31, green: 1.0, blue: 0.58)
-    static let mintSoft = Color(red: 0.57, green: 0.91, blue: 0.69)
-    static let secondaryText = Color(red: 0.65, green: 0.78, blue: 0.69)
-    static let stroke = Color(red: 0.28, green: 0.95, blue: 0.55).opacity(0.32)
+    private static func adaptive(_ keyPath: KeyPath<iPocketTubeThemePalette, iPocketTubeThemeRGBA>) -> Color {
+        .iPocketTubeAdaptive(light: iPocketTubeThemePalette.light[keyPath: keyPath], dark: iPocketTubeThemePalette.dark[keyPath: keyPath])
+    }
+
+    static let background = adaptive(\.background)
+    static let backgroundDepth = adaptive(\.backgroundDepth)
+    static let panel = adaptive(\.panel)
+    static let panelElevated = adaptive(\.panelElevated)
+    static let tabBar = adaptive(\.tabBar)
+    static let primaryText = adaptive(\.primaryText)
+    static let mint = adaptive(\.accent)
+    static let mintSoft = adaptive(\.accentSoft)
+    static let accentForeground = adaptive(\.accentForeground)
+    static let secondaryText = adaptive(\.secondaryText)
+    static let stroke = adaptive(\.stroke)
+    static let success = adaptive(\.success)
+    static let error = adaptive(\.error)
+    static let disabled = adaptive(\.disabled)
     static let redAccent = Color(red: 0.95, green: 0.08, blue: 0.08)
-    static let warning = Color(red: 1.0, green: 0.67, blue: 0.24)
+    static let warning = adaptive(\.warning)
     static let radius: CGFloat = 18
     static let horizontalPadding: CGFloat = 16
 }
 
 /// Static, inexpensive matrix-like backdrop. It never overlays videos or
 /// thumbnails; screen content is composed above it.
-struct iPocketTubeDarkBackdrop: View {
+struct iPocketTubeBackdrop: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         ZStack {
@@ -38,7 +166,7 @@ struct iPocketTubeDarkBackdrop: View {
             )
             if !reduceTransparency {
                 RadialGradient(
-                    colors: [iPocketTubeVisualTokens.mint.opacity(reduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled ? 0.07 : 0.12), .clear],
+                    colors: [iPocketTubeVisualTokens.mint.opacity(glowOpacity), .clear],
                     center: .topLeading,
                     startRadius: 0,
                     endRadius: 430
@@ -53,19 +181,25 @@ struct iPocketTubeDarkBackdrop: View {
                         path.move(to: CGPoint(x: x, y: 0))
                         path.addLine(to: CGPoint(x: x, y: size.height))
                     }
-                    context.stroke(path, with: .color(iPocketTubeVisualTokens.mint.opacity(0.05)), lineWidth: 0.5)
+                    context.stroke(path, with: .color(iPocketTubeVisualTokens.mint.opacity(colorScheme == .dark ? 0.05 : 0.035)), lineWidth: 0.5)
                 }
             }
         }
-        .overlay(iPocketTubeVisualTokens.background.opacity(0.18))
+        .overlay(iPocketTubeVisualTokens.background.opacity(colorScheme == .dark ? 0.18 : 0.08))
         .accessibilityHidden(true)
+    }
+
+    private var glowOpacity: Double {
+        let restrained = reduceMotion || ProcessInfo.processInfo.isLowPowerModeEnabled
+        if colorScheme == .dark { return restrained ? 0.07 : 0.12 }
+        return restrained ? 0.025 : 0.045
     }
 }
 
 private struct iPocketTubeScreenSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
-            .background { iPocketTubeDarkBackdrop().ignoresSafeArea() }
+            .background { iPocketTubeBackdrop().ignoresSafeArea() }
             .tint(iPocketTubeVisualTokens.mint)
     }
 }
@@ -98,7 +232,7 @@ struct iPocketTubeMatrixHeader: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title, bundle: .module)
                 .font(.system(.largeTitle, design: .rounded, weight: .heavy))
-                .foregroundStyle(.white)
+                .foregroundStyle(iPocketTubeVisualTokens.primaryText)
             if let subtitle {
                 Text(subtitle)
                     .font(.subheadline)
@@ -132,7 +266,7 @@ struct iPocketTubeMatrixSection<Content: View>: View {
             Label {
                 Text(title, bundle: .module)
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(iPocketTubeVisualTokens.primaryText)
             } icon: {
                 Image(systemName: systemImage)
                     .foregroundStyle(iPocketTubeVisualTokens.mint)

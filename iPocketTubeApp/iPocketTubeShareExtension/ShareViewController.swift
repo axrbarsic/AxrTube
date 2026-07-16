@@ -5,6 +5,29 @@ import os
 
 private let shareLog = Logger(subsystem: "com.void.ipockettube.app.shareextension", category: "Share")
 
+private enum ShareTheme {
+    static let accent = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.31, green: 1.00, blue: 0.58, alpha: 1)
+            : UIColor(red: 0.025, green: 0.43, blue: 0.225, alpha: 1)
+    }
+    static let accentForeground = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.00, green: 0.09, blue: 0.04, alpha: 1)
+            : .white
+    }
+    static let surface = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.010, green: 0.042, blue: 0.029, alpha: 1)
+            : UIColor(red: 0.953, green: 0.980, blue: 0.961, alpha: 1)
+    }
+    static let closeSurface = UIColor { traits in
+        traits.userInterfaceStyle == .dark
+            ? UIColor(red: 0.018, green: 0.068, blue: 0.044, alpha: 1)
+            : UIColor(red: 0.900, green: 0.958, blue: 0.918, alpha: 1)
+    }
+}
+
 // MARK: - ShareViewController
 //
 // Presents a compact sheet with an "Open in iPocketTube" button. The button tap
@@ -23,6 +46,7 @@ final class ShareViewController: UIViewController {
     private static let pendingWatchLaterKey = "pendingWatchLaterVideoID"
     private static let pendingQueueKey      = "pendingQueueVideoID"
     private static let pendingRSSFeedKey    = "pendingRSSFeedURL"
+    private static let appearanceKey        = "ipockettube_appearance"
 
     // Set after successful URL extraction; nil means extraction failed or pending.
     private var deeplink: URL?
@@ -40,7 +64,8 @@ final class ShareViewController: UIViewController {
         var config = UIButton.Configuration.filled()
         config.title = String(localized: "Open in iPocketTube")
         config.cornerStyle = .large
-        config.baseBackgroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
+        config.baseBackgroundColor = ShareTheme.accent
+        config.baseForegroundColor = ShareTheme.accentForeground
         let b = UIButton(configuration: config)
         b.translatesAutoresizingMaskIntoConstraints = false
         return b
@@ -50,7 +75,7 @@ final class ShareViewController: UIViewController {
         var config = UIButton.Configuration.bordered()
         config.title = String(localized: "Add to Watch Later")
         config.cornerStyle = .large
-        config.baseForegroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
+        config.baseForegroundColor = ShareTheme.accent
         config.image = UIImage(
             systemName: "clock.badge.plus",
             withConfiguration: UIImage.SymbolConfiguration(scale: .small)
@@ -65,7 +90,7 @@ final class ShareViewController: UIViewController {
         var config = UIButton.Configuration.bordered()
         config.title = String(localized: "Add to Queue")
         config.cornerStyle = .large
-        config.baseForegroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
+        config.baseForegroundColor = ShareTheme.accent
         config.image = UIImage(
             systemName: "list.bullet.indent",
             withConfiguration: UIImage.SymbolConfiguration(scale: .small)
@@ -80,7 +105,7 @@ final class ShareViewController: UIViewController {
         var config = UIButton.Configuration.bordered()
         config.title = String(localized: "Add to RSS Feeds")
         config.cornerStyle = .large
-        config.baseForegroundColor = UIColor(red: 0.20, green: 0.50, blue: 0.20, alpha: 1)
+        config.baseForegroundColor = ShareTheme.accent
         config.image = UIImage(
             systemName: "dot.radiowaves.left.and.right",
             withConfiguration: UIImage.SymbolConfiguration(scale: .small)
@@ -121,14 +146,13 @@ final class ShareViewController: UIViewController {
     }()
 
     private let closeButton: UIButton = {
-        // Apple-style close button: black SF xmark on a white filled circle
-        // with a subtle border — matches the system share sheet dismiss button.
+        // Adaptive close control matching the app's semantic surface.
         let symCfg = UIImage.SymbolConfiguration(pointSize: 11, weight: .bold)
         let xmark = UIImage(systemName: "xmark", withConfiguration: symCfg)
         var cfg = UIButton.Configuration.plain()
         cfg.image = xmark
-        cfg.baseForegroundColor = UIColor(white: 0.40, alpha: 1)
-        cfg.background.backgroundColor = UIColor(white: 0.92, alpha: 1)
+        cfg.baseForegroundColor = .secondaryLabel
+        cfg.background.backgroundColor = ShareTheme.closeSurface
         cfg.background.cornerRadius = 15          // half of the 30 pt button size → perfect circle
         cfg.contentInsets = .zero
         let b = UIButton(configuration: cfg)
@@ -166,7 +190,8 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        applySavedAppearance()
+        view.backgroundColor = ShareTheme.surface
         preferredContentSize = CGSize(width: view.bounds.width, height: 372)
 
         buttonStack.addArrangedSubview(openButton)
@@ -238,6 +263,20 @@ final class ShareViewController: UIViewController {
         addToQueueButton.addTarget(self, action: #selector(addToQueueButtonTapped), for: .touchUpInside)
         addToRSSButton.addTarget(self, action: #selector(addToRSSButtonTapped), for: .touchUpInside)
         closeButton.addTarget(self, action: #selector(closeButtonTapped), for: .touchUpInside)
+    }
+
+    private func applySavedAppearance() {
+        guard let rawValue = UserDefaults(suiteName: Self.appGroup)?.string(forKey: Self.appearanceKey),
+              let appearance = AppSettings.ThemeName(rawValue: rawValue)
+        else {
+            overrideUserInterfaceStyle = .unspecified
+            return
+        }
+        switch appearance {
+        case .system: overrideUserInterfaceStyle = .unspecified
+        case .dark: overrideUserInterfaceStyle = .dark
+        case .light: overrideUserInterfaceStyle = .light
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {

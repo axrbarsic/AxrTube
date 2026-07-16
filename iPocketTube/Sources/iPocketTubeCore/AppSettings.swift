@@ -228,7 +228,7 @@ public struct AppSettings: Codable {
         }
     }
 
-    public enum ThemeName: String, Codable, CaseIterable {
+    public enum ThemeName: String, Codable, CaseIterable, Sendable {
         case system = "System"
         case dark   = "Dark"
         case light  = "Light"

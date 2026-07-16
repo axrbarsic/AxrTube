@@ -79,10 +79,10 @@ struct MiniPlayerView: View {
             ZStack(alignment: .leading) {
                 Rectangle().fill(Color.secondary.opacity(0.15))
                 Rectangle()
-                    .fill(Color.mint.opacity(0.45))
+                    .fill(iPocketTubeVisualTokens.mintSoft.opacity(0.45))
                     .scaleEffect(x: playerRouter.audioFirst.bufferedProgress, anchor: .leading)
                 Rectangle()
-                    .fill(Color.green)
+                    .fill(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: playerRouter.audioFirst.downloadProgress, anchor: .leading)
             }
             .frame(height: 3)

@@ -31,6 +31,8 @@ public final class SettingsStore {
     public var useTOSPlayerOnIOS: Bool = false
 
     private static let key = "smarttube_app_settings"
+    private static let appGroup = "group.com.alexlane.smarttube.local"
+    private static let sharedAppearanceKey = "ipockettube_appearance"
 
     static func migrateToCurrentSchema(_ stored: AppSettings) -> (settings: AppSettings, changed: Bool) {
         var migrated = stored
@@ -96,13 +98,19 @@ public final class SettingsStore {
         if ProcessInfo.processInfo.arguments.contains("--uitesting-disable-tos-player-on-ios") {
             self.useTOSPlayerOnIOS = false
         }
+        Self.persistSharedAppearance(settings.themeName)
     }
 
     private func save() {
         if let data = try? JSONEncoder().encode(settings) {
             UserDefaults.standard.set(data, forKey: Self.key)
         }
+        Self.persistSharedAppearance(settings.themeName)
         iCloudSyncManager.shared.syncEnabled = settings.iCloudSyncEnabled
+    }
+
+    private static func persistSharedAppearance(_ appearance: AppSettings.ThemeName) {
+        UserDefaults(suiteName: appGroup)?.set(appearance.rawValue, forKey: sharedAppearanceKey)
     }
 
     public func reset() {

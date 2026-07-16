@@ -93,7 +93,7 @@ public struct SearchView: View {
     private var compactSearchTitle: some View {
         Text("iPocketTube", bundle: .module)
             .font(.system(.title2, design: .rounded, weight: .heavy))
-            .foregroundStyle(.white)
+            .foregroundStyle(iPocketTubeVisualTokens.primaryText)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
             .padding(.horizontal, iPocketTubeVisualTokens.horizontalPadding)
             .accessibilityAddTraits(.isHeader)

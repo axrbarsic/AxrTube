@@ -132,7 +132,7 @@ public struct LibraryView: View {
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
                             .frame(maxWidth: .infinity, minHeight: 44)
-                            .foregroundStyle(selected ? Color.black : iPocketTubeVisualTokens.secondaryText)
+                            .foregroundStyle(selected ? iPocketTubeVisualTokens.accentForeground : iPocketTubeVisualTokens.secondaryText)
                             .background(selected ? iPocketTubeVisualTokens.mint : iPocketTubeVisualTokens.panelElevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     }
                     .buttonStyle(.plain)
