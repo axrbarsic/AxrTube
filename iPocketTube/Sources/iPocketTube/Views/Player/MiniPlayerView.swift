@@ -56,7 +56,7 @@ struct MiniPlayerView: View {
                         .foregroundStyle(.primary)
                         .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.plain)
+                .iPocketTubeLiquidButtonStyle()
                 .disabled(playerState.vm.player.currentItem == nil)
                 .contentShape(Rectangle())
                 .accessibilityIdentifier("miniPlayer.playPauseButton")
@@ -70,7 +70,7 @@ struct MiniPlayerView: View {
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.plain)
+                .iPocketTubeLiquidButtonStyle()
                 .contentShape(Rectangle())
                 .accessibilityIdentifier("miniPlayer.closeButton")
             }
@@ -92,8 +92,7 @@ struct MiniPlayerView: View {
             .accessibilityIdentifier("miniPlayer.downloadProgress")
         }
         .frame(height: 70)
-        .background(iPocketTubeVisualTokens.panel.opacity(0.97))
-        .iPocketTubeCardSurface(cornerRadius: 16, contentPadding: 0)
+        .iPocketTubeGlassSurface(cornerRadius: 20, interactive: true)
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
         .accessibilityElement(children: .contain)

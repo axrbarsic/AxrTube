@@ -35,6 +35,7 @@ struct TOSMiniPlayerView: View {
                     .foregroundStyle(.primary)
                     .frame(width: 52, height: 62)
             }
+            .iPocketTubeLiquidButtonStyle()
             .accessibilityIdentifier("tosPlayer.miniPlayer.playPauseButton")
 
             // Thumbnail + title → tap to expand
@@ -77,6 +78,7 @@ struct TOSMiniPlayerView: View {
                     Spacer()
                 }
             }
+            .iPocketTubeLiquidButtonStyle()
             .accessibilityIdentifier("tosPlayer.miniPlayer.expandButton")
 
             // Dismiss
@@ -89,12 +91,12 @@ struct TOSMiniPlayerView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 52, height: 62)
             }
+            .iPocketTubeLiquidButtonStyle()
             .accessibilityIdentifier("tosPlayer.miniPlayer.closeButton")
         }
         .padding(.leading, 4)
         .frame(height: 66)
-        .background(iPocketTubeVisualTokens.panel.opacity(0.97))
-        .iPocketTubeCardSurface(cornerRadius: 16, contentPadding: 0)
+        .iPocketTubeGlassSurface(cornerRadius: 20, interactive: true)
         .padding(.horizontal, 8)
         .padding(.bottom, 4)
         // Without this, SwiftUI flattens this HStack's accessibility tree so each

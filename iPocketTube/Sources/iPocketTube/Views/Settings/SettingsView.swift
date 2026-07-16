@@ -141,11 +141,10 @@ public struct SettingsView: View {
             } label: {
                 Label("Sign in with Google", systemImage: "person.badge.key")
                     .font(.headline)
-                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                    .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, minHeight: 48)
-                    .background(iPocketTubeVisualTokens.mint, in: RoundedRectangle(cornerRadius: 14))
             }
-            .buttonStyle(.plain)
+            .iPocketTubeLiquidButtonStyle(prominent: true)
             .sheet(isPresented: $showSignIn) { SignInView() }
         }
     }

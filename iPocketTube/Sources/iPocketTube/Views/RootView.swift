@@ -176,8 +176,6 @@ struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
     @State private var selectedTab: AppSection = .search
     @Environment(\.innerTubeAPI) private var api
-    @Environment(SettingsStore.self) private var settingsStore
-    @Environment(\.colorScheme) private var colorScheme
     #if os(iOS)
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(TOSPlayerStateStore.self) private var tosState
@@ -231,15 +229,10 @@ struct MainTabView: View {
                 NavigationStack { section.destination(api: api) }
                     #if os(iOS)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if let route = section.primaryRoute,
+                        if #unavailable(iOS 26.0),
+                           let route = section.primaryRoute,
                            iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: route) {
-                            if playerState.presentation == .miniPlayer {
-                                MiniPlayerView()
-                                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                            } else if tosState.presentation == .miniPlayer {
-                                TOSMiniPlayerView()
-                                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                            }
+                            globalMiniPlayer
                         }
                     }
                     #endif
@@ -249,10 +242,7 @@ struct MainTabView: View {
             }
         }
         #if os(iOS)
-        .tint(iPocketTubeVisualTokens.mint)
-        .toolbarBackground(iPocketTubeVisualTokens.tabBar, for: .tabBar)
-        .toolbarBackground(.visible, for: .tabBar)
-        .toolbarColorScheme(settingsStore.settings.themeName.colorScheme ?? colorScheme, for: .tabBar)
+        .iPocketTubeLiquidTabChrome { globalMiniPlayer }
         #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in
@@ -316,6 +306,18 @@ struct MainTabView: View {
         }
         #endif
     }
+
+    #if os(iOS)
+    @ViewBuilder private var globalMiniPlayer: some View {
+        if playerState.presentation == .miniPlayer {
+            MiniPlayerView()
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        } else if tosState.presentation == .miniPlayer {
+            TOSMiniPlayerView()
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+    #endif
 }
 
 // MARK: - MainTVTabView  (tvOS)

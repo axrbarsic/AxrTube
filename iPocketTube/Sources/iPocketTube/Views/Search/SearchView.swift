@@ -177,11 +177,7 @@ public struct SearchView: View {
         }
         .padding(.horizontal, 14)
         .frame(minHeight: 44)
-        .background(iPocketTubeVisualTokens.panelElevated.opacity(0.95), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(iPocketTubeVisualTokens.stroke, lineWidth: 0.8)
-        }
+        .iPocketTubeGlassSurface(cornerRadius: 16, interactive: true)
         .padding(.horizontal, iPocketTubeVisualTokens.horizontalPadding)
         .padding(.bottom, 4)
     }

@@ -68,13 +68,13 @@ struct iPocketTubeThemePalette: Equatable, Sendable {
     )
 
     static let light = Self(
-        background: .init(0.953, 0.980, 0.961),
-        backgroundDepth: .init(0.835, 0.945, 0.870),
+        background: .init(0.975, 0.978, 0.985),
+        backgroundDepth: .init(0.895, 0.918, 0.950),
         panel: .init(1.000, 1.000, 1.000),
-        panelElevated: .init(0.900, 0.958, 0.918),
-        tabBar: .init(0.972, 0.992, 0.976),
-        primaryText: .init(0.035, 0.110, 0.070),
-        secondaryText: .init(0.250, 0.350, 0.290),
+        panelElevated: .init(0.945, 0.952, 0.970),
+        tabBar: .init(0.975, 0.978, 0.985),
+        primaryText: .init(0.055, 0.075, 0.115),
+        secondaryText: .init(0.310, 0.345, 0.410),
         accent: .init(0.025, 0.430, 0.225),
         accentSoft: .init(0.055, 0.380, 0.220),
         accentForeground: .init(1.000, 1.000, 1.000),
@@ -155,16 +155,28 @@ struct iPocketTubeBackdrop: View {
     var body: some View {
         ZStack {
             iPocketTubeVisualTokens.background
-            LinearGradient(
-                colors: [
-                    iPocketTubeVisualTokens.backgroundDepth.opacity(0.72),
-                    iPocketTubeVisualTokens.background.opacity(0.42),
-                    iPocketTubeVisualTokens.backgroundDepth.opacity(0.34)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-            if !reduceTransparency {
+            if colorScheme == .dark {
+                LinearGradient(
+                    colors: [
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.72),
+                        iPocketTubeVisualTokens.background.opacity(0.42),
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.34)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            } else {
+                LinearGradient(
+                    colors: [
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.52),
+                        iPocketTubeVisualTokens.background,
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.26)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+            }
+            if colorScheme == .dark && !reduceTransparency {
                 RadialGradient(
                     colors: [iPocketTubeVisualTokens.mint.opacity(glowOpacity), .clear],
                     center: .topLeading,
@@ -213,7 +225,7 @@ private struct iPocketTubeCardSurfaceModifier: ViewModifier {
         content
             .padding(contentPadding)
             .background(
-                (reduceTransparency ? iPocketTubeVisualTokens.panel : iPocketTubeVisualTokens.panel.opacity(0.91)),
+                reduceTransparency ? AnyShapeStyle(iPocketTubeVisualTokens.panel) : AnyShapeStyle(.thinMaterial),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .overlay {
@@ -221,6 +233,46 @@ private struct iPocketTubeCardSurfaceModifier: ViewModifier {
                     .stroke(iPocketTubeVisualTokens.stroke, lineWidth: 0.8)
             }
             .shadow(color: iPocketTubeVisualTokens.mint.opacity(0.07), radius: 12)
+    }
+}
+
+/// Applies Apple's Liquid Glass only to app chrome and custom controls. Content
+/// cards deliberately use the calmer semantic material surface above.
+private struct iPocketTubeGlassSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let interactive: Bool
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            if reduceTransparency {
+                content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            } else {
+                content.glassEffect(interactive ? .regular.interactive() : .regular, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            }
+        } else {
+            content.background(.regularMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+        }
+    }
+}
+
+private struct iPocketTubeLiquidButtonStyleModifier: ViewModifier {
+    let prominent: Bool
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26.0, macOS 26.0, tvOS 26.0, *) {
+            if prominent {
+                content.buttonStyle(.glassProminent)
+            } else {
+                content.buttonStyle(.glass)
+            }
+        } else {
+            if prominent {
+                content.buttonStyle(.borderedProminent)
+            } else {
+                content.buttonStyle(.bordered)
+            }
+        }
     }
 }
 
@@ -285,5 +337,32 @@ extension View {
 
     func iPocketTubeCardSurface(cornerRadius: CGFloat = 14, contentPadding: CGFloat = 6) -> some View {
         modifier(iPocketTubeCardSurfaceModifier(cornerRadius: cornerRadius, contentPadding: contentPadding))
+    }
+
+    func iPocketTubeGlassSurface(cornerRadius: CGFloat = 18, interactive: Bool = false) -> some View {
+        modifier(iPocketTubeGlassSurfaceModifier(cornerRadius: cornerRadius, interactive: interactive))
+    }
+
+    func iPocketTubeLiquidButtonStyle(prominent: Bool = false) -> some View {
+        modifier(iPocketTubeLiquidButtonStyleModifier(prominent: prominent))
+    }
+
+    @ViewBuilder
+    func iPocketTubeLiquidTabChrome<Accessory: View>(@ViewBuilder accessory: () -> Accessory) -> some View {
+        #if os(iOS)
+        if #available(iOS 26.0, *) {
+            self
+                .tabBarMinimizeBehavior(.onScrollDown)
+                .tabViewBottomAccessory {
+                    // Keep any adjacent accessory controls in one sampling group so
+                    // their Liquid Glass surfaces refract the same content.
+                    GlassEffectContainer(spacing: 8) { accessory() }
+                }
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }
