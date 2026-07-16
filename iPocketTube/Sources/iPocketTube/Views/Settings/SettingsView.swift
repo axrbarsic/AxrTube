@@ -14,6 +14,7 @@ public struct SettingsView: View {
     @State private var showSignIn = false
     @State private var reportSent = false
     @State private var showClearOfflineConfirmation = false
+    @State private var showSignOutFailure = false
     #if os(tvOS)
     @State private var showGithubQR = false
     #endif
@@ -51,6 +52,11 @@ public struct SettingsView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("All downloaded video and audio files will be removed from iPocketTube.")
+        }
+        .alert("Sign Out", isPresented: $showSignOutFailure) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Secure credentials could not be removed. Sign out was not completed.")
         }
         #endif
     }
@@ -95,6 +101,11 @@ public struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .iPocketTubeScreenSurface()
         .toolbar(.hidden, for: .navigationBar)
+        .alert("Sign Out", isPresented: $showSignOutFailure) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Secure credentials could not be removed. Sign out was not completed.")
+        }
     }
 
     @ViewBuilder private var matrixAccountContent: some View {
@@ -117,7 +128,7 @@ public struct SettingsView: View {
             Divider().overlay(iPocketTubeVisualTokens.stroke)
             Button(role: .destructive) {
                 iPocketTubeHaptics.shared.perform(.signOut)
-                auth.signOut()
+                performSignOut()
             } label: {
                 Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
@@ -332,11 +343,19 @@ public struct SettingsView: View {
                     .clipShape(Circle())
                     Text(auth.accountName ?? "Unknown")
                 }
-                Button("Sign Out", role: .destructive) { auth.signOut() }
+                Button("Sign Out", role: .destructive) { performSignOut() }
             } else {
                 Button("Sign in with Google") { showSignIn = true }
                     .accessibilityIdentifier("settings.signInButton")
                     .sheet(isPresented: $showSignIn) { SignInView() }
+            }
+        }
+    }
+
+    private func performSignOut() {
+        Task {
+            if !(await auth.signOut()) {
+                showSignOutFailure = true
             }
         }
     }

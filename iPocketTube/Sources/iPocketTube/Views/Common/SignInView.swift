@@ -40,7 +40,7 @@ public struct SignInView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") {
                         iPocketTubeHaptics.shared.perform(.primaryAction)
-                        auth.cancelSignIn()
+                        Task { await auth.cancelSignIn() }
                         dismiss()
                     }
                 }
@@ -87,7 +87,7 @@ public struct SignInView: View {
             }
 
             Button {
-                auth.cancelSignIn()
+                Task { await auth.cancelSignIn() }
                 dismiss()
             } label: {
                 Label("Cancel", systemImage: "xmark")
@@ -326,7 +326,7 @@ public struct SignInView: View {
 
                 Button(role: .cancel) {
                     iPocketTubeHaptics.shared.perform(.signOut)
-                    auth.cancelSignIn()
+                    Task { await auth.cancelSignIn() }
                 } label: {
                     Text("Use a different account")
                         .font(.subheadline)

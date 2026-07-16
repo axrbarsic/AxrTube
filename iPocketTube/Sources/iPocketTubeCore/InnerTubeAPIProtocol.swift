@@ -15,6 +15,7 @@ public protocol InnerTubeAPIProtocol: AnyObject, Sendable {
     // MARK: Auth
     func setAuthToken(_ token: String?) async
     func setSAPISID(_ value: String?) async
+    func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async
 
     // MARK: Home / browse
     func fetchHome(continuationToken: String?) async throws -> VideoGroup
@@ -63,6 +64,11 @@ public protocol InnerTubeAPIProtocol: AnyObject, Sendable {
 // MARK: - Default-parameter convenience wrappers
 
 public extension InnerTubeAPIProtocol {
+
+    func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async {
+        await setAuthToken(snapshot.accessToken)
+        await setSAPISID(snapshot.sapisid)
+    }
 
     /// Test doubles and restricted clients may not expose player microformat.
     func fetchExactPublicationDate(videoId: String) async throws -> Date? { nil }

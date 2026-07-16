@@ -69,6 +69,7 @@ public final class BrowseViewModel {
     /// True when a non-nil auth token has been set via updateAuthToken(_:).
     /// Used to select between the authenticated YouTube endpoints and the local RSS feed path.
     private var hasAuthToken: Bool = false
+    private var authSnapshotGeneration: UInt64?
     private var hideObserverTasks: [Task<Void, Never>] = []
 
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI(), initialSection: BrowseSection? = nil) {
@@ -245,6 +246,7 @@ public final class BrowseViewModel {
     /// Triggers a content reload when auth state changes.
     /// Sets the token on the API first so that the fetch always runs authenticated.
     public func updateAuthToken(_ token: String?) async {
+        guard authSnapshotGeneration == nil else { return }
         let wasAuthenticated = hasAuthToken
         hasAuthToken = token != nil
         await api.setAuthToken(token)
@@ -258,6 +260,41 @@ public final class BrowseViewModel {
                 loadContent(refresh: true, source: "updateAuthToken.signOut")
             }
         }
+    }
+
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async {
+        if let current = authSnapshotGeneration, snapshot.generation <= current { return }
+        authSnapshotGeneration = snapshot.generation
+        let wasAuthenticated = hasAuthToken
+        hasAuthToken = snapshot.accessToken != nil
+        if wasAuthenticated, snapshot.accessToken == nil {
+            resetAuthBoundContent()
+        }
+        await api.applyAuthSnapshot(snapshot)
+        if snapshot.accessToken != nil, !wasAuthenticated {
+            loadContent(refresh: true, source: "applyAuthSnapshot.signIn")
+        } else if snapshot.accessToken == nil, wasAuthenticated {
+            let authSections: Set<BrowseSection.SectionType> = [.subscriptions, .channels]
+            if authSections.contains(currentSection.type) {
+                loadContent(refresh: true, source: "applyAuthSnapshot.signOut")
+            }
+        }
+    }
+
+    private func resetAuthBoundContent() {
+        fetchTask?.cancel()
+        fetchTask = nil
+        enrichTask?.cancel()
+        enrichTask = nil
+        publicationTask?.cancel()
+        publicationTask = nil
+        videoGroups = []
+        subscribedChannels = []
+        recommendedShortsVideos = []
+        loadedAt = nil
+        isLoading = false
+        isLoadingMore = false
+        isAuthRequired = false
     }
 
     // MARK: - Private fetching

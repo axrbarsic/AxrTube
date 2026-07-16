@@ -21,7 +21,7 @@ struct TokenManagerTests {
         let tm = TokenManager(keychainService: service)
         let expiry = Date(timeIntervalSinceNow: 3600)
 
-        await tm.setToken(
+        try await tm.setToken(
             access: "access-abc",
             refresh: "refresh-xyz",
             expiry: expiry,
@@ -40,7 +40,7 @@ struct TokenManagerTests {
         #expect(abs(loadedExpiry.timeIntervalSince(expiry)) < 1)
 
         // Cleanup
-        await tm.clearToken()
+        try await tm.clearToken()
     }
 
     // MARK: - 2. clearToken removes entries
@@ -50,8 +50,8 @@ struct TokenManagerTests {
         let service = "test-tm-clear-\(UUID().uuidString)"
         let tm = TokenManager(keychainService: service)
 
-        await tm.setToken(access: "tok", refresh: "ref", expiry: nil, accountName: "Bob", avatarURL: nil)
-        await tm.clearToken()
+        try await tm.setToken(access: "tok", refresh: "ref", expiry: nil, accountName: "Bob", avatarURL: nil)
+        try await tm.clearToken()
 
         let tm2 = TokenManager(keychainService: service)
         #expect(tm2.initialSnapshot.accessToken == nil)
@@ -71,7 +71,7 @@ struct TokenManagerTests {
             return nil
         }
 
-        await tm.setToken(access: "tok-999", refresh: nil, expiry: nil, accountName: nil, avatarURL: nil)
+        try await tm.setToken(access: "tok-999", refresh: nil, expiry: nil, accountName: nil, avatarURL: nil)
         let update = await task.value
 
         if case .refreshed(let token, _) = update {
@@ -81,7 +81,7 @@ struct TokenManagerTests {
         }
 
         // Cleanup
-        await tm.clearToken()
+        try await tm.clearToken()
     }
 
     // MARK: - 4. Stream emits .signedOut on clearToken
@@ -98,7 +98,7 @@ struct TokenManagerTests {
 
         // Yield so the consuming task has a chance to start iterating
         await Task.yield()
-        await tm.clearToken()
+        try await tm.clearToken()
         let update = await task.value
 
         if case .signedOut = update {

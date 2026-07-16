@@ -11,8 +11,9 @@ import os
 //   1. GET accounts.google.com/accounts/OAuthLogin?issueuberauth=1
 //      → HTTP 302 redirect, uberauth token in Location URL
 //   2. GET accounts.google.com/MergeSession?uberauth=…&continue=https://www.youtube.com/
-//      → follows redirects, sets SAPISID cookie in HTTPCookieStorage.shared
-//   3. Read SAPISID value, store on AuthService.sapisid
+//      → follows redirects in an isolated, non-persistent URLSession
+//   3. Read SAPISID from response headers, then publish it only if the auth
+//      generation is still current
 //
 // This must be called after a successful sign-in (step 5 of the device-code
 // flow, after fetchUserInfo returns). It is a best-effort operation: failure
@@ -24,13 +25,15 @@ extension AuthService {
     /// Exchanges the current OAuth2 access token for a YouTube.com SAPISID cookie.
     /// On success, sets `self.sapisid` to the extracted value.
     /// All errors are caught internally; this method never throws.
-    func fetchYouTubeWebCookies() async {
+    func fetchYouTubeWebCookies(generation: UInt64? = nil) async {
+        let expectedGeneration = generation ?? authSessionGeneration
+        guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else { return }
         // Use validAccessToken() so we refresh an expired token before making API calls.
         // This handles the case where accessToken was cleared at startup (expired) but
         // refreshToken is still valid — common after an overnight Mac restart.
         let token: String
         do {
-            token = try await validAccessToken()
+            token = try await validAccessToken(generation: expectedGeneration)
         } catch {
             authLog.notice("[cookies] fetchYouTubeWebCookies: no valid token (\(error)) — skipping")
             return
@@ -41,14 +44,13 @@ extension AuthService {
         // Diagnostic + gaiaId extraction: tokeninfo returns `sub` (numeric Gaia ID) when `openid`
         // scope is present. Required for the MultiBearer Multilogin request format.
         if let infoURL = URL(string: "https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=\(token)"),
-           let (infoData, _) = try? await URLSession.shared.data(from: infoURL) {
-            let infoStr = String(data: infoData, encoding: .utf8) ?? "<non-UTF8>"
-            authLog.notice("[cookies] tokeninfo=\(infoStr)")
+           let (infoData, _) = try? await isolatedCookieSession().data(from: infoURL) {
             // Extract gaiaId from `sub` claim (only present when openid scope is in token)
             if let infoJSON = try? JSONSerialization.jsonObject(with: infoData) as? [String: Any],
                let sub = infoJSON["sub"] as? String, !sub.isEmpty {
+                guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else { return }
                 gaiaId = sub
-                authLog.notice("[cookies] gaiaId=\(sub) — MultiBearer Multilogin enabled")
+                authLog.notice("[cookies] account identity available — MultiBearer Multilogin enabled")
             } else {
                 authLog.notice("[cookies] gaiaId not in tokeninfo — token missing openid scope; need re-sign-in")
             }
@@ -69,41 +71,51 @@ extension AuthService {
             authLog.notice("[cookies] OAuthLogin request failed: \(error.localizedDescription)")
             return
         }
+        guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else { return }
 
         guard let http1 = response1 as? HTTPURLResponse,
               (300..<400).contains(http1.statusCode),
               let location = http1.value(forHTTPHeaderField: "Location"),
               let mergeURL = URL(string: location) else {
             let code = (response1 as? HTTPURLResponse)?.statusCode ?? 0
-            let wwwAuth = (response1 as? HTTPURLResponse)?.value(forHTTPHeaderField: "WWW-Authenticate") ?? "none"
-            authLog.notice("[cookies] OAuthLogin did not redirect (HTTP \(code)) WWW-Authenticate=\(wwwAuth) — trying Multilogin fallback")
-            await fetchSAPISIDViaMultilogin(token: token)
+            let hasAuthChallenge = (response1 as? HTTPURLResponse)?
+                .value(forHTTPHeaderField: "WWW-Authenticate") != nil
+            authLog.notice("[cookies] OAuthLogin did not redirect (HTTP \(code)) authChallenge=\(hasAuthChallenge) — trying Multilogin fallback")
+            await fetchSAPISIDViaMultilogin(token: token, generation: expectedGeneration)
             return
         }
 
         authLog.notice("[cookies] OAuthLogin redirect received — loading MergeSession")
 
-        // Step 2 — load MergeSession URL via shared session (sets SAPISID cookie)
-        // URLSession.shared uses HTTPCookieStorage.shared and follows redirects by default.
+        // Step 2 — load MergeSession in an isolated session. A stale exchange must
+        // never mutate the process-wide cookie jar before its generation is checked.
+        let cookieCapture = IsolatedCookieCaptureDelegate()
+        let mergeSession = isolatedCookieSession(delegate: cookieCapture)
+        let mergeResponse: URLResponse
         do {
-            let (_, _) = try await URLSession.shared.data(from: mergeURL)
+            (_, mergeResponse) = try await mergeSession.data(from: mergeURL)
         } catch {
+            mergeSession.invalidateAndCancel()
             authLog.notice("[cookies] MergeSession request failed: \(error.localizedDescription)")
             return
         }
+        cookieCapture.capture(mergeResponse)
+        mergeSession.finishTasksAndInvalidate()
+        guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else { return }
 
-        // Step 3 — read SAPISID from shared cookie storage
-        let ytURL = URL(string: "https://www.youtube.com")!
-        let cookies = HTTPCookieStorage.shared.cookies(for: ytURL) ?? []
-        guard let sapisidCookie = cookies.first(where: { $0.name == "SAPISID" }) else {
+        // Step 3 — publish only the value captured by this exchange. We do not
+        // copy it to HTTPCookieStorage.shared; InnerTube receives it through the
+        // versioned AuthSessionSnapshot instead.
+        guard let sapisidCookie = cookieCapture.cookie(named: "SAPISID") else {
             authLog.notice("[cookies] SAPISID cookie not found after MergeSession — SAPISID unavailable")
             return
         }
 
         authLog.notice("[cookies] ✅ SAPISID obtained — WEB_CREATOR SAPISIDHASH auth enabled")
-        sapisid = sapisidCookie.value
-        // Persist to Keychain so it survives app restarts — no re-fetch needed on next launch.
-        Task { await tokenManager.setSAPISID(sapisidCookie.value) }
+        _ = await commitCookieCredentials(
+            sapisid: sapisidCookie.value,
+            generation: expectedGeneration
+        )
     }
 
     // MARK: - Google Multilogin fallback
@@ -116,7 +128,8 @@ extension AuthService {
     /// - Body: " " (space) to force POST — Chromium pattern
     ///
     /// Reference: chromium/src/google_apis/gaia/gaia_auth_fetcher.cc StartOAuthMultilogin()
-    private func fetchSAPISIDViaMultilogin(token: String) async {
+    private func fetchSAPISIDViaMultilogin(token: String, generation: UInt64) async {
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
         guard let url = URL(string: "https://accounts.google.com/oauth/multilogin?source=ChromiumBrowser&reuseCookies=0") else { return }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -124,7 +137,7 @@ extension AuthService {
         // gaiaId is the numeric Gaia ID (OIDC `sub` claim) from tokeninfo when openid scope is present.
         if let gid = gaiaId, !gid.isEmpty {
             request.setValue("MultiBearer \(token):\(gid)", forHTTPHeaderField: "Authorization")
-            authLog.notice("[cookies] Multilogin MultiBearer with gaiaId=\(gid)")
+            authLog.notice("[cookies] Multilogin MultiBearer with account identity")
         } else {
             // Fallback: old Bearer format — likely to fail (INVALID_INPUT) without gaiaId.
             // User must sign out + sign in to get an openid-scoped token.
@@ -138,16 +151,16 @@ extension AuthService {
         let data: Data
         let response: URLResponse
         do {
-            (data, response) = try await URLSession.shared.data(for: request)
+            (data, response) = try await isolatedCookieSession().data(for: request)
         } catch {
             authLog.notice("[cookies] Multilogin request failed: \(error.localizedDescription)")
             return
         }
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
 
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            let body = String(data: data, encoding: .utf8) ?? "<non-UTF8>"
-            authLog.notice("[cookies] Multilogin HTTP \(code) body=\(body) — SAPISID via Multilogin unavailable")
+            authLog.notice("[cookies] Multilogin HTTP \(code) — SAPISID via Multilogin unavailable")
             return
         }
 
@@ -167,8 +180,76 @@ extension AuthService {
         }
 
         authLog.notice("[cookies] ✅ SAPISID obtained via Multilogin — WEB_CREATOR SAPISIDHASH auth enabled")
-        sapisid = value
-        Task { await tokenManager.setSAPISID(value) }
+        _ = await commitCookieCredentials(sapisid: value, generation: generation)
+    }
+
+    @discardableResult
+    func commitCookieCredentials(sapisid value: String, generation: UInt64) async -> Bool {
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return false }
+        do {
+            let persisted = try await tokenManager.setSAPISID(value, generation: generation)
+            guard persisted, isCurrentAuthGeneration(generation) else { return false }
+            sapisid = value
+            publishAuthSnapshot(phase: isSignedIn ? .signedIn : .signedOut)
+            return true
+        } catch {
+            guard isCurrentAuthGeneration(generation) else { return false }
+            authLog.error("[cookies] secure cookie persistence failed")
+            self.error = error
+            return false
+        }
+    }
+}
+
+private func isolatedCookieSession(
+    delegate: URLSessionDelegate? = nil
+) -> URLSession {
+    let configuration = URLSessionConfiguration.ephemeral
+    configuration.httpShouldSetCookies = false
+    configuration.httpCookieStorage = nil
+    return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+}
+
+/// Captures Set-Cookie headers from every MergeSession redirect without ever
+/// exposing them to the process-wide cookie store.
+private final class IsolatedCookieCaptureDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var capturedCookies: [HTTPCookie] = []
+
+    func capture(_ response: URLResponse) {
+        guard let response = response as? HTTPURLResponse,
+              let url = response.url else { return }
+        let headerFields = response.allHeaderFields.reduce(into: [String: String]()) { result, pair in
+            guard let key = pair.key as? String else { return }
+            result[key] = String(describing: pair.value)
+        }
+        let cookies = HTTPCookie.cookies(withResponseHeaderFields: headerFields, for: url)
+        lock.withLock { capturedCookies.append(contentsOf: cookies) }
+    }
+
+    func cookie(named name: String) -> HTTPCookie? {
+        lock.withLock { capturedCookies.last(where: { $0.name == name }) }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        capture(response)
+        completionHandler(request)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        dataTask: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping @Sendable (URLSession.ResponseDisposition) -> Void
+    ) {
+        capture(response)
+        completionHandler(.allow)
     }
 }
 

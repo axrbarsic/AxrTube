@@ -16,6 +16,7 @@ extension TOSPlayerViewModel {
     /// Propagates the auth token to this view model's own API instance so
     /// WatchtimeTracker sends authenticated watch-time pings.
     public func updateAuthToken(_ token: String?) {
+        guard authSnapshotGeneration == nil else { return }
         Task { await api.setAuthToken(token) }
         Task { await VideoPreloadCache.shared.setAuthToken(token) }
         // Any tracking URLs already fetched (or in-flight) may be stale/anonymous —
@@ -26,8 +27,20 @@ extension TOSPlayerViewModel {
     /// Propagates the YouTube.com SAPISID cookie so WEB_CREATOR requests use
     /// SAPISIDHASH auth.
     public func updateSAPISID(_ sapisid: String?) {
+        guard authSnapshotGeneration == nil else { return }
         Task { await api.setSAPISID(sapisid) }
         Task { await VideoPreloadCache.shared.setSAPISID(sapisid) }
+    }
+
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) {
+        if let current = authSnapshotGeneration, snapshot.generation <= current { return }
+        authSnapshotGeneration = snapshot.generation
+        authPropagationTask?.cancel()
+        authPropagationTask = Task {
+            await api.applyAuthSnapshot(snapshot)
+            await VideoPreloadCache.shared.applyAuthSnapshot(snapshot)
+        }
+        tracker.setTrackingURLs(nil)
     }
 }
 #endif // !os(tvOS)

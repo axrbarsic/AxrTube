@@ -490,11 +490,13 @@ extension PlaybackViewModel {
         // it via OAuthLogin/Multilogin (openid scope missing / old token).
         // Recovering SAPISID here lets postWebSafari use SAPISIDHASH auth → YouTube returns
         // rqh=0 adaptive URLs → CDN probe passes → Path A wins instead of waiting for Path B.
-        if await !api.hasSAPISID,
+        if hasAuthToken,
+           let generation = authSnapshotGeneration,
+           await !api.hasSAPISID,
            let webSAPISID = HTTPCookieStorage.shared
                .cookies(for: URL(string: "https://www.youtube.com")!)?.first(where: { $0.name == "SAPISID" })?.value {
-            await api.setSAPISID(webSAPISID)
-            playerLog.notice("[BotGuardWV] fix9: recovered SAPISID from WKWebView propagated cookies (len=\(webSAPISID.count))")
+            await api.applySupplementalSAPISID(webSAPISID, authGeneration: generation)
+            playerLog.notice("[BotGuardWV] recovered SAPISID for current auth generation")
         }
         let webVD = BotGuardWebViewRunner.shared.webVisitorData
         // fix8: use webVD as the mintToken identifier so the minted pot= token is bound
@@ -1525,6 +1527,7 @@ extension PlaybackViewModel {
 
     private func launchPhase2(video: Video, info: PlayerInfo, cached: CachedVideoData? = nil) {
         phase2Task?.cancel()
+        let authGeneration = authSnapshotGeneration
         phase2Task = Task(priority: .utility) { [weak self] in
             // Use the caller-supplied cached data when available so Phase 2 can use
             // already-consumed nextInfo/endCards/sponsorSegments instead of re-fetching.
@@ -1538,6 +1541,7 @@ extension PlaybackViewModel {
             await self?.loadAsyncPhase2(
                 video: video, cached: p2Cached, info: info,
                 cachedTrackingURLs: cached?.trackingURLs ?? nil, authTrackingTask: nil,
+                authGeneration: authGeneration,
                 sponsorCached: cached?.sponsorSegments != nil
             )
         }

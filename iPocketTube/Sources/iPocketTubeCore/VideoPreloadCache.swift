@@ -42,6 +42,7 @@ private struct PrefetchRequest: Sendable {
     let videoId: String
     let sponsorCategories: Set<SponsorSegment.Category>
     let authToken: String?
+    let authGeneration: UInt64?
     let priority: PrefetchPriority
     let enqueuedAt: Date
 }
@@ -144,21 +145,24 @@ public actor VideoPreloadCache {
 
     // MARK: - Disk cache (Phase J)
 
-    private let disk = VideoDiskCache()
+    private let disk: VideoDiskCache
+    private var authSnapshotGeneration: UInt64?
 
     // MARK: - Network-aware throttling (Phase K)
 
     nonisolated private let pathMonitor = NWPathMonitor()
     private var currentPath: NWPath? = nil
 
-    private init(
+    init(
         api: InnerTubeAPI = InnerTubeAPI(),
         sponsorBlock: SponsorBlockService = SponsorBlockService(),
-        deArrow: DeArrowService = DeArrowService()
+        deArrow: DeArrowService = DeArrowService(),
+        disk: VideoDiskCache = VideoDiskCache()
     ) {
         self.api          = api
         self.sponsorBlock = sponsorBlock
         self.deArrow      = deArrow
+        self.disk         = disk
         pathMonitor.pathUpdateHandler = { [weak self] path in
             Task { await self?.updatePath(path) }
         }
@@ -170,13 +174,25 @@ public actor VideoPreloadCache {
     /// Forward the current auth token so prefetch requests can make authenticated calls.
     /// Call this from PlaybackViewModel.updateAuthToken and at app launch.
     public func setAuthToken(_ token: String?) async {
+        guard authSnapshotGeneration == nil else { return }
         cacheLog.notice("[auth] setAuthToken: \(token != nil ? "present" : "nil", privacy: .public)")
         await api.setAuthToken(token)
     }
 
     /// Forward the SAPISID cookie so prefetch WEB_CREATOR requests use SAPISIDHASH auth.
     public func setSAPISID(_ value: String?) async {
+        guard authSnapshotGeneration == nil else { return }
         await api.setSAPISID(value)
+    }
+
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async {
+        if let current = authSnapshotGeneration, snapshot.generation <= current { return }
+        authSnapshotGeneration = snapshot.generation
+        await api.applyAuthSnapshot(snapshot)
+        if snapshot.accessToken == nil {
+            cancelAuthSensitiveWork()
+            evictAuthSensitiveData()
+        }
     }
 
     // MARK: - Public: prefetch
@@ -210,6 +226,7 @@ public actor VideoPreloadCache {
                     videoId: videoId,
                     sponsorCategories: sponsorCategories,
                     authToken: authToken,
+                    authGeneration: authSnapshotGeneration,
                     priority: priority,
                     enqueuedAt: prefetchQueue[idx].enqueuedAt
                 )
@@ -226,6 +243,7 @@ public actor VideoPreloadCache {
             videoId: videoId,
             sponsorCategories: sponsorCategories,
             authToken: authToken,
+            authGeneration: authSnapshotGeneration,
             priority: priority,
             enqueuedAt: .init()
         )
@@ -290,8 +308,10 @@ public actor VideoPreloadCache {
                 await self.runPrefetch(
                     videoId: request.videoId,
                     sponsorCategories: request.sponsorCategories,
-                    authToken: request.authToken
+                    authToken: request.authToken,
+                    authGeneration: request.authGeneration
                 )
+                self.prefetchTasks.removeValue(forKey: request.videoId)
                 self.activeWorkerCount = max(0, self.activeWorkerCount - 1)
                 self.drainQueue()
             }
@@ -387,6 +407,21 @@ public actor VideoPreloadCache {
         touch(videoId)
     }
 
+    /// Commits account-bound metadata only while the originating auth
+    /// snapshot is still current.
+    @discardableResult
+    public func store(
+        trackingURLs: PlaybackTrackingURLs?,
+        nextInfo: NextInfo?,
+        for videoId: String,
+        authGeneration: UInt64?
+    ) -> Bool {
+        guard authGeneration == authSnapshotGeneration else { return false }
+        store(trackingURLs: trackingURLs, for: videoId)
+        if let nextInfo { store(nextInfo: nextInfo, for: videoId) }
+        return true
+    }
+
     public func store(nextInfo: NextInfo, for videoId: String) {
         cacheLog.debug("[store] nextInfo \(videoId, privacy: .public) related=\(nextInfo.relatedVideos.count, privacy: .public) chapters=\(nextInfo.chapters.count, privacy: .public)")
         nextInfoCache[videoId] = CacheEntry(value: nextInfo, storedAt: .init(), ttl: Self.nextInfoTTL)
@@ -475,6 +510,10 @@ public actor VideoPreloadCache {
         cacheLog.notice("[evict] auth sign-out — clearing trackingCache (\(self.trackingCache.count, privacy: .public) entries) + nextInfoCache (\(self.nextInfoCache.count, privacy: .public) entries)")
         trackingCache.removeAll()
         nextInfoCache.removeAll()
+        // PlayerInfo can embed playbackTracking URLs from an authenticated
+        // response. Drop it at the same boundary rather than retaining a hidden
+        // account-bound value after Sign Out.
+        playerInfoCache.removeAll()
         // BUG-013 fix: also purge disk so nextInfo (likeStatus) cannot be read back after sign-out.
         disk.removeAll()
     }
@@ -483,6 +522,14 @@ public actor VideoPreloadCache {
     public func evictTrackingURLs() {
         cacheLog.notice("[evict] token refresh — clearing trackingCache (\(self.trackingCache.count, privacy: .public) entries)")
         trackingCache.removeAll()
+    }
+
+    private func cancelAuthSensitiveWork() {
+        prefetchQueue.removeAll()
+        for task in prefetchTasks.values { task.cancel() }
+        prefetchTasks.removeAll()
+        for task in inFlightPlayerFetches.values { task.cancel() }
+        inFlightPlayerFetches.removeAll()
     }
 
     /// Call when a 403 is received for a cached player-info URL.
@@ -509,9 +556,10 @@ public actor VideoPreloadCache {
     private func runPrefetch(
         videoId: String,
         sponsorCategories: Set<SponsorSegment.Category>,
-        authToken: String?
+        authToken: String?,
+        authGeneration: UInt64?
     ) async {
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, authGeneration == authSnapshotGeneration else { return }
         let startedAt = Date()
         let allowed = allowedPrefetchDataTypes
         cacheLog.notice("[prefetch] START \(videoId, privacy: .public) allowed=\(allowed.sorted().joined(separator: ","), privacy: .public)")
@@ -554,14 +602,17 @@ public actor VideoPreloadCache {
 
         if let player  { store(playerInfo: player,          for: videoId) }
         let tracking: PlaybackTrackingURLs? = player?.trackingURLs
-        store(trackingURLs: tracking,                        for: videoId)
-        if let next    { store(nextInfo: next,               for: videoId) }
+        _ = store(
+            trackingURLs: tracking,
+            nextInfo: next,
+            for: videoId,
+            authGeneration: authGeneration
+        )
         if let cards   { store(endCards: cards,              for: videoId) }
         store(sponsorSegments: sponsor,                      for: videoId)
         if let dearrow { store(deArrowBranding: dearrow,     for: videoId) }
 
         cacheLog.notice("[prefetch] DONE \(videoId, privacy: .public) elapsed=\(elapsed, privacy: .public) playerInfo=\(player != nil, privacy: .public) tracking=\(tracking != nil, privacy: .public) next=\(next != nil, privacy: .public) endCards=\(cards != nil, privacy: .public) sponsor=\(sponsor.count, privacy: .public) deArrow=\(dearrow != nil, privacy: .public)")
-        prefetchTasks.removeValue(forKey: videoId)
     }
 
     // MARK: - Private: LRU helpers

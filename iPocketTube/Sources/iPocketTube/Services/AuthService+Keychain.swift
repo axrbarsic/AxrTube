@@ -4,20 +4,31 @@ extension AuthService {
 
     // MARK: - Persistence (delegates to TokenManager)
 
-    func saveToKeychain() {
+    @discardableResult
+    func saveToKeychain(generation: UInt64? = nil) async -> Bool {
+        let expectedGeneration = generation ?? authSessionGeneration
+        guard isCurrentAuthGeneration(expectedGeneration) else { return false }
         let access = accessToken
         let refresh = refreshToken
         let expiry = tokenExpiry
         let name = accountName
         let avatar = accountAvatarURL
-        Task {
-            await tokenManager.setToken(
+        do {
+            let persisted = try await tokenManager.setToken(
                 access: access,
                 refresh: refresh,
                 expiry: expiry,
                 accountName: name,
-                avatarURL: avatar
+                avatarURL: avatar,
+                generation: expectedGeneration
             )
+            guard persisted, isCurrentAuthGeneration(expectedGeneration) else { return false }
+            return true
+        } catch {
+            guard isCurrentAuthGeneration(expectedGeneration) else { return false }
+            authLog.error("secure token persistence failed")
+            self.error = error
+            return false
         }
     }
 
@@ -37,18 +48,14 @@ extension AuthService {
             accessToken = nil
         }
         isSignedIn = accessToken != nil || refreshToken != nil
+        publishAuthSnapshot(phase: isSignedIn ? .signedIn : .signedOut)
         if isSignedIn { scheduleProactiveRefresh() }
         // If signed in but no SAPISID, attempt to obtain it in the background.
         // Trigger even when accessToken is nil (expired) — fetchYouTubeWebCookies
         // calls validAccessToken() which refreshes the token if needed before
         // making any API requests (OAuthLogin → Multilogin).
         if isSignedIn && sapisid == nil {
-            Task { await self.fetchYouTubeWebCookies() }
+            startCookieExchange()
         }
     }
-
-    func clearKeychain() {
-        Task { await tokenManager.clearToken() }
-    }
 }
-

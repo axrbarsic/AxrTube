@@ -5,7 +5,13 @@ extension AuthService {
 
     // MARK: - Token refresh
 
-    func refreshAccessToken(refreshToken: String, creds: YouTubeClientCredentials) async throws {
+    func refreshAccessToken(
+        refreshToken: String,
+        creds: YouTubeClientCredentials,
+        generation: UInt64? = nil
+    ) async throws {
+        let expectedGeneration = generation ?? authSessionGeneration
+        guard isCurrentAuthGeneration(expectedGeneration) else { throw CancellationError() }
         var req = URLRequest(url: Self.tokenURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -17,6 +23,9 @@ extension AuthService {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: req)
+        guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else {
+            throw CancellationError()
+        }
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         // Detect permanent refresh-token failures (revoked, expired, invalid credentials).
@@ -25,9 +34,9 @@ extension AuthService {
         if (statusCode == 400 || statusCode == 401),
            let errJson = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
            let oauthError = errJson["error"] as? String,
-           ["invalid_grant", "invalid_client", "unauthorized_client"].contains(oauthError) {
+            ["invalid_grant", "invalid_client", "unauthorized_client"].contains(oauthError) {
             authLog.error("refreshAccessToken: permanent failure (\(oauthError)) — signing out")
-            signOut()
+            _ = await signOut()
             throw AuthError.tokenExchangeFailed
         }
 
@@ -35,12 +44,31 @@ extension AuthService {
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else { throw AuthError.tokenExchangeFailed }
 
-        accessToken = json["access_token"] as? String
-        if let exp = json["expires_in"] as? TimeInterval {
-            tokenExpiry = Date().addingTimeInterval(exp - 60)
+        let expiry = (json["expires_in"] as? TimeInterval)
+            .map { Date().addingTimeInterval($0 - 60) }
+        guard await commitRefreshedCredentials(
+            accessToken: json["access_token"] as? String,
+            expiry: expiry,
+            generation: expectedGeneration
+        ) else {
+            throw CancellationError()
         }
-        isSignedIn = accessToken != nil
-        saveToKeychain()
+    }
+
+    @discardableResult
+    func commitRefreshedCredentials(
+        accessToken newAccessToken: String?,
+        expiry: Date?,
+        generation: UInt64
+    ) async -> Bool {
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return false }
+        accessToken = newAccessToken
+        if let expiry { tokenExpiry = expiry }
+        isSignedIn = accessToken != nil || refreshToken != nil
+        guard await saveToKeychain(generation: generation) else { return false }
+        guard isCurrentAuthGeneration(generation) else { return false }
+        publishAuthSnapshot(phase: isSignedIn ? .signedIn : .signedOut)
         scheduleProactiveRefresh()
+        return true
     }
 }

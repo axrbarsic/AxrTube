@@ -506,7 +506,11 @@ extension InnerTubeAPI {
     /// Unlike the Chrome-UA WEB client, this returns `hlsManifestUrl` for non-embeddable
     /// videos. Uses the same www.youtube.com endpoint as postMWEB; no Bearer auth
     /// (cookie-based auth in yt-dlp, but HLS manifest works without auth for VOD).
-    func postWebSafari(body: [String: Any], visitorIdOverride: String? = nil) async throws -> [String: Any] {
+    func postWebSafari(
+        body: [String: Any],
+        visitorIdOverride: String? = nil,
+        explicitBearerToken: String? = nil
+    ) async throws -> [String: Any] {
         guard var comps = URLComponents(url: baseURL.appendingPathComponent("player"),
                                         resolvingAgainstBaseURL: false) else {
             throw APIError.invalidURL("player")
@@ -528,7 +532,11 @@ extension InnerTubeAPI {
         // CDN probe when match=false (webVD ≠ apiVD). With SAPISID, Path A wins reliably.
         // Falls back to Bearer+AuthUser (same as yt-dlp web OAuth pattern) when SAPISID is nil.
         let authStatus: String
-        if let sid = sapisid {
+        if let token = explicitBearerToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            request.setValue("0", forHTTPHeaderField: "X-Goog-AuthUser")
+            authStatus = "ExplicitBearer"
+        } else if let sid = sapisid {
             request.setValue(InnerTubeAPI.sapisidhash(sapisid: sid), forHTTPHeaderField: "Authorization")
             request.setValue("1", forHTTPHeaderField: "X-Origin")
             authStatus = "SAPISIDHASH"

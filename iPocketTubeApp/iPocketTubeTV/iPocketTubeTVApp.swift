@@ -41,14 +41,10 @@ struct iPocketTubeTVApp: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
-                .onChange(of: authService.accessToken, initial: true) { _, newToken in
-                    Task {
-                        await api.setAuthToken(newToken)
-                        await browseViewModel.updateAuthToken(newToken)
-                    }
-                }
-                .onChange(of: authService.sapisid, initial: true) { _, newSapisid in
-                    Task { await api.setSAPISID(newSapisid) }
+                .task(id: authService.authSnapshot) {
+                    let snapshot = authService.authSnapshot
+                    await api.applyAuthSnapshot(snapshot)
+                    await browseViewModel.applyAuthSnapshot(snapshot)
                 }
                 .onChange(of: settingsStore.settings.enabledSections) { _, newSections in
                     browseViewModel.configureSections(newSections)

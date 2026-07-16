@@ -572,14 +572,10 @@ extension InnerTubeAPI {
     public func fetchAuthenticatedTrackingURLs(videoId: String, usingToken token: String) async -> PlaybackTrackingURLs? {
         do {
             let body = await buildTrackingURLsBody(videoId: videoId)
-            // Mirror the with-token path: postWebSafari reads authToken / sapisid from the
-            // actor for its auth-scheme dispatch. The actor's authToken should already be set
-            // by the time prefetch runs (PlaybackViewModel's updateAuthToken is called before
-            // prefetch in the standard path). If the caller has a token but the actor doesn't
-            // yet, seed it here so postWebSafari can use Bearer+AuthUser as a fallback when
-            // SAPISIDHASH is unavailable.
-            if authToken == nil { authToken = token }
-            let data = try await postWebSafari(body: body)
+            // Use the explicit token for this request only. Never seed actor auth
+            // state from a caller-held token: that token may belong to a session
+            // that was signed out while this task was in flight.
+            let data = try await postWebSafari(body: body, explicitBearerToken: token)
             guard
                 let tracking  = data["playbackTracking"] as? [String: Any],
                 let pbStr      = (tracking["videostatsPlaybackUrl"]  as? [String: Any])?["baseUrl"] as? String,

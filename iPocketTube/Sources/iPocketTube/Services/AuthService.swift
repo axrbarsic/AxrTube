@@ -28,6 +28,7 @@ public final class AuthService {
     // MARK: - Observable state
 
     public internal(set) var isSignedIn: Bool = false
+    public internal(set) var authSnapshot: AuthSessionSnapshot = .signedOut(generation: 0)
     public internal(set) var accountName: String?
     public internal(set) var accountAvatarURL: URL?
     public var error: Error?
@@ -63,6 +64,10 @@ public final class AuthService {
     var refreshToken: String?
     var tokenExpiry: Date?
     var pollTask: Task<Void, Never>?
+    var cookieExchangeTask: Task<Void, Never>?
+    var userInfoTask: Task<Void, Never>?
+    var authSessionGeneration: UInt64 = 0
+    private var authSnapshotVersion: UInt64 = 0
 
     var credentialsFetcher = YouTubeClientCredentialsFetcher()
     // `openid` scope: required so that the token exchange response includes an id_token whose
@@ -91,21 +96,30 @@ public final class AuthService {
     static let tokenURL        = URL(string: "https://oauth2.googleapis.com/token")!
     static let accountsListURL = URL(string: "https://www.youtube.com/youtubei/v1/account/accounts_list")!
 
-    public init() {
-        tokenManager = TokenManager()
+    public convenience init() {
+        self.init(tokenManager: TokenManager())
+    }
+
+    init(tokenManager: TokenManager) {
+        self.tokenManager = tokenManager
         loadFromKeychain()
         // UI-testing override: treat the session as signed-in so the home feed
         // renders its full shelves (including the injected Shorts row) without
         // requiring real keychain credentials.
         if ProcessInfo.processInfo.arguments.contains("--uitesting-signed-in") {
             isSignedIn = true
+            publishAuthSnapshot(phase: .signedIn)
         }
         // If already signed in but no account info (e.g. stored before the
         // fetchUserInfo fix), refresh it silently in the background.
         if isSignedIn && accountName == nil {
-            Task {
-                do { try await fetchUserInfo() }
+            let generation = authSessionGeneration
+            userInfoTask = Task { [weak self] in
+                guard let self else { return }
+                do { try await fetchUserInfo(generation: generation) }
                 catch { authLog.error("fetchUserInfo on init failed: \(String(describing: error))") }
+                guard self.authSessionGeneration == generation else { return }
+                self.userInfoTask = nil
             }
         }
     }
@@ -121,19 +135,23 @@ public final class AuthService {
         }
         isSigningIn = true
         defer { isSigningIn = false }
-        pollTask?.cancel()
+        cancelAuthOwnedTasks()
+        authSessionGeneration &+= 1
+        let generation = authSessionGeneration
+        publishAuthSnapshot(phase: .signingIn)
         error = nil
         pendingActivation = nil
         authLog.notice("beginSignIn() — fetching credentials…")
 
         let creds = await credentialsFetcher.credentials()
-        authLog.notice("Using clientId: \(creds.clientId)")
+        authLog.notice("OAuth client credentials resolved")
 
         do {
             let deviceResponse = try await retryWithBackoff { [self] in
                 try await requestDeviceCode(creds: creds)
             }
-            authLog.notice("✅ Got device code. userCode=\(deviceResponse.userCode) expiresIn=\(deviceResponse.expiresIn)s interval=\(deviceResponse.interval)s")
+            guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
+            authLog.notice("✅ Device activation challenge received (expiresIn=\(deviceResponse.expiresIn)s interval=\(deviceResponse.interval)s)")
             let expiresAt = Date().addingTimeInterval(TimeInterval(deviceResponse.expiresIn))
             let fallbackURL = URL(string: "https://yt.be/activate") ?? URL(string: "https://youtube.com/activate")!
             let verURL = URL(string: deviceResponse.verificationURL) ?? fallbackURL
@@ -152,21 +170,20 @@ public final class AuthService {
             pollTask = Task { [weak self] in
                 await self?.pollForToken(deviceCode: deviceResponse.deviceCode,
                                          interval: interval,
-                                         creds: creds)
+                                         creds: creds,
+                                         generation: generation)
             }
         } catch {
+            guard isCurrentAuthGeneration(generation) else { return }
             authLog.error("❌ beginSignIn error: \(String(describing: error))")
             self.error = error
+            publishAuthSnapshot(phase: .signedOut)
         }
     }
 
     /// Cancel an in-progress activation.
-    public func cancelSignIn() {
-        pollTask?.cancel()
-        pollTask = nil
-        pendingActivation = nil
-        currentDeviceCode = nil
-        currentCreds      = nil
+    public func cancelSignIn() async {
+        _ = await signOut()
     }
 
     /// Call when the app returns to the foreground while a sign-in is in progress.
@@ -177,71 +194,99 @@ public final class AuthService {
         authLog.notice("handleForeground() — restarting poll immediately")
         pollTask?.cancel()
         let interval = currentInterval
+        let generation = authSessionGeneration
         pollTask = Task { [weak self] in
             await self?.pollForToken(deviceCode: deviceCode,
                                      interval: interval,
                                      creds: creds,
-                                     pollImmediately: true)
+                                     pollImmediately: true,
+                                     generation: generation)
         }
     }
 
     /// Refreshes the access token now if it has expired or will expire within the next 5 minutes.
     /// Safe to call on every app-active transition. No-op when not signed in.
     public func refreshIfNeeded() async {
+        let generation = authSessionGeneration
         guard isSignedIn, let expiry = tokenExpiry else { return }
         guard expiry.timeIntervalSinceNow < 5 * 60 else { return }
         guard let refresh = refreshToken else { return }
         authLog.notice("refreshIfNeeded() — token expires soon, refreshing")
         let creds = await credentialsFetcher.credentials()
         do {
-            try await refreshAccessToken(refreshToken: refresh, creds: creds)
+            try await refreshAccessToken(refreshToken: refresh, creds: creds, generation: generation)
         } catch {
+            guard isCurrentAuthGeneration(generation) else { return }
             authLog.error("refreshIfNeeded() failed: \(String(describing: error))")
         }
     }
 
-    public func signOut() {
-        pollTask?.cancel()
-        pollTask = nil
-        tokenRefreshTask?.cancel()
-        tokenRefreshTask = nil
+    @discardableResult
+    public func signOut() async -> Bool {
+        authSessionGeneration &+= 1
+        let generation = authSessionGeneration
+        cancelAuthOwnedTasks()
+        clearInMemoryCredentials()
+        publishAuthSnapshot(phase: .signingOut)
+        clearYouTubeSessionCookies()
+
+        do {
+            try await tokenManager.clearToken(generation: generation)
+            guard isCurrentAuthGeneration(generation) else { return false }
+            error = nil
+            publishAuthSnapshot(phase: .signedOut)
+            return true
+        } catch {
+            guard isCurrentAuthGeneration(generation) else { return false }
+            authLog.error("signOut secure-store clear failed")
+            // Keep the account section in a retryable signed-in presentation.
+            // Downstream APIs remain cleared by the `.secureStoreClearFailed`
+            // snapshot, but the UI must not pretend the secure-store boundary
+            // completed or hide the Sign Out action.
+            isSignedIn = true
+            self.error = AuthError.secureStoreClearFailed
+            publishAuthSnapshot(phase: .secureStoreClearFailed)
+            return false
+        }
+    }
+
+    private func clearInMemoryCredentials() {
         accessToken      = nil
         sapisid          = nil
+        gaiaId           = nil
         refreshToken     = nil
         tokenExpiry      = nil
         accountName      = nil
         accountAvatarURL = nil
         isSignedIn       = false
         pendingActivation = nil
-        clearKeychain()
+        currentDeviceCode = nil
+        currentCreds = nil
     }
 
     /// Clears the in-memory auth session without touching the keychain.
     /// Used by `--uitesting-sign-out` so UI tests can verify signed-out UI on a
     /// simulator that has real credentials stored in the keychain.
-    public func clearSession() {
-        pollTask?.cancel()
-        pollTask = nil
-        tokenRefreshTask?.cancel()
-        tokenRefreshTask = nil
-        accessToken      = nil
-        sapisid          = nil
-        refreshToken     = nil
-        tokenExpiry      = nil
-        accountName      = nil
-        accountAvatarURL = nil
-        isSignedIn       = false
-        pendingActivation = nil
+    public func clearSession() async {
+        authSessionGeneration &+= 1
+        let generation = authSessionGeneration
+        cancelAuthOwnedTasks()
+        await tokenManager.invalidate(generation: generation)
+        clearInMemoryCredentials()
+        publishAuthSnapshot(phase: .signedOut)
     }
 
     /// Returns a valid access token, refreshing if necessary.
-    public func validAccessToken() async throws -> String {
+    public func validAccessToken(generation: UInt64? = nil) async throws -> String {
+        let expectedGeneration = generation ?? authSessionGeneration
+        guard isCurrentAuthGeneration(expectedGeneration) else { throw CancellationError() }
         if let t = accessToken, let exp = tokenExpiry, exp > Date() { return t }
         guard let refresh = refreshToken else { throw AuthError.notSignedIn }
         let creds = await credentialsFetcher.credentials()
         try await retryWithBackoff(maxAttempts: 2) { [self] in
-            try await refreshAccessToken(refreshToken: refresh, creds: creds)
+            try await refreshAccessToken(refreshToken: refresh, creds: creds, generation: expectedGeneration)
         }
+        guard isCurrentAuthGeneration(expectedGeneration) else { throw CancellationError() }
         guard let t = accessToken else { throw AuthError.notSignedIn }
         return t
     }
@@ -253,19 +298,67 @@ public final class AuthService {
         tokenRefreshTask?.cancel()
         guard let expiry = tokenExpiry, refreshToken != nil else { return }
         let delay = max(expiry.timeIntervalSinceNow - 5 * 60, 0)
+        let generation = authSessionGeneration
         authLog.notice("scheduleProactiveRefresh() — refreshing in \(Int(delay))s")
         tokenRefreshTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, let self else { return }
-            guard self.isSignedIn, let refresh = self.refreshToken else { return }
+            guard self.isCurrentAuthGeneration(generation), self.isSignedIn,
+                  let refresh = self.refreshToken else { return }
             let creds = await self.credentialsFetcher.credentials()
             do {
-                try await self.refreshAccessToken(refreshToken: refresh, creds: creds)
+                try await self.refreshAccessToken(refreshToken: refresh, creds: creds, generation: generation)
                 authLog.notice("scheduleProactiveRefresh() — token refreshed ✅")
                 self.scheduleProactiveRefresh()
             } catch {
+                guard self.isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
                 authLog.error("scheduleProactiveRefresh() failed: \(String(describing: error))")
             }
+        }
+    }
+
+    func isCurrentAuthGeneration(_ generation: UInt64) -> Bool {
+        generation == authSessionGeneration
+    }
+
+    func publishAuthSnapshot(phase: AuthSessionSnapshot.Phase? = nil) {
+        authSnapshotVersion &+= 1
+        let resolvedPhase = phase ?? (isSignedIn ? .signedIn : .signedOut)
+        authSnapshot = AuthSessionSnapshot(
+            generation: authSnapshotVersion,
+            phase: resolvedPhase,
+            accessToken: accessToken,
+            sapisid: sapisid
+        )
+    }
+
+    func cancelAuthOwnedTasks() {
+        pollTask?.cancel()
+        tokenRefreshTask?.cancel()
+        cookieExchangeTask?.cancel()
+        userInfoTask?.cancel()
+        pollTask = nil
+        tokenRefreshTask = nil
+        cookieExchangeTask = nil
+        userInfoTask = nil
+    }
+
+    func startCookieExchange(generation: UInt64? = nil) {
+        let expectedGeneration = generation ?? authSessionGeneration
+        cookieExchangeTask?.cancel()
+        cookieExchangeTask = Task { [weak self] in
+            guard let self else { return }
+            await self.fetchYouTubeWebCookies(generation: expectedGeneration)
+            guard self.isCurrentAuthGeneration(expectedGeneration) else { return }
+            self.cookieExchangeTask = nil
+        }
+    }
+
+    func clearYouTubeSessionCookies() {
+        let youtubeURL = URL(string: "https://www.youtube.com")!
+        for cookie in HTTPCookieStorage.shared.cookies(for: youtubeURL) ?? []
+        where cookie.name.contains("SAPISID") {
+            HTTPCookieStorage.shared.deleteCookie(cookie)
         }
     }
 }

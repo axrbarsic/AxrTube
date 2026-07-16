@@ -11,6 +11,7 @@ extension PlaybackViewModel {
     /// Updates the local auth flag used for LOGIN_REQUIRED retry logic.
     /// The shared InnerTubeAPI instance already carries the updated token.
     public func updateAuthToken(_ token: String?) {
+        guard authSnapshotGeneration == nil else { return }
         let wasAuthenticated = hasAuthToken
         hasAuthToken = token != nil
         currentAuthToken = token
@@ -36,7 +37,38 @@ extension PlaybackViewModel {
     /// Propagates the YouTube.com SAPISID cookie to the PlaybackViewModel's own
     /// InnerTubeAPI instance so WEB_CREATOR requests use SAPISIDHASH auth.
     public func updateSAPISID(_ sapisid: String?) {
+        guard authSnapshotGeneration == nil else { return }
         Task { await api.setSAPISID(sapisid) }
         Task { await VideoPreloadCache.shared.setSAPISID(sapisid) }
+    }
+
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) {
+        if let current = authSnapshotGeneration, snapshot.generation <= current { return }
+        let wasAuthenticated = hasAuthToken
+        authSnapshotGeneration = snapshot.generation
+        hasAuthToken = snapshot.accessToken != nil
+        currentAuthToken = snapshot.accessToken
+
+        if snapshot.accessToken == nil {
+            // The tracker is synchronous and long-lived. Clear it before any
+            // asynchronous propagation so an old Phase 2 callback cannot ping
+            // account-bound URLs across the sign-out boundary.
+            tracker.setTrackingURLs(nil)
+        }
+
+        authPropagationTask?.cancel()
+        authPropagationTask = Task {
+            await api.applyAuthSnapshot(snapshot)
+            await VideoPreloadCache.shared.applyAuthSnapshot(snapshot)
+            guard !Task.isCancelled else { return }
+            if wasAuthenticated, snapshot.accessToken == nil {
+                await VideoPreloadCache.shared.evictAuthSensitiveData()
+            } else if wasAuthenticated, snapshot.accessToken != nil {
+                await VideoPreloadCache.shared.evictTrackingURLs()
+            }
+        }
+        if wasAuthenticated, snapshot.accessToken != nil {
+            tracker.setTrackingURLs(nil)
+        }
     }
 }

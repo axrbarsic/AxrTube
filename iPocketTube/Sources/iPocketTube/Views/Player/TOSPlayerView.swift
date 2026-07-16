@@ -254,8 +254,7 @@ public struct TOSPlayerView: View {
             // player (the iOS default since 4.6) never registers in YouTube's
             // watch history — same root cause already fixed for PlaybackViewModel
             // in PlayerView+Lifecycle.swift, never ported to TOS.
-            vm.updateAuthToken(authService.accessToken)
-            vm.updateSAPISID(authService.sapisid)
+            vm.applyAuthSnapshot(authService.authSnapshot)
             vm.startIfNeeded()
             #if os(iOS)
             UIDevice.current.beginGeneratingDeviceOrientationNotifications()

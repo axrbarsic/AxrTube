@@ -588,8 +588,7 @@ extension PlayerView {
             // presenting. Only sync current user preferences; the video is already loading.
             vm.setPlaybackSpeed(store.settings.playbackSpeed)
             vm.updateSettings(store.settings)
-            vm.updateAuthToken(authService.accessToken)
-            vm.updateSAPISID(authService.sapisid)
+            vm.applyAuthSnapshot(authService.authSnapshot)
             if ProcessInfo.processInfo.arguments.contains("--uitesting-open-more-menu") {
                 swipeLog.notice("[PlayerView] --uitesting-open-more-menu launch arg detected — scheduling showMoreMenu=true")
                 Task { @MainActor in
@@ -621,7 +620,7 @@ extension PlayerView {
             }
             vm.setPlaybackSpeed(store.settings.playbackSpeed)
             vm.updateSettings(store.settings)
-            vm.updateAuthToken(authService.accessToken)
+            vm.applyAuthSnapshot(authService.authSnapshot)
             // UI testing only: force-show controls so the test can find player.nextBtn.
             if ProcessInfo.processInfo.arguments.contains("--uitesting-show-controls") {
                 swipeLog.notice("[PlayerView] --uitesting-show-controls (non-iOS) — showing controls")

@@ -301,6 +301,35 @@ private func makeSearchViewModel(api: any InnerTubeAPIProtocol) -> SearchViewMod
 @MainActor
 struct HomeViewModelTests {
 
+    @Test("A delayed authenticated Home response is ignored after sign out")
+    func delayedAuthenticatedHomeResponseIsIgnoredAfterSignOut() async {
+        let mock = MockInnerTubeAPI()
+        let privateVideo = makeVideo("private_AAA")
+        mock.queuedHomeRows = [
+            (result: [VideoGroup(title: "Private", videos: [privateVideo])], delayMilliseconds: 120),
+            (result: [], delayMilliseconds: 0),
+        ]
+        mock.queuedSubscriptions = [
+            (result: VideoGroup(title: "Private Subs", videos: [privateVideo]), delayMilliseconds: 120),
+            (result: VideoGroup(title: "Guest", videos: []), delayMilliseconds: 0),
+        ]
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        await vm.applyAuthSnapshot(.init(
+            generation: 1,
+            phase: .signedIn,
+            accessToken: "access",
+            sapisid: nil
+        ))
+        try? await Task.sleep(for: .milliseconds(20))
+        await vm.applyAuthSnapshot(.signedOut(generation: 2))
+        try? await Task.sleep(for: .milliseconds(180))
+
+        #expect(!vm.mergedVideos.contains(where: { $0.id == privateVideo.id }))
+        #expect(!vm.sections.flatMap(\.videos).contains(where: { $0.id == privateVideo.id }))
+    }
+
     @Test("load() calls fetchHomeRows and fetchSubscriptions")
     func loadCallsBothFetches() async {
         let mock = MockInnerTubeAPI()

@@ -49,8 +49,10 @@ extension AuthService {
         deviceCode: String,
         interval: TimeInterval,
         creds: YouTubeClientCredentials,
-        pollImmediately: Bool = false
+        pollImmediately: Bool = false,
+        generation: UInt64
     ) async {
+        guard isCurrentAuthGeneration(generation) else { return }
         authLog.notice("Starting poll loop (interval \(Int(interval))s, immediate=\(pollImmediately))")
         var skipInitialSleep = pollImmediately
         while !Task.isCancelled {
@@ -62,13 +64,15 @@ extension AuthService {
             guard !Task.isCancelled else { return }
 
             do {
-                try await exchangeDeviceCode(deviceCode: deviceCode, creds: creds)
+                try await exchangeDeviceCode(deviceCode: deviceCode, creds: creds, generation: generation)
+                guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
                 authLog.notice("✅ Token exchanged — fetching user info")
-                try await fetchUserInfo()
-                authLog.notice("✅ Signed in as \(self.accountName ?? "unknown")")
+                try await fetchUserInfo(generation: generation)
+                guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
+                authLog.notice("✅ Signed-in account metadata loaded")
                 // Fetch YouTube.com SAPISID cookie for WEB_CREATOR SAPISIDHASH auth.
                 // Best-effort: runs in background, failure doesn't block sign-in.
-                Task { await self.fetchYouTubeWebCookies() }
+                startCookieExchange(generation: generation)
                 pendingActivation = nil
                 pollTask = nil
                 return
@@ -80,9 +84,11 @@ extension AuthService {
                 try? await Task.sleep(nanoseconds: UInt64(5 * 1_000_000_000))
                 continue
             } catch let urlError as URLError {
+                guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
                 authLog.notice("Network error during poll (transient, retrying): \(urlError.localizedDescription)")
                 continue
             } catch {
+                guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return }
                 authLog.error("❌ Poll error: \(String(describing: error))")
                 if isSignedIn { return }
                 self.error = error
@@ -94,7 +100,12 @@ extension AuthService {
         authLog.notice("Poll loop cancelled")
     }
 
-    func exchangeDeviceCode(deviceCode: String, creds: YouTubeClientCredentials) async throws {
+    func exchangeDeviceCode(
+        deviceCode: String,
+        creds: YouTubeClientCredentials,
+        generation: UInt64
+    ) async throws {
+        guard isCurrentAuthGeneration(generation) else { throw CancellationError() }
         var req = URLRequest(url: Self.tokenURL)
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -106,6 +117,9 @@ extension AuthService {
         ])
 
         let (data, response) = try await URLSession.shared.data(for: req)
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else {
+            throw CancellationError()
+        }
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -125,13 +139,32 @@ extension AuthService {
 
         guard (200..<300).contains(statusCode) else { throw AuthError.tokenExchangeFailed }
 
-        accessToken = json["access_token"] as? String
-        if let r = json["refresh_token"] as? String { refreshToken = r }
-        if let exp = json["expires_in"] as? TimeInterval {
-            tokenExpiry = Date().addingTimeInterval(exp - 60)
-        }
-        isSignedIn = accessToken != nil
-        saveToKeychain()
+        guard await commitDeviceCredentials(
+            accessToken: json["access_token"] as? String,
+            refreshToken: json["refresh_token"] as? String,
+            expiry: (json["expires_in"] as? TimeInterval).map {
+                Date().addingTimeInterval($0 - 60)
+            },
+            generation: generation
+        ) else { throw CancellationError() }
+    }
+
+    @discardableResult
+    func commitDeviceCredentials(
+        accessToken newAccessToken: String?,
+        refreshToken newRefreshToken: String?,
+        expiry: Date?,
+        generation: UInt64
+    ) async -> Bool {
+        guard isCurrentAuthGeneration(generation), !Task.isCancelled else { return false }
+        accessToken = newAccessToken
+        if let newRefreshToken { refreshToken = newRefreshToken }
+        tokenExpiry = expiry
+        isSignedIn = accessToken != nil || refreshToken != nil
+        guard await saveToKeychain(generation: generation) else { return false }
+        guard isCurrentAuthGeneration(generation) else { return false }
+        publishAuthSnapshot(phase: isSignedIn ? .signedIn : .signedOut)
         scheduleProactiveRefresh()
+        return true
     }
 }

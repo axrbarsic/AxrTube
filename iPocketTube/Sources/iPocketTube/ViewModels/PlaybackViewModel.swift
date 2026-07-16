@@ -467,6 +467,8 @@ public final class PlaybackViewModel {
     public var settings: AppSettings
     var hasAuthToken: Bool = false
     var currentAuthToken: String? = nil
+    var authSnapshotGeneration: UInt64?
+    var authPropagationTask: Task<Void, Never>?
 
     public init(
         api: InnerTubeAPI = InnerTubeAPI(),

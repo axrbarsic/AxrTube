@@ -162,6 +162,7 @@ public final class HomeViewModel {
     /// sign-in event (nil → non-nil) from a token refresh (non-nil → new non-nil)
     /// so that token refreshes during video playback do not trigger a feed reload.
     private var hasAuthToken: Bool = false
+    private var authSnapshotGeneration: UInt64?
 
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI()) {
         self.api = api
@@ -330,6 +331,7 @@ public final class HomeViewModel {
     }
 
     public func updateAuthToken(_ token: String?) async {
+        guard authSnapshotGeneration == nil else { return }
         let wasAuthenticated = hasAuthToken
         hasAuthToken = token != nil
         await api.setAuthToken(token)
@@ -339,6 +341,42 @@ public final class HomeViewModel {
             // wipe and reload the home feed.
             load()
         }
+    }
+
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async {
+        if let current = authSnapshotGeneration, snapshot.generation <= current { return }
+        authSnapshotGeneration = snapshot.generation
+        let wasAuthenticated = hasAuthToken
+        hasAuthToken = snapshot.accessToken != nil
+        if wasAuthenticated, snapshot.accessToken == nil {
+            resetContentAtAuthBoundary()
+        }
+        await api.applyAuthSnapshot(snapshot)
+        if snapshot.accessToken != nil && !wasAuthenticated {
+            load()
+        } else if wasAuthenticated, snapshot.accessToken == nil {
+            // Rebuild from the guest/local API state. The private subscription
+            // snapshot is cleared before awaiting so a late old response can
+            // never be rendered after Sign Out.
+            load()
+        }
+    }
+
+    private func resetContentAtAuthBoundary() {
+        stateGeneration &+= 1
+        loadTask?.cancel()
+        mergedPaginationTask?.cancel()
+        shortsPreloadTask?.cancel()
+        publicationEnrichmentTask?.cancel()
+        paginationRequestKeys.removeAll()
+        sections = Self.shelfSections.map { SectionState(section: $0) }
+        shortsVideos = []
+        shortsNextPageToken = nil
+        mergedVideos = []
+        isLoadingMoreShorts = false
+        isLoadingMoreMerged = false
+        isRefreshing = false
+        loadedAt = nil
     }
 
     /// Refreshes both shelves if the last successful load was more than

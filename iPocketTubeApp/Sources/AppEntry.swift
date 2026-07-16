@@ -111,9 +111,9 @@ struct AppEntry: App {
     /// so UI tests can verify signed-out UI on a simulator with a real account stored
     /// in the keychain. Keychain credentials are preserved and will be used again on
     /// the next cold start — this only affects the current app launch.
-    private func signOutIfNeeded() {
+    private func signOutIfNeeded() async {
         guard ProcessInfo.processInfo.arguments.contains("--uitesting-sign-out") else { return }
-        authService.clearSession()
+        await authService.clearSession()
     }
 
     var body: some Scene {
@@ -126,14 +126,10 @@ struct AppEntry: App {
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
                 .environment(DownloadStore.shared)
-                .onChange(of: authService.accessToken, initial: true) { _, newToken in
-                    Task {
-                        await api.setAuthToken(newToken)
-                        await browseViewModel.updateAuthToken(newToken)
-                    }
-                }
-                .onChange(of: authService.sapisid, initial: true) { _, newSapisid in
-                    Task { await api.setSAPISID(newSapisid) }
+                .task(id: authService.authSnapshot) {
+                    let snapshot = authService.authSnapshot
+                    await api.applyAuthSnapshot(snapshot)
+                    await browseViewModel.applyAuthSnapshot(snapshot)
                 }
                 .onChange(of: settingsStore.settings.enabledSections) { _, newSections in
                     browseViewModel.configureSections(newSections)
@@ -156,9 +152,9 @@ struct AppEntry: App {
                         browseViewModel.refreshIfStale()
                     }
                 }
-                .onAppear {
+                .task {
                     enableShortsIfNeeded()
-                    signOutIfNeeded()
+                    await signOutIfNeeded()
                 }
         }
         .defaultSize(width: 1280, height: 800)
@@ -182,14 +178,10 @@ struct AppEntry: App {
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
                 .environment(DownloadStore.shared)
-                .onChange(of: authService.accessToken, initial: true) { _, newToken in
-                    Task {
-                        await api.setAuthToken(newToken)
-                        await browseViewModel.updateAuthToken(newToken)
-                    }
-                }
-                .onChange(of: authService.sapisid, initial: true) { _, newSapisid in
-                    Task { await api.setSAPISID(newSapisid) }
+                .task(id: authService.authSnapshot) {
+                    let snapshot = authService.authSnapshot
+                    await api.applyAuthSnapshot(snapshot)
+                    await browseViewModel.applyAuthSnapshot(snapshot)
                 }
                 .onChange(of: settingsStore.settings.enabledSections) { _, newSections in
                     browseViewModel.configureSections(newSections)
@@ -226,20 +218,13 @@ struct AppEntry: App {
                     .environment(tosPlayerStateStore)
                     .environment(playerRouter)
                     #endif
-                    .onChange(of: authService.accessToken, initial: true) { _, newToken in
+                    .task(id: authService.authSnapshot) {
+                        let snapshot = authService.authSnapshot
                         #if os(iOS)
-                        playerStateStore.vm.updateAuthToken(newToken)
+                        playerStateStore.vm.applyAuthSnapshot(snapshot)
                         #endif
-                        Task {
-                            await api.setAuthToken(newToken)
-                            await browseViewModel.updateAuthToken(newToken)
-                        }
-                    }
-                    .onChange(of: authService.sapisid, initial: true) { _, newSapisid in
-                        #if os(iOS)
-                        playerStateStore.vm.updateSAPISID(newSapisid)
-                        #endif
-                        Task { await api.setSAPISID(newSapisid) }
+                        await api.applyAuthSnapshot(snapshot)
+                        await browseViewModel.applyAuthSnapshot(snapshot)
                     }
                     .onChange(of: settingsStore.settings.enabledSections) { _, newSections in
                         browseViewModel.configureSections(newSections)
@@ -290,7 +275,7 @@ struct AppEntry: App {
                     }
                     .onAppear {
                         enableShortsIfNeeded()
-                        signOutIfNeeded()
+                        Task { await signOutIfNeeded() }
                     }
                     #if os(iOS)
                     .alert(item: $watchLaterAlert) { item in
@@ -359,8 +344,8 @@ struct AppEntry: App {
 
         defaults.removeObject(forKey: Self.pendingWatchLaterKey)
         defaults.synchronize()
-        let token = authService.accessToken
-        guard token != nil else {
+        let authSnapshot = authService.authSnapshot
+        guard authSnapshot.accessToken != nil else {
             watchLaterAlert = WatchLaterAlert(
                 title: "Sign In Required",
                 message: "Please sign in to save videos to Watch Later."
@@ -371,7 +356,7 @@ struct AppEntry: App {
             // On cold start the authService onChange Task that calls api.setAuthToken
             // may not have run yet. Set the token explicitly here so the API call
             // always has credentials regardless of Task scheduling order.
-            await api.setAuthToken(token)
+            await api.applyAuthSnapshot(authSnapshot)
             do {
                 try await api.addToWatchLater(videoId: videoID)
                 watchLaterAlert = WatchLaterAlert(

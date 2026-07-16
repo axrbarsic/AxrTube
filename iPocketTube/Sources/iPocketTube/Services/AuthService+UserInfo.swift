@@ -5,10 +5,12 @@ extension AuthService {
 
     // MARK: - User info
 
-    func fetchUserInfo() async throws {
+    func fetchUserInfo(generation: UInt64? = nil) async throws {
+        let expectedGeneration = generation ?? authSessionGeneration
+        guard isCurrentAuthGeneration(expectedGeneration) else { throw CancellationError() }
         authLog.notice("fetchUserInfo() — calling validAccessToken()")
-        let token = try await validAccessToken()
-        authLog.notice("fetchUserInfo() — token len=\(token.count), calling InnerTube accounts_list API")
+        let token = try await validAccessToken(generation: expectedGeneration)
+        authLog.notice("fetchUserInfo() — calling InnerTube accounts_list API")
         // Android methodology: POST to www.youtube.com/youtubei/v1/account/accounts_list
         // with TV client context + accountReadMask. Mirrors AuthApi.java @POST accounts_list
         // and AuthApiHelper.getAccountsListQuery() which uses PostDataHelper.createQueryTV().
@@ -33,11 +35,11 @@ extension AuthService {
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, response) = try await URLSession.shared.data(for: req)
+        guard isCurrentAuthGeneration(expectedGeneration), !Task.isCancelled else {
+            throw CancellationError()
+        }
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
         authLog.notice("fetchUserInfo() — HTTP \(statusCode)")
-        if let bodyStr = String(data: data, encoding: .utf8) {
-            authLog.notice("fetchUserInfo() — response: \(String(bodyStr.prefix(600)))")
-        }
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             authLog.error("fetchUserInfo() — JSON parse failed")
             return
@@ -51,15 +53,18 @@ extension AuthService {
             accountName = (nameDict["runs"] as? [[String: Any]])?.compactMap { $0["text"] as? String }.joined()
                 ?? nameDict["simpleText"] as? String
         }
-        authLog.notice("fetchUserInfo() — accountName=\(self.accountName ?? "nil")")
+        authLog.notice("fetchUserInfo() — account name parsed=\(self.accountName != nil)")
         if let photoDict = item["accountPhoto"] as? [String: Any],
            let thumbnails = photoDict["thumbnails"] as? [[String: Any]],
            let last = thumbnails.last,
            let urlStr = last["url"] as? String {
             accountAvatarURL = URL(string: urlStr.hasPrefix("//") ? "https:\(urlStr)" : urlStr)
-            authLog.notice("fetchUserInfo() — avatarURL=\(urlStr)")
+            authLog.notice("fetchUserInfo() — avatar parsed")
         }
-        saveToKeychain()
+        guard await saveToKeychain(generation: expectedGeneration) else {
+            throw CancellationError()
+        }
+        guard isCurrentAuthGeneration(expectedGeneration) else { throw CancellationError() }
     }
 
     /// Walk Android's AccountsList JSON path:

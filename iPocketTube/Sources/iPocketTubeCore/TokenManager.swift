@@ -15,6 +15,29 @@ import Foundation
 
 public actor TokenManager {
 
+    enum SecureStoreError: LocalizedError, Sendable {
+        case keychain(operation: String, status: OSStatus)
+
+        var errorDescription: String? {
+            switch self {
+            case .keychain(let operation, let status):
+                return "Secure storage \(operation) failed (status \(status))"
+            }
+        }
+    }
+
+    struct SecureStore: Sendable {
+        let get: @Sendable (_ service: String, _ key: String) -> String?
+        let set: @Sendable (_ service: String, _ key: String, _ value: String?) throws -> Void
+        let delete: @Sendable (_ service: String, _ key: String) throws -> Void
+
+        static let system = SecureStore(
+            get: TokenManager.kcGet,
+            set: TokenManager.kcSet,
+            delete: TokenManager.kcDelete
+        )
+    }
+
     // MARK: - Types
 
     public enum Update: Sendable {
@@ -40,8 +63,10 @@ public actor TokenManager {
     private var accountName: String?
     private var accountAvatarURL: URL?
     private var sapisid: String?
+    private var generation: UInt64 = 0
 
     private let service: String
+    private let secureStore: SecureStore
 
     // MARK: - Stream
 
@@ -61,7 +86,12 @@ public actor TokenManager {
 
     // Legacy Keychain service must remain stable or an install-over would lose the signed-in session.
     public init(keychainService: String = "com.smarttube.auth") {
+        self.init(keychainService: keychainService, secureStore: .system)
+    }
+
+    init(keychainService: String, secureStore: SecureStore) {
         service = keychainService
+        self.secureStore = secureStore
 
         var cont: AsyncStream<Update>.Continuation!
         let stream = AsyncStream<Update> { cont = $0 }
@@ -69,17 +99,17 @@ public actor TokenManager {
         continuation = cont
 
         let snap = Snapshot(
-            accessToken:     Self.kcGet(service: keychainService, key: "st_access_token"),
-            refreshToken:    Self.kcGet(service: keychainService, key: "st_refresh_token"),
+            accessToken:     secureStore.get(keychainService, "st_access_token"),
+            refreshToken:    secureStore.get(keychainService, "st_refresh_token"),
             tokenExpiry: {
-                guard let s = Self.kcGet(service: keychainService, key: "st_token_expiry")
+                guard let s = secureStore.get(keychainService, "st_token_expiry")
                 else { return nil }
                 return ISO8601DateFormatter().date(from: s)
             }(),
-            accountName:     Self.kcGet(service: keychainService, key: "st_account_name"),
-            accountAvatarURL: Self.kcGet(service: keychainService, key: "st_avatar_url")
+            accountName:     secureStore.get(keychainService, "st_account_name"),
+            accountAvatarURL: secureStore.get(keychainService, "st_avatar_url")
                                 .flatMap(URL.init(string:)),
-            sapisid:         Self.kcGet(service: keychainService, key: "st_sapisid")
+            sapisid:         secureStore.get(keychainService, "st_sapisid")
         )
         initialSnapshot  = snap
         accessToken      = snap.accessToken
@@ -99,57 +129,78 @@ public actor TokenManager {
     public func currentAvatarURL() -> URL?       { accountAvatarURL }
     public func isSignedIn() -> Bool             { accessToken != nil }
 
+    /// Advances the persistence generation without changing stored values.
+    /// Used by in-memory test sign-out so late saves from an older generation
+    /// are still rejected.
+    public func invalidate(generation requestedGeneration: UInt64) {
+        if requestedGeneration > generation {
+            generation = requestedGeneration
+        }
+    }
+
     // MARK: - Mutations
 
+    @discardableResult
     public func setToken(
         access: String?,
         refresh: String?,
         expiry: Date?,
         accountName: String?,
-        avatarURL: URL?
-    ) {
+        avatarURL: URL?,
+        generation requestedGeneration: UInt64 = 0
+    ) throws -> Bool {
+        guard requestedGeneration >= generation else { return false }
+        generation = requestedGeneration
         self.accessToken      = access
         self.refreshToken     = refresh
         self.tokenExpiry      = expiry
         self.accountName      = accountName
         self.accountAvatarURL = avatarURL
-        persistToKeychain()
+        try persistToKeychain()
         continuation?.yield(.refreshed(token: access, expiresAt: expiry))
+        return true
     }
 
     /// Persists the SAPISID cookie to Keychain so it survives app restarts and
     /// is available on the next launch without requiring a fresh cookie exchange.
-    public func setSAPISID(_ value: String?) {
+    @discardableResult
+    public func setSAPISID(_ value: String?, generation requestedGeneration: UInt64 = 0) throws -> Bool {
+        guard requestedGeneration >= generation else { return false }
+        generation = requestedGeneration
         sapisid = value
-        Self.kcSet(service: service, key: "st_sapisid", value: value)
+        try secureStore.set(service, "st_sapisid", value)
+        return true
     }
 
-    public func clearToken() {
+    public func clearToken(generation requestedGeneration: UInt64? = nil) throws {
+        let targetGeneration = requestedGeneration ?? (generation &+ 1)
+        guard targetGeneration >= generation else { return }
+        generation = targetGeneration
+        try deleteFromKeychain()
         accessToken      = nil
         refreshToken     = nil
         tokenExpiry      = nil
         accountName      = nil
         accountAvatarURL = nil
         sapisid          = nil
-        deleteFromKeychain()
         continuation?.yield(.signedOut)
     }
 
     // MARK: - Private Keychain I/O
 
-    private func persistToKeychain() {
+    private func persistToKeychain() throws {
         let fmt = ISO8601DateFormatter()
-        Self.kcSet(service: service, key: "st_access_token",  value: accessToken)
-        Self.kcSet(service: service, key: "st_refresh_token", value: refreshToken)
-        Self.kcSet(service: service, key: "st_token_expiry",  value: tokenExpiry.map { fmt.string(from: $0) })
-        Self.kcSet(service: service, key: "st_account_name",  value: accountName)
-        Self.kcSet(service: service, key: "st_avatar_url",    value: accountAvatarURL?.absoluteString)
+        try secureStore.set(service, "st_access_token", accessToken)
+        try secureStore.set(service, "st_refresh_token", refreshToken)
+        try secureStore.set(service, "st_token_expiry", tokenExpiry.map { fmt.string(from: $0) })
+        try secureStore.set(service, "st_account_name", accountName)
+        try secureStore.set(service, "st_avatar_url", accountAvatarURL?.absoluteString)
     }
 
-    private func deleteFromKeychain() {
+    private func deleteFromKeychain() throws {
         for key in ["st_access_token", "st_refresh_token", "st_token_expiry",
                     "st_account_name", "st_avatar_url", "st_sapisid"] {
-            Self.kcDelete(service: service, key: key)
+            try secureStore.delete(service, key)
         }
     }
 
@@ -171,13 +222,16 @@ public actor TokenManager {
         return String(data: data, encoding: .utf8)
     }
 
-    private static func kcSet(service: String, key: String, value: String?) {
+    private static func kcSet(service: String, key: String, value: String?) throws {
         let deleteQuery: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: key,
         ]
-        SecItemDelete(deleteQuery as CFDictionary)
+        let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
+        guard deleteStatus == errSecSuccess || deleteStatus == errSecItemNotFound else {
+            throw SecureStoreError.keychain(operation: "delete-before-save", status: deleteStatus)
+        }
         guard let value, let data = value.data(using: .utf8) else { return }
         let addQuery: [CFString: Any] = [
             kSecClass:          kSecClassGenericPassword,
@@ -186,15 +240,21 @@ public actor TokenManager {
             kSecValueData:      data,
             kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        SecItemAdd(addQuery as CFDictionary, nil)
+        let addStatus = SecItemAdd(addQuery as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            throw SecureStoreError.keychain(operation: "save", status: addStatus)
+        }
     }
 
-    private static func kcDelete(service: String, key: String) {
+    private static func kcDelete(service: String, key: String) throws {
         let query: [CFString: Any] = [
             kSecClass:       kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: key,
         ]
-        SecItemDelete(query as CFDictionary)
+        let status = SecItemDelete(query as CFDictionary)
+        guard status == errSecSuccess || status == errSecItemNotFound else {
+            throw SecureStoreError.keychain(operation: "delete", status: status)
+        }
     }
 }

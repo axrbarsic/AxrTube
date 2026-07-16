@@ -120,9 +120,9 @@ public struct HomeView: View {
                 selectedSection = first
             }
         }
-        .task(id: auth.accessToken) {
-            await homeVM.updateAuthToken(auth.accessToken)
-            await sectionVM.updateAuthToken(auth.accessToken)
+        .task(id: auth.authSnapshot) {
+            await homeVM.applyAuthSnapshot(auth.authSnapshot)
+            await sectionVM.applyAuthSnapshot(auth.authSnapshot)
         }
         .task(id: selectedSection) {
             // Reset auto-retry flags when switching sections to prevent stale

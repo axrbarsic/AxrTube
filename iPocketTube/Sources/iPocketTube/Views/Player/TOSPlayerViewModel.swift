@@ -135,6 +135,8 @@ final class TOSPlayerViewModel: NSObject {
     /// `tracker`. See `beginWatchtimeTracking()`/`saveProgress()`
     /// (TOSPlayerViewModel+WatchHistory.swift) for where this is begun/used.
     let tracker: WatchtimeTracker
+    var authSnapshotGeneration: UInt64?
+    var authPropagationTask: Task<Void, Never>?
 
     // MARK: - Internal
 

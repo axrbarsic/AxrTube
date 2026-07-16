@@ -629,6 +629,7 @@ extension PlaybackViewModel {
             // cached.trackingURLs is PlaybackTrackingURLs?? — .some(nil) means the prefetch
             // ran before auth was ready; treat that as a miss so we still get live URLs.
             let cachedTrackingURLs: PlaybackTrackingURLs? = cached.trackingURLs.flatMap { $0 }
+            let trackingAuthGeneration = authSnapshotGeneration
             let authTrackingTask: Task<PlaybackTrackingURLs?, Never>?
             if cachedTrackingURLs != nil {
                 // Tracking URLs came from the cache; no need for a parallel TV-client call.
@@ -1072,6 +1073,7 @@ extension PlaybackViewModel {
             let p2Info = info
             let p2CachedTracking = cachedTrackingURLs
             let p2AuthTask = authTrackingTask
+            let p2AuthGeneration = trackingAuthGeneration
             let p2SponsorCached = sponsorCached
             let p2Video = video
             phase2Task = Task(priority: .utility) { [weak self] in
@@ -1081,6 +1083,7 @@ extension PlaybackViewModel {
                     info: p2Info,
                     cachedTrackingURLs: p2CachedTracking,
                     authTrackingTask: p2AuthTask,
+                    authGeneration: p2AuthGeneration,
                     sponsorCached: p2SponsorCached
                 )
             }
@@ -1239,6 +1242,7 @@ extension PlaybackViewModel {
         info: PlayerInfo,
         cachedTrackingURLs: PlaybackTrackingURLs?,
         authTrackingTask: Task<PlaybackTrackingURLs?, Never>?,
+        authGeneration: UInt64?,
         sponsorCached: Bool
     ) async {
         guard !Task.isCancelled else { return }
@@ -1397,15 +1401,33 @@ extension PlaybackViewModel {
         guard !Task.isCancelled else { return }
 
         // --- Tracking URLs ---
+        guard authGeneration == authSnapshotGeneration else {
+            authTrackingTask?.cancel()
+            tracker.setTrackingURLs(nil)
+            playerLog.notice("discarded tracking URLs from superseded auth snapshot")
+            return
+        }
         let resolvedTrackingURLs: PlaybackTrackingURLs?
         if let cachedTracking = cachedTrackingURLs {
             resolvedTrackingURLs = cachedTracking
             playerLog.notice("cache HIT: trackingURLs")
         } else {
             resolvedTrackingURLs = await authTrackingTask?.value ?? info.trackingURLs
-            await VideoPreloadCache.shared.store(trackingURLs: resolvedTrackingURLs, for: video.id)
+            let accepted = await VideoPreloadCache.shared.store(
+                trackingURLs: resolvedTrackingURLs,
+                nextInfo: nil,
+                for: video.id,
+                authGeneration: authGeneration
+            )
+            guard accepted else {
+                tracker.setTrackingURLs(nil)
+                return
+            }
         }
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled, authGeneration == authSnapshotGeneration else {
+            tracker.setTrackingURLs(nil)
+            return
+        }
         tracker.setTrackingURLs(resolvedTrackingURLs)
         playerLog.notice("activeTrackingURLs resolved: \(resolvedTrackingURLs != nil ? "account-bound" : "none")")
 

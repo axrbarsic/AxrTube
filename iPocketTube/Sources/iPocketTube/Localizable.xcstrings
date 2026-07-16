@@ -21585,6 +21585,18 @@
         }
       }
     },
+    "Secure credentials could not be removed. Sign out was not completed.": {
+      "comment": "Shown when Keychain deletion fails during sign out",
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось удалить защищённые данные входа. Выход не завершён."
+          }
+        }
+      }
+    },
     "Sign-In Failed": {
       "comment": "Sign-in error alert title",
       "extractionState": "manual",

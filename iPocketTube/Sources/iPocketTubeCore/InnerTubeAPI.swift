@@ -27,6 +27,7 @@ public actor InnerTubeAPI {
     /// SAPISID cookie value from YouTube.com web session (set via OAuthLogin/MergeSession).
     /// Used by postWebCreator to compute SAPISIDHASH for WEB_CREATOR requests on www.youtube.com.
     var sapisid: String?
+    private var authSnapshotGeneration: UInt64?
 
     // MARK: - signatureTimestamp (STS) cache
     //
@@ -298,17 +299,54 @@ public actor InnerTubeAPI {
     // MARK: - Auth
 
     public func setAuthToken(_ token: String?) {
-        let msg = token != nil ? "token(\(token!.prefix(8))…)" : "nil"
-        tubeLog.notice("setAuthToken: \(msg, privacy: .public)")
+        guard authSnapshotGeneration == nil else {
+            tubeLog.notice("setAuthToken ignored after versioned auth activation")
+            return
+        }
+        tubeLog.notice("setAuthToken: \(token != nil ? "present" : "nil", privacy: .public)")
         self.authToken = token
     }
 
     /// Sets the YouTube.com SAPISID cookie value extracted via the OAuthLogin/MergeSession
     /// flow. Used by postWebCreator to compute the SAPISIDHASH Authorization header.
     public func setSAPISID(_ value: String?) {
+        guard authSnapshotGeneration == nil else {
+            tubeLog.notice("setSAPISID ignored after versioned auth activation")
+            return
+        }
         let msg = value != nil ? "present" : "nil"
         tubeLog.notice("setSAPISID: \(msg, privacy: .public)")
         self.sapisid = value
+    }
+
+    /// Atomically applies a complete auth state. Older callbacks are ignored,
+    /// so a token captured before sign-out cannot reactivate this API actor.
+    public func applyAuthSnapshot(_ snapshot: AuthSessionSnapshot) async {
+        if let current = authSnapshotGeneration, snapshot.generation <= current {
+            tubeLog.notice("Ignoring stale auth snapshot")
+            return
+        }
+        authSnapshotGeneration = snapshot.generation
+        authToken = snapshot.accessToken
+        sapisid = snapshot.sapisid
+        tubeLog.notice("Applied auth snapshot generation=\(snapshot.generation, privacy: .public) phase=\(snapshot.phase.rawValue, privacy: .public)")
+    }
+
+    /// Applies a cookie recovered by the playback web view only while the same
+    /// versioned signed-in session is still current. It cannot create a session
+    /// or cross a later sign-out boundary.
+    public func applySupplementalSAPISID(_ value: String, authGeneration: UInt64) {
+        guard authSnapshotGeneration == authGeneration, authToken != nil else { return }
+        sapisid = value
+    }
+
+    func authSnapshotForTesting() -> AuthSessionSnapshot {
+        AuthSessionSnapshot(
+            generation: authSnapshotGeneration ?? 0,
+            phase: (authToken != nil || sapisid != nil) ? .signedIn : .signedOut,
+            accessToken: authToken,
+            sapisid: sapisid
+        )
     }
 
     /// Returns whether the SAPISID cookie is currently set.
