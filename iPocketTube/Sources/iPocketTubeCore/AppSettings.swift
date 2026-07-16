@@ -49,6 +49,8 @@ public struct AppSettings: Codable {
     public var compactSearchCards: Bool
     /// Full-width horizontal cards in Media Library catalogues.
     public var compactMediaLibraryCards: Bool
+    /// Strict explicit-search filter backed by YouTube audio/caption metadata.
+    public var russianOnlySearchEnabled: Bool
     public var hideShorts: Bool
     /// User-facing positive form of the persisted legacy `hideShorts` flag.
     /// Keeping the stored key preserves existing settings compatibility.
@@ -264,6 +266,7 @@ public struct AppSettings: Codable {
         compactThumbnails    = false
         compactSearchCards   = true
         compactMediaLibraryCards = true
+        russianOnlySearchEnabled = true
         hideShorts           = true
         hideLiveShorts       = false
         hideVideoPremieres   = false
@@ -350,6 +353,7 @@ extension AppSettings {
         case compactThumbnails
         case compactSearchCards
         case compactMediaLibraryCards
+        case russianOnlySearchEnabled
         case hideShorts
         case hideLiveShorts
         case hideVideoPremieres
@@ -399,6 +403,7 @@ extension AppSettings {
         compactThumbnails            = c.safeDecode(Bool.self,              forKey: .compactThumbnails,            default: d.compactThumbnails)
         compactSearchCards           = c.safeDecode(Bool.self,              forKey: .compactSearchCards,           default: d.compactSearchCards)
         compactMediaLibraryCards     = c.safeDecode(Bool.self,              forKey: .compactMediaLibraryCards,     default: d.compactMediaLibraryCards)
+        russianOnlySearchEnabled     = c.safeDecode(Bool.self,              forKey: .russianOnlySearchEnabled,     default: d.russianOnlySearchEnabled)
         hideShorts                   = c.safeDecode(Bool.self,              forKey: .hideShorts,                   default: d.hideShorts)
         hideLiveShorts               = c.safeDecode(Bool.self,              forKey: .hideLiveShorts,               default: d.hideLiveShorts)
         hideVideoPremieres           = c.safeDecode(Bool.self,              forKey: .hideVideoPremieres,           default: d.hideVideoPremieres)

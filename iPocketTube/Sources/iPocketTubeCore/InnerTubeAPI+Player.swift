@@ -10,6 +10,43 @@ private let tubeLog = Logger(subsystem: appSubsystem, category: "InnerTube")
 
 extension InnerTubeAPI {
 
+    /// Fetches only privacy-safe language descriptors from player metadata.
+    /// A second client is attempted only when the first response contains no
+    /// explicit audio/ASR evidence.
+    public func fetchVideoLanguageEvidence(videoId: String) async throws -> VideoLanguageEvidence {
+        func body(client: [String: Any]) -> [String: Any] {
+            var value = makeBody(client: client)
+            value["videoId"] = videoId
+            value["racyCheckOk"] = true
+            value["contentCheckOk"] = true
+            return value
+        }
+
+        var receivedResponse = false
+        var lastError: Error?
+        var evidence = VideoLanguageEvidence()
+
+        do {
+            let json = try await postPlayer(body: body(client: iosClientContext))
+            receivedResponse = true
+            evidence = evidence.merging(VideoLanguageEvidenceParser.parse(json))
+            if evidence.hasExplicitEvidence { return evidence }
+        } catch {
+            lastError = error
+        }
+
+        do {
+            let json = try await post(endpoint: "player", body: body(client: webClientContext))
+            receivedResponse = true
+            evidence = evidence.merging(VideoLanguageEvidenceParser.parse(json))
+        } catch {
+            lastError = error
+        }
+
+        if !receivedResponse, let lastError { throw lastError }
+        return evidence
+    }
+
     /// Fetches only the exact publication calendar day from the existing
     /// InnerTube player metadata path. Stream URLs are never logged or retained.
     public func fetchExactPublicationDate(videoId: String) async throws -> Date? {

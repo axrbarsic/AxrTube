@@ -71,6 +71,9 @@ public struct SearchView: View {
             }
         }
         .task(id: vm.query) { await vm.updateSuggestions(for: vm.query) }
+        .task(id: store.settings.russianOnlySearchEnabled) {
+            vm.setRussianOnlySearchEnabled(store.settings.russianOnlySearchEnabled)
+        }
         .onChange(of: isSearchFocused) { _, focused in
             if focused { Task { await vm.updateSuggestions(for: vm.query) } }
         }

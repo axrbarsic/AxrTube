@@ -17,6 +17,7 @@ public final class SearchViewModel {
     public private(set) var suggestions: [String] = []
     public private(set) var history: [SearchHistoryEntry] = []
     public private(set) var isLoading: Bool = false
+    public private(set) var russianOnlySearchEnabled: Bool = true
     public var error: Error?
 
     private let api: any InnerTubeAPIProtocol
@@ -27,6 +28,9 @@ public final class SearchViewModel {
     private var suggestTask: Task<Void, Never>?
     private var hideObserverTasks: [Task<Void, Never>] = []
     private var searchGeneration: UInt = 0
+    private static let strictSearchPageBudget = 3
+    private static let strictSearchTargetCount = 8
+    private static let languageEnrichmentConcurrency = 4
 
     public var hasActiveSearch: Bool { activeQuery != nil }
 
@@ -161,6 +165,15 @@ public final class SearchViewModel {
         beginSearch(query: activeQuery, recordHistory: false)
     }
 
+    /// Applies the persisted setting live. An active query is restarted from page one
+    /// so unrestricted and strict result sets can never contaminate each other.
+    public func setRussianOnlySearchEnabled(_ enabled: Bool) {
+        guard russianOnlySearchEnabled != enabled else { return }
+        russianOnlySearchEnabled = enabled
+        guard let activeQuery else { return }
+        beginSearch(query: activeQuery, recordHistory: false)
+    }
+
     public func loadMore() {
         guard let activeQuery, let token = nextPageToken, !isLoading else { return }
         let generation = searchGeneration
@@ -186,29 +199,89 @@ public final class SearchViewModel {
             if generation == searchGeneration { isLoading = false }
         }
         do {
-            let group = try await retryWithBackoff(label: "SearchVM") {
-                try await api.search(query: query, continuationToken: continuationToken, filter: filter)
-            }
+            let preference: SearchLanguagePreference = russianOnlySearchEnabled ? .russian : .unrestricted
+            var token = continuationToken
+            var accepted: [Video] = []
+            var pagesFetched = 0
+
+            repeat {
+                let requestToken = token
+                let group = try await retryWithBackoff(label: "SearchVM") {
+                    try await api.search(
+                        query: query,
+                        continuationToken: requestToken,
+                        filter: filter,
+                        languagePreference: preference
+                    )
+                }
+                guard !Task.isCancelled,
+                      generation == searchGeneration,
+                      activeQuery == query else { return }
+
+                if preference == .russian {
+                    accepted.append(contentsOf: await russianVideos(from: group.videos))
+                } else {
+                    accepted.append(contentsOf: group.videos)
+                }
+                token = group.nextPageToken
+                pagesFetched += 1
+            } while preference == .russian
+                && accepted.count < Self.strictSearchTargetCount
+                && token != nil
+                && pagesFetched < Self.strictSearchPageBudget
+
             guard !Task.isCancelled,
                   generation == searchGeneration,
                   activeQuery == query else { return }
             if continuationToken == nil {
                 results = VideoPublicationSortPolicy.merging(
                     existing: [],
-                    page: group.videos,
+                    page: accepted,
                     for: .search
                 )
             } else {
                 results = VideoPublicationSortPolicy.merging(
                     existing: results,
-                    page: group.videos,
+                    page: accepted,
                     for: .search
                 )
             }
-            nextPageToken = group.nextPageToken
+            nextPageToken = token
             schedulePublicationEnrichment(generation: generation)
         } catch {
             if !Task.isCancelled, generation == searchGeneration { self.error = error }
+        }
+    }
+
+    /// Enriches a page in bounded batches. The cache coalesces duplicate video IDs
+    /// across pagination and repeated searches; the final result is published once.
+    private func russianVideos(from videos: [Video]) async -> [Video] {
+        var evidenceByID: [String: VideoLanguageEvidence] = [:]
+        var start = videos.startIndex
+        while start < videos.endIndex {
+            let end = videos.index(start, offsetBy: Self.languageEnrichmentConcurrency, limitedBy: videos.endIndex)
+                ?? videos.endIndex
+            let batch = Array(videos[start..<end])
+            await withTaskGroup(of: (String, VideoLanguageEvidence).self) { group in
+                for video in batch {
+                    group.addTask { [api] in
+                        let evidence = await VideoLanguageEvidenceCache.shared.evidence(for: video.id) {
+                            (try? await api.fetchVideoLanguageEvidence(videoId: video.id)) ?? .init()
+                        }
+                        return (video.id, evidence)
+                    }
+                }
+                for await (id, evidence) in group { evidenceByID[id] = evidence }
+            }
+            if Task.isCancelled { return [] }
+            start = end
+        }
+
+        return videos.filter {
+            VideoLanguageClassifier.includes(
+                evidence: evidenceByID[$0.id] ?? .init(),
+                preference: .russian
+            )
         }
     }
 

@@ -126,7 +126,31 @@ extension InnerTubeAPI {
         continuationToken: String? = nil,
         filter: SearchFilter = .default
     ) async throws -> VideoGroup {
-        var body = makeBody(client: webClientContext, continuationToken: continuationToken)
+        try await search(
+            query: query,
+            continuationToken: continuationToken,
+            filter: filter,
+            languagePreference: .unrestricted
+        )
+    }
+
+    public func search(
+        query: String,
+        continuationToken: String? = nil,
+        filter: SearchFilter = .default,
+        languagePreference: SearchLanguagePreference
+    ) async throws -> VideoGroup {
+        let context: [String: Any]
+        switch languagePreference {
+        case .unrestricted:
+            context = webClientContext
+        case .russian:
+            var client = (webClientContext["client"] as? [String: Any]) ?? [:]
+            client["hl"] = "ru"
+            client["gl"] = "RU"
+            context = ["client": client]
+        }
+        var body = makeBody(client: context, continuationToken: continuationToken)
         if continuationToken == nil {
             body["query"] = query
             if let params = filter.encodedParams() {

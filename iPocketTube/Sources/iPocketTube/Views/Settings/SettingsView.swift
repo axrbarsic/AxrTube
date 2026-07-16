@@ -211,6 +211,20 @@ public struct SettingsView: View {
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
+            Toggle(isOn: hapticBinding($store.settings.russianOnlySearchEnabled)) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Russian-language videos only", systemImage: "waveform.and.mic")
+                    Text("Strict search uses available YouTube audio metadata")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                }
+            }
+            .tint(iPocketTubeVisualTokens.mint)
+            .frame(minHeight: 60)
+            .accessibilityIdentifier("settings.russianOnlySearchToggle")
+
+            Divider().overlay(iPocketTubeVisualTokens.stroke)
+
             Toggle(isOn: Binding(
                 get: { store.settings.showShorts },
                 set: {

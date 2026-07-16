@@ -27020,6 +27020,12 @@
     "No Recent Searches": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Недавних запросов нет" } } }
     },
+    "Russian-language videos only": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Только русскоязычные ролики" } } }
+    },
+    "Strict search uses available YouTube audio metadata": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Строгий фильтр использует доступные YouTube-метаданные аудио" } } }
+    },
     "Show Shorts": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Показывать Shorts" } } }
     },

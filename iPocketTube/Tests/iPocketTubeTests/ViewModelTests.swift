@@ -46,6 +46,8 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
     )
     var channelVideosResult: VideoGroup = VideoGroup(title: "ChVideos", videos: [])
     var searchResult: VideoGroup = VideoGroup(title: "Search", videos: [])
+    var searchPageHandler: ((String?) -> VideoGroup)? = nil
+    var languageEvidenceByVideoID: [String: VideoLanguageEvidence] = [:]
     var suggestionsResult: [String] = []
     var playlistVideosResult: VideoGroup = VideoGroup(title: "Playlist", videos: [])
     var errorToThrow: Error? = nil
@@ -175,7 +177,26 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
     func search(query: String, continuationToken: String?, filter: SearchFilter) async throws -> VideoGroup {
         calls.append(Call(method: "search", args: [query, continuationToken ?? "nil"]))
         if let e = errorToThrow { throw e }
+        if let searchPageHandler { return searchPageHandler(continuationToken) }
         return searchResult
+    }
+
+    func search(
+        query: String,
+        continuationToken: String?,
+        filter: SearchFilter,
+        languagePreference: SearchLanguagePreference
+    ) async throws -> VideoGroup {
+        calls.append(Call(method: "search", args: [query, languagePreference == .russian ? "ru" : "all", continuationToken ?? "nil"]))
+        if let e = errorToThrow { throw e }
+        if let searchPageHandler { return searchPageHandler(continuationToken) }
+        return searchResult
+    }
+
+    func fetchVideoLanguageEvidence(videoId: String) async throws -> VideoLanguageEvidence {
+        calls.append(Call(method: "fetchVideoLanguageEvidence", args: [videoId]))
+        if let e = errorToThrow { throw e }
+        return languageEvidenceByVideoID[videoId] ?? VideoLanguageEvidence(defaultAudioLanguage: "ru")
     }
 
     func fetchSearchSuggestions(query: String) async throws -> [String] {
@@ -935,6 +956,7 @@ struct SearchViewModelTests {
             nextPageToken: "stale-token"
         )
         let vm = makeSearchViewModel(api: mock)
+        vm.setRussianOnlySearchEnabled(false)
         vm.query = "Michael Naki"
         vm.search()
         await waitForTasks(until: { vm.results.count == 1 })
@@ -963,6 +985,7 @@ struct SearchViewModelTests {
             nextPageToken: "page-two"
         )
         let vm = makeSearchViewModel(api: mock)
+        vm.setRussianOnlySearchEnabled(false)
         vm.query = "query"
         vm.search()
         await waitForTasks(until: { vm.results.first?.id == "old_result" })
@@ -1002,6 +1025,76 @@ struct SearchViewModelTests {
         await waitForTasks(until: { !vm.isLoading && !vm.results.isEmpty })
 
         #expect(vm.results.map(\.id) == ["same-id", "unique-id"])
+    }
+
+    @Test("Strict search accepts Russian evidence and rejects explicit English or unknown")
+    func strictLanguageEvidence() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(title: "Results", videos: [
+            Video(id: "spoken-ru", title: "ChatGPT", channelTitle: "Channel"),
+            Video(id: "spoken-en", title: "Русский заголовок", channelTitle: "Channel"),
+            Video(id: "unknown-language", title: "King Kong", channelTitle: "Channel"),
+        ])
+        mock.languageEvidenceByVideoID = [
+            "spoken-ru": VideoLanguageEvidence(defaultAudioLanguage: "ru-RU"),
+            "spoken-en": VideoLanguageEvidence(defaultAudioLanguage: "en-US"),
+            "unknown-language": VideoLanguageEvidence(),
+        ]
+
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "ChatGPT"
+        vm.search()
+        await waitForTasks(until: { !vm.isLoading })
+
+        #expect(vm.results.map(\.id) == ["spoken-ru"])
+    }
+
+    @Test("Disabling strict search returns the complete unfiltered page")
+    func unrestrictedToggle() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(title: "Results", videos: [
+            makeVideo("unrestricted-en"), makeVideo("unrestricted-unknown"),
+        ])
+        mock.languageEvidenceByVideoID = [
+            "unrestricted-en": VideoLanguageEvidence(defaultAudioLanguage: "en"),
+            "unrestricted-unknown": VideoLanguageEvidence(),
+        ]
+        let vm = makeSearchViewModel(api: mock)
+        vm.setRussianOnlySearchEnabled(false)
+        vm.query = "King Kong"
+        vm.search()
+        await waitForTasks(until: { !vm.isLoading })
+
+        #expect(Set(vm.results.map(\.id)) == Set(["unrestricted-en", "unrestricted-unknown"]))
+        #expect(!mock.calls.contains { $0.method == "fetchVideoLanguageEvidence" })
+    }
+
+    @Test("Strict pagination refills bounded pages and preserves dedupe and ordering")
+    func strictPaginationRefill() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchPageHandler = { token in
+            switch token {
+            case nil:
+                return VideoGroup(title: "P1", videos: [makeVideo("refill-en"), makeVideo("refill-ru-a")], nextPageToken: "p2")
+            case "p2":
+                return VideoGroup(title: "P2", videos: [makeVideo("refill-ru-a"), makeVideo("refill-ru-b")], nextPageToken: nil)
+            default:
+                return VideoGroup(title: "Empty", videos: [])
+            }
+        }
+        mock.languageEvidenceByVideoID = [
+            "refill-en": VideoLanguageEvidence(defaultAudioLanguage: "en"),
+            "refill-ru-a": VideoLanguageEvidence(defaultAudioLanguage: "ru"),
+            "refill-ru-b": VideoLanguageEvidence(automaticCaptionLanguages: ["ru"]),
+        ]
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "topic"
+        vm.search()
+        await waitForTasks(until: { !vm.isLoading })
+
+        #expect(vm.results.map(\.id) == ["refill-ru-a", "refill-ru-b"])
+        #expect(vm.results.count == 2)
+        #expect(mock.calls.filter { $0.method == "search" }.count == 2)
     }
 }
 
