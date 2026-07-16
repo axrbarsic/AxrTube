@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to SmartTube are documented here.
+All notable changes to iPocketTube are documented here.
 
 ---
 
@@ -117,7 +117,7 @@ All notable changes to SmartTube are documented here.
 ## [2.6] – 2026-05-14
 
 ### Added
-- **Safari Web Extension** — new `SafariExtension` target (`manifest.json` + `content.js`) intercepts YouTube watch, Shorts, youtu.be, and Music URLs in Safari and redirects them to `smarttube://video/<id>` without any user tap; `YouTubeLinkHandler` extended to recognise `music.youtube.com/watch?v=` URLs so the extension and the app URL handler stay in sync; `SafariExtensionURLCoverageTests` (7 tests) verify every manifest match pattern
+- **Safari Web Extension** — new `iPocketTubeSafariExtension` target (`manifest.json` + `content.js`) intercepts YouTube watch, Shorts, youtu.be, and Music URLs in Safari and redirects them to `ipockettube://video/<id>` without any user tap; `YouTubeLinkHandler` extended to recognise `music.youtube.com/watch?v=` URLs so the extension and the app URL handler stay in sync; `iPocketTubeSafariExtensionURLCoverageTests` (7 tests) verify every manifest match pattern
 - **Auto quality caps at display native resolution** — when `preferredQuality == .auto`, `PlaybackViewModel+Fallback.qualityCapVideoURL` now calls `displayMaxVideoHeight()` (returns `min(nativeBounds.width, nativeBounds.height)` on UIKit, 1080 on tvOS) and passes the result as `preferredMaxHeight` to `selectBestVideoFormat`; initial DASH composition and HLS `preferredMaximumResolution` hints use the same value; previously Auto unconditionally picked the highest available format regardless of screen pixel density
 
 ### Fixed
@@ -300,7 +300,7 @@ All notable changes to SmartTube are documented here.
 ## [1.6] – 2026-04-28/29 — Initial Open Source Release
 
 ### Added
-- Initial open source release of SmartTube for iPhone, iPad, macOS, and Apple TV
+- Initial open source release of iPocketTube for iPhone, iPad, macOS, and Apple TV
 - **Audio track selection** — loads alternate HLS renditions (dubbed/translated tracks) from the manifest; auto-selects by device locale; persisted in `AppSettings`
 - tvOS d-pad navigation in the player — custom `TVPlayerControl` enum; directional seek, play/pause, and back without SwiftUI focus engine
 - tvOS Settings: Ko-fi and GitHub QR code sheets

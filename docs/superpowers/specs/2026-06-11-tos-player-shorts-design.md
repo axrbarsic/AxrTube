@@ -26,7 +26,7 @@ Replace the AVPlayer-based Shorts pipeline with a TOS/embed-based pipeline, for 
 
 ### New view model: `ShortsEmbedPlayerViewModel`
 
-New file (e.g. `Sources/SmartTubeIOS/ViewModels/ShortsEmbedPlayerViewModel.swift`). Owns **one persistent `WKWebView`** for the lifetime of a `ShortsPlayerView` session (not one per Short).
+New file (e.g. `Sources/iPocketTube/ViewModels/ShortsEmbedPlayerViewModel.swift`). Owns **one persistent `WKWebView`** for the lifetime of a `ShortsPlayerView` session (not one per Short).
 
 - **Configuration** mirrors `TOSPlayerViewModel.swift:203-210`: `allowsInlineMediaPlayback = true`, `allowsAirPlayForMediaPlayback = true`, `mediaTypesRequiringUserActionForPlayback = []`, transparent background (`isOpaque = false`, clear `backgroundColor`).
 - **Injected user scripts**: the same `webkitHiderJS` (hides `window.webkit` from YouTube's WKWebView-detection) and `stateDetectionJS` (polls `document.querySelector('video')`, watches `.ytp-error` via `MutationObserver`, posts `ready`/`tick`/`stateChange`/`error`/`autoUnmuted` via `window.__nativeYTCallback.postMessage`), injected `forMainFrameOnly: false` so they apply to the cross-origin YouTube iframe.
@@ -90,12 +90,12 @@ Structure preserved, engine swapped:
 
 ## Testing Strategy
 
-**Unit tests** (`SmartTubeIOSTests`):
+**Unit tests** (`iPocketTubeTests`):
 - Existing Shorts tests (`ShortsNavigationTests`, `ShortsVerticalThumbnailTests`, `HideShortsFilterTests`, `FEShortsClientRegressionTests`, `ShortsRowSectionDataTests`) are feed/filtering/navigation logic, independent of the player engine — remain unchanged.
-- New: extract embed-URL construction (`videoId` → `https://www.youtube.com/embed/{id}?...`) as a pure function in `SmartTubeIOSCore` (same pattern as `HLSManifestParser`), unit-testable without a WKWebView.
+- New: extract embed-URL construction (`videoId` → `https://www.youtube.com/embed/{id}?...`) as a pure function in `iPocketTubeCore` (same pattern as `HLSManifestParser`), unit-testable without a WKWebView.
 - New: extract the end-of-video decision logic (loop / advance / freeze) as a pure function operating on `(settings, currentIndex, videos.count)`, testable the same way as `ShortsNavigation.targetIndex`.
 
-**UI tests** (`SmartTubeUITests`):
+**UI tests** (`iPocketTubeUITests`):
 - New test: swipe through 2-3 Shorts, verify `"ready"`/`"tick"`/`"stateChange"` Darwin notifications fire for *each* loaded Short — proves the iframe-src-swap actually re-triggers the JS bridge per swap. Marked with the `AGENT-POST-RUN-CHECK: ui-tests-with-logs` comment per that skill's standard.
 - Existing Shorts feed UI tests (selection, filtering) should be unaffected by the engine swap.
 

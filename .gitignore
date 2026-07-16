@@ -42,11 +42,11 @@ fastlane/test_output
 *.mobileprovision
 AuthKey_*.p8
 
-# Private signing config (copy from SmartTubeIOSPrivate via setup.sh)
-SmartTubeApp/Config/Secrets.xcconfig
+# Private signing config (copy from iPocketTubePrivate via setup.sh)
+iPocketTubeApp/Config/Secrets.xcconfig
 
-# Firebase config (copy from SmartTubeIOSPrivate via setup.sh)
-SmartTubeApp/SmartTubeApp/GoogleService-Info.plist
+# Firebase config (copy from iPocketTubePrivate via setup.sh)
+iPocketTubeApp/iPocketTubeApp/GoogleService-Info.plist
 
 # Simulator
 *.app

@@ -37,10 +37,10 @@
 ```bash
 git clone https://github.com/axrbarsic/iPocketTube.git
 cd iPocketTube
-open SmartTube.xcworkspace
+open iPocketTube.xcworkspace
 ```
 
-1. Выберите схему `SmartTube` и свой iPhone.
+1. Выберите схему `iPocketTube` и свой iPhone.
 2. В `Signing & Capabilities` назначьте собственную Team и включите automatic signing для приложения и пользовательских extensions. Не коммитьте Team ID, provisioning profiles, сертификаты и приватные конфиги.
 3. Соберите и запустите приложение из Xcode.
 
@@ -49,20 +49,20 @@ Firebase не обязателен для персональной сборки.
 ## Структура
 
 ```text
-SmartTubeIOS/          Swift Package: модели, InnerTube, playback/download state, SwiftUI
-SmartTubeApp/          Xcode project: iOS app, Share/Safari extensions, Live Activity
-SmartTube.xcworkspace/ Рабочее пространство Xcode
+iPocketTube/          Swift Package: модели, InnerTube, playback/download state, SwiftUI
+iPocketTubeApp/          Xcode project: iOS app, Share/Safari extensions, Live Activity
+iPocketTube.xcworkspace/ Рабочее пространство Xcode
 ```
 
 Адресные тесты Swift Package:
 
 ```bash
-swift test --package-path SmartTubeIOS
+swift test --package-path iPocketTube
 ```
 
 ## Происхождение и лицензия
 
-iPocketTube — модифицированный fork проекта [milika/SmartTubeIOS](https://github.com/milika/SmartTubeIOS). Исходные copyright notices и история upstream сохранены.
+iPocketTube основан на проекте [milika/SmartTubeIOS](https://github.com/milika/SmartTubeIOS); исходные copyright notices и история upstream сохранены.
 
 Код распространяется по [GNU GPL v3](LICENSE). Проект не аффилирован с Google LLC или YouTube. YouTube является товарным знаком соответствующего правообладателя.
 

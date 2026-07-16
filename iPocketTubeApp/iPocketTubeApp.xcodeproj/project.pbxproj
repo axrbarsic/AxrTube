@@ -1,0 +1,1646 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03863DDC82B3DC452E915BF7 /* DownloadLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 46FAE8C7AB41057B392DF731 /* DownloadLiveActivity.swift */; };
+		06412259452CCFBF300F2D4B /* iPocketTube in Frameworks */ = {isa = PBXBuildFile; productRef = B8401470D9A590E7F3685830 /* iPocketTube */; };
+		1A2B3C4D5E6F1A2B3C4D5E63 /* TVFocusChainUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A2B3C4D5E6F1A2B3C4D5E62 /* TVFocusChainUITests.swift */; };
+		494A17316084B602873D7C05 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AE55B486AFD7F51FEF1874FF /* Assets.xcassets */; };
+		53352CFF63CF0A5B34A1998B /* SpinnerDismissalUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4CD3DC338DC0106A0F179BC1 /* SpinnerDismissalUITests.swift */; };
+		673C1D012F7F20340021583B /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 673C1D002F7F20340021583B /* Launch Screen.storyboard */; platformFilter = ios; };
+		67A5E80B2FB3932400C53D61 /* iPocketTubeSafariExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 67A5E7F32FB3932400C53D61 /* iPocketTubeSafariExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		67AEAB0F2FAF96BC00820F4D /* VideoDownloadUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67AEAB0E2FAF96BC00820F4D /* VideoDownloadUITests.swift */; };
+		67B1B1732FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67B1B1722FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift */; };
+		67E2B0742FAD1BBE005F70E6 /* MiniPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E2B0732FAD1BBE005F70E6 /* MiniPlayerUITests.swift */; };
+		67E2B0B22FADFE59005F70E6 /* PlayerDoubleTapUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67E2B0B12FADFE59005F70E6 /* PlayerDoubleTapUITests.swift */; };
+		67E6B6872F9535CD00CD372F /* iPocketTube in Frameworks */ = {isa = PBXBuildFile; productRef = 67E6B6862F9535CD00CD372F /* iPocketTube */; };
+		7AECD855592A4E3EA60955D6 /* FallbackVideoPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29446E9C8CE04B2FBCDD8A2E /* FallbackVideoPlaybackUITests.swift */; };
+		AA01000000000000000000A4 /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000000A1 /* ShareViewController.swift */; };
+		AA01000000000000000000A5 /* iPocketTubeCore in Frameworks */ = {isa = PBXBuildFile; productRef = AA01000000000000000000B1 /* iPocketTubeCore */; };
+		AA01000000000000000000A6 /* iPocketTubeShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA01000000000000000000A3 /* iPocketTubeShareExtension.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		AA01000000000000000000D2 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = AA01000000000000000000D1 /* PrivacyInfo.xcprivacy */; };
+		AA02000000000000000000B2 /* SiriShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02000000000000000000B1 /* SiriShortcuts.swift */; };
+		AA02000000000000000001B2 /* SiriShortcutsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA02000000000000000001B1 /* SiriShortcutsUITests.swift */; };
+		AA11000000000000000001A2 /* UITestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000001A1 /* UITestHelpers.swift */; };
+		AA11000000000000000002A2 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000002A1 /* SettingsUITests.swift */; };
+		AA11000000000000000003A2 /* LibraryPlaylistsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000003A1 /* LibraryPlaylistsUITests.swift */; };
+		AA11000000000000000004A2 /* HomeInteractionsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000004A1 /* HomeInteractionsUITests.swift */; };
+		AA11000000000000000005A2 /* LibrarySubscriptionsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000005A1 /* LibrarySubscriptionsUITests.swift */; };
+		AA11000000000000000006A2 /* LibraryHistoryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000006A1 /* LibraryHistoryUITests.swift */; };
+		AA11000000000000000007A2 /* ChannelViewUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000007A1 /* ChannelViewUITests.swift */; };
+		AA11000000000000000008A2 /* ShortsPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000008A1 /* ShortsPlayerUITests.swift */; };
+		AA11000000000000000009A2 /* PlayerControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000009A1 /* PlayerControlsUITests.swift */; };
+		AA1100000000000000000AA2 /* AudioGhostStreamRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000AA1 /* AudioGhostStreamRegressionUITests.swift */; };
+		AA1100000000000000000BA2 /* AudioOriginalTrackSelectionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000BA1 /* AudioOriginalTrackSelectionUITests.swift */; };
+		AA1100000000000000000CA2 /* RecommendedChipUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000CA1 /* RecommendedChipUITests.swift */; };
+		AA1100000000000000000DA2 /* TVPlayerSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000DA1 /* TVPlayerSettingsUITests.swift */; };
+		AA1100000000000000000EA2 /* AudioOnlyModeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000EA1 /* AudioOnlyModeUITests.swift */; };
+		AA1100000000000000000FA2 /* PlayerMoreMenuLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000000FA1 /* PlayerMoreMenuLayoutUITests.swift */; };
+		AA1100000000000000001002 /* PlayerPickerOverlayLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001001 /* PlayerPickerOverlayLayoutUITests.swift */; };
+		AA1100000000000000001102 /* AudioAndLandscapePlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001101 /* AudioAndLandscapePlayerUITests.swift */; };
+		AA1100000000000000001202 /* TVSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001201 /* TVSettingsUITests.swift */; };
+		AA1100000000000000001301 /* UITestHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000001A1 /* UITestHelpers.swift */; };
+		AA1100000000000000001302 /* TVHomeFeedUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001401 /* TVHomeFeedUITests.swift */; };
+		AA1100000000000000001502 /* TVLibraryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001501 /* TVLibraryUITests.swift */; };
+		AA1100000000000000001602 /* TVPlayerControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001601 /* TVPlayerControlsUITests.swift */; };
+		AA1100000000000000001702 /* TVVideoPlaybackRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001701 /* TVVideoPlaybackRegressionUITests.swift */; };
+		AA1100000000000000001802 /* TVAudioAndCaptionPickerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001801 /* TVAudioAndCaptionPickerUITests.swift */; };
+		AA1100000000000000001902 /* DownloadsPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001901 /* DownloadsPlaybackUITests.swift */; };
+		AA1100000000000000001A02 /* HideShortsHomeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001A01 /* HideShortsHomeUITests.swift */; };
+		AA1100000000000000001B02 /* OrientationCrashRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001B01 /* OrientationCrashRegressionUITests.swift */; };
+		AA1100000000000000001C02 /* QuickAccessRowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001C01 /* QuickAccessRowUITests.swift */; };
+		AA1100000000000000001D02 /* SIDAudioTrackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001D01 /* SIDAudioTrackUITests.swift */; };
+		AA1100000000000000001E02 /* ScrubberUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001E01 /* ScrubberUITests.swift */; };
+		AA1100000000000000001F02 /* HLSResolutionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1100000000000000001F01 /* HLSResolutionUITests.swift */; };
+		AA11000000000000000020A2 /* ShortsVerticalSwipeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000020A1 /* ShortsVerticalSwipeUITests.swift */; };
+		AA11000000000000000021A2 /* PlayerMoreMenuAudioTrackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000021A1 /* PlayerMoreMenuAudioTrackUITests.swift */; };
+		AA11000000000000000022A2 /* PlayerMoreMenuDuplicationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000022A1 /* PlayerMoreMenuDuplicationUITests.swift */; };
+		AA11000000000000000023A2 /* NextVideoPrefetchUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000023A1 /* NextVideoPrefetchUITests.swift */; };
+		AA11000000000000000024A2 /* VideoPlaybackBenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000024A1 /* VideoPlaybackBenchmarkUITests.swift */; };
+		AA11000000000000000025A2 /* TimeToPlayBenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA11000000000000000025A1 /* TimeToPlayBenchmarkUITests.swift */; };
+		AA1200000000000000002002 /* WKHLSCookieProxyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1200000000000000002001 /* WKHLSCookieProxyUITests.swift */; };
+		AA1300000000000000002002 /* BotGuardPoTokenUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1300000000000000002001 /* BotGuardPoTokenUITests.swift */; };
+		AA1400000000000000002002 /* BotGuardLivePipelineUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1400000000000000002001 /* BotGuardLivePipelineUITests.swift */; };
+		AA1500000000000000002002 /* SIDPlaybackStallingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1500000000000000002001 /* SIDPlaybackStallingUITests.swift */; };
+		AA1600000000000000002002 /* WKHLSReplayRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1600000000000000002001 /* WKHLSReplayRegressionUITests.swift */; };
+		AA1700000000000000002002 /* WrongVideoRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1700000000000000002001 /* WrongVideoRegressionUITests.swift */; };
+		AA1800000000000000002002 /* StreamMethodProbeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA1800000000000000002001 /* StreamMethodProbeUITests.swift */; };
+		AB01CD23EF456789AB01CD23 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = AB01CD23EF456789AB01CD24 /* AppDelegate.swift */; };
+		AP000000000000000000001B /* AirPlayUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AP000000000000000000001A /* AirPlayUITests.swift */; };
+		B0C1D2E3F4A5B6C7D8E9F0A1 /* ShortsNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9B0C1D2E3F4A5B6C7D8E9F0 /* ShortsNavigationUITests.swift */; };
+		B4C8D3E4F5A6B7C8D9E0F1A2 /* PlayerAndMiniPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3B7C2D4E5F6A7B8C9D0E1F2 /* PlayerAndMiniPlayerUITests.swift */; };
+		B8C9D0E1F2A3B4C5D6E7F8A9 /* HomeShortsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E7F8 /* HomeShortsUITests.swift */; };
+		BE1E910C1C5E4CFBB7475AAE /* TVShortsDownNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8937147FE98F4B8490EB7D0A /* TVShortsDownNavigationUITests.swift */; };
+		C1D2E3F4A5B6C7D8E9F0A1B2 /* PlayerNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6A7B8C9D0E1F2A3 /* PlayerNavigationUITests.swift */; };
+		C4D5E6F7A8B9C0D1E2F3A4B5 /* HomeShortsCountUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52716A7F61A547A0959DAF30 /* HomeShortsCountUITests.swift */; };
+		CC4400000000000000004402 /* VideoCacheUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4400000000000000004401 /* VideoCacheUITests.swift */; };
+		CD550C82FB83F1B06A867F3F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 161D597B9340722805A04592 /* Foundation.framework */; };
+		CC2480000000000000000001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000005 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CF3A820B5D1E4A9F8E2C71BD /* TVMoreMenuNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D9C6E73B2F4180960E52FA /* TVMoreMenuNavigationUITests.swift */; };
+		D222FD43501FE20610A249CC /* PlaylistsNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AC502830145DD05002B5A2 /* PlaylistsNavigationUITests.swift */; };
+		D4F5A6B7C8D9E0F1A2B3C4D5 /* SubscriptionsPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */; };
+		D6E0F5A6B7C8D9E0F1A2B3C4 /* HomeFeedAndSettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */; };
+		D9B2E782B8D7E9E750193022 /* iPocketTubeDownloadWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 79E77E6DD18B12CA7A5341D0 /* iPocketTubeDownloadWidget.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		DD2551477B9F9B6D89AE6FCB /* AppEntry.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29356C9641042E3DA5F16175 /* AppEntry.swift */; };
+		E3F4A5B6C7D8E9F0A1B2C3D4 /* CategoryChipHTTP400UITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4A5B6C7D8E9F0A1B2C3D4E5 /* CategoryChipHTTP400UITests.swift */; };
+		E5F6A7B8C9D0E1F2A3B4C5D6 /* SubscriptionsScrollRestorationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */; };
+		E7F8A9B0C1D2E3F4A5B6C7D8 /* LibraryUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8A9B0C1D2E3F4A5B6C7D8E9 /* LibraryUITests.swift */; };
+		F1A2B3C4D5E6F7A8B9C0D1E2 /* HomeShortsRowUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E2F3A4B5C6D7E8F9A0B1C2D3 /* HomeShortsRowUITests.swift */; };
+		F1CDC40190BFE18C52E5AD1B /* iPocketTubeCore in Frameworks */ = {isa = PBXBuildFile; productRef = 4D96747315A9E066D09F1F4E /* iPocketTubeCore */; };
+		MAC000000000000000001A2 /* MacVideoPlaybackBenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MAC000000000000000001A1 /* MacVideoPlaybackBenchmarkUITests.swift */; };
+		MAC000000000000000002A2 /* MacWKHLSReplayRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MAC000000000000000002A1 /* MacWKHLSReplayRegressionUITests.swift */; };
+		MAC000000000000000003A2 /* TOSPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = MAC000000000000000003A1 /* TOSPlayerUITests.swift */; };
+		RS000000000000000000001B /* RSSFeedsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = RS000000000000000000001A /* RSSFeedsUITests.swift */; };
+		SE000000000000000000001B /* iPocketTubeShareExtensionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SE000000000000000000001A /* iPocketTubeShareExtensionUITests.swift */; };
+		SE000000000000000000002B /* iPocketTubeShareExtensionE2EUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SE000000000000000000002A /* iPocketTubeShareExtensionE2EUITests.swift */; };
+		SP0000000000000000001A2 /* ShortsEmbedPauseControlsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SP0000000000000000001A1 /* ShortsEmbedPauseControlsUITests.swift */; };
+		SS0000000000000000001A2 /* ShortsEmbedSrcSwapSpikeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SS0000000000000000001A1 /* ShortsEmbedSrcSwapSpikeUITests.swift */; };
+		SX0000000000000000001A2 /* ShortsEmbedPlayerUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SX0000000000000000001A1 /* ShortsEmbedPlayerUITests.swift */; };
+		SX0000000000000000001B2 /* ShortsVisualPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = SX0000000000000000001B1 /* ShortsVisualPlaybackUITests.swift */; };
+		TI0000000000000000001A2 /* TOSPlayerIOSUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TI0000000000000000001A1 /* TOSPlayerIOSUITests.swift */; };
+		TV00000000000000000000B02 /* TVVideoPlaybackBenchmarkUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV00000000000000000000B01 /* TVVideoPlaybackBenchmarkUITests.swift */; };
+		TV00000000000000000000R02 /* TVWKHLSReplayRegressionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TV00000000000000000000R01 /* TVWKHLSReplayRegressionUITests.swift */; };
+		TW0000000000000000001A2 /* TOSPlayerSwipeNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = TW0000000000000000001A1 /* TOSPlayerSwipeNavigationUITests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		1A2B3C4D5E6F1A2B3C4D5E69 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 67E6B67A2F9535CD00CD372F;
+			remoteInfo = iPocketTubeTV;
+		};
+		49607BD3D63D4720113FA32C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 92FF8ABD9CCECACCB7D9D2F1;
+			remoteInfo = iPocketTubeDownloadWidget;
+		};
+		5B9FD798A2B61FB0B894387A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5A4C56D3A7C36BE68C3C3CE0;
+			remoteInfo = iPocketTube;
+		};
+		67A5E8092FB3932400C53D61 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 67A5E7F22FB3932400C53D61;
+			remoteInfo = iPocketTubeSafariExtension;
+		};
+		AA01000000000000000000AF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = CF958B49C3E80CFAE3F092E3 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA01000000000000000000A7;
+			remoteInfo = iPocketTubeShareExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		058A178EA117F7F7EA83573C /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				D9B2E782B8D7E9E750193022 /* iPocketTubeDownloadWidget.appex in Embed Foundation Extensions */,
+				AA01000000000000000000A6 /* iPocketTubeShareExtension.appex in Embed Foundation Extensions */,
+				67A5E80B2FB3932400C53D61 /* iPocketTubeSafariExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		161D597B9340722805A04592 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS18.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
+		1A2B3C4D5E6F1A2B3C4D5E61 /* iPocketTubeTVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPocketTubeTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		1A2B3C4D5E6F1A2B3C4D5E62 /* TVFocusChainUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVFocusChainUITests.swift; sourceTree = "<group>"; };
+		29356C9641042E3DA5F16175 /* AppEntry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppEntry.swift; sourceTree = "<group>"; };
+		29446E9C8CE04B2FBCDD8A2E /* FallbackVideoPlaybackUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = FallbackVideoPlaybackUITests.swift; sourceTree = "<group>"; };
+		43AC502830145DD05002B5A2 /* PlaylistsNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistsNavigationUITests.swift; sourceTree = "<group>"; };
+		46FAE8C7AB41057B392DF731 /* DownloadLiveActivity.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = DownloadLiveActivity.swift; sourceTree = "<group>"; };
+		4CD3DC338DC0106A0F179BC1 /* SpinnerDismissalUITests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = SpinnerDismissalUITests.swift; sourceTree = "<group>"; };
+		52716A7F61A547A0959DAF30 /* HomeShortsCountUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeShortsCountUITests.swift; sourceTree = "<group>"; };
+		673C1D002F7F20340021583B /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		67A5E7F32FB3932400C53D61 /* iPocketTubeSafariExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = iPocketTubeSafariExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		67AEAB0E2FAF96BC00820F4D /* VideoDownloadUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoDownloadUITests.swift; sourceTree = "<group>"; };
+		67B1B1722FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackRegressionUITests.swift; sourceTree = "<group>"; };
+		67E2B0732FAD1BBE005F70E6 /* MiniPlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerUITests.swift; sourceTree = "<group>"; };
+		67E2B0B12FADFE59005F70E6 /* PlayerDoubleTapUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerDoubleTapUITests.swift; sourceTree = "<group>"; };
+		67E6B67B2F9535CD00CD372F /* iPocketTube.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "iPocketTube.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		6ACA5CEA633CF065619F786C /* iPocketTube.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iPocketTube.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		79E77E6DD18B12CA7A5341D0 /* iPocketTubeDownloadWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = iPocketTubeDownloadWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		8937147FE98F4B8490EB7D0A /* TVShortsDownNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVShortsDownNavigationUITests.swift; sourceTree = "<group>"; };
+		A3B7C2D4E5F6A7B8C9D0E1F2 /* PlayerAndMiniPlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerAndMiniPlayerUITests.swift; sourceTree = "<group>"; };
+		A4D9C6E73B2F4180960E52FA /* TVMoreMenuNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVMoreMenuNavigationUITests.swift; sourceTree = "<group>"; };
+		A7B8C9D0E1F2A3B4C5D6E7F8 /* HomeShortsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeShortsUITests.swift; sourceTree = "<group>"; };
+		A9B0C1D2E3F4A5B6C7D8E9F0 /* ShortsNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsNavigationUITests.swift; sourceTree = "<group>"; };
+		AA01000000000000000000A1 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
+		AA01000000000000000000A2 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA01000000000000000000A3 /* iPocketTubeShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = iPocketTubeShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA01000000000000000000C1 /* iPocketTubeApp.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iPocketTubeApp.entitlements; sourceTree = "<group>"; };
+		AA01000000000000000000C2 /* iPocketTubeShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = iPocketTubeShareExtension.entitlements; sourceTree = "<group>"; };
+		AA01000000000000000000D1 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		AA02000000000000000000B1 /* SiriShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriShortcuts.swift; sourceTree = "<group>"; };
+		AA02000000000000000001B1 /* SiriShortcutsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SiriShortcutsUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000001A1 /* UITestHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UITestHelpers.swift; sourceTree = "<group>"; };
+		AA11000000000000000002A1 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000003A1 /* LibraryPlaylistsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPlaylistsUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000004A1 /* HomeInteractionsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeInteractionsUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000005A1 /* LibrarySubscriptionsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibrarySubscriptionsUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000006A1 /* LibraryHistoryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryHistoryUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000007A1 /* ChannelViewUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChannelViewUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000008A1 /* ShortsPlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsPlayerUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000009A1 /* PlayerControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerControlsUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000AA1 /* AudioGhostStreamRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioGhostStreamRegressionUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000BA1 /* AudioOriginalTrackSelectionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOriginalTrackSelectionUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000CA1 /* RecommendedChipUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecommendedChipUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000DA1 /* TVPlayerSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlayerSettingsUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000EA1 /* AudioOnlyModeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioOnlyModeUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000000FA1 /* PlayerMoreMenuLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerMoreMenuLayoutUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001001 /* PlayerPickerOverlayLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerPickerOverlayLayoutUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001101 /* AudioAndLandscapePlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioAndLandscapePlayerUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001201 /* TVSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVSettingsUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001401 /* TVHomeFeedUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVHomeFeedUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001501 /* TVLibraryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVLibraryUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001601 /* TVPlayerControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVPlayerControlsUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001701 /* TVVideoPlaybackRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVVideoPlaybackRegressionUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001801 /* TVAudioAndCaptionPickerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVAudioAndCaptionPickerUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001901 /* DownloadsPlaybackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DownloadsPlaybackUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001A01 /* HideShortsHomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HideShortsHomeUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001B01 /* OrientationCrashRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationCrashRegressionUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001C01 /* QuickAccessRowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAccessRowUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001D01 /* SIDAudioTrackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SIDAudioTrackUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001E01 /* ScrubberUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScrubberUITests.swift; sourceTree = "<group>"; };
+		AA1100000000000000001F01 /* HLSResolutionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HLSResolutionUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000020A1 /* ShortsVerticalSwipeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsVerticalSwipeUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000021A1 /* PlayerMoreMenuAudioTrackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerMoreMenuAudioTrackUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000022A1 /* PlayerMoreMenuDuplicationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerMoreMenuDuplicationUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000023A1 /* NextVideoPrefetchUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NextVideoPrefetchUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000024A1 /* VideoPlaybackBenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlaybackBenchmarkUITests.swift; sourceTree = "<group>"; };
+		AA11000000000000000025A1 /* TimeToPlayBenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TimeToPlayBenchmarkUITests.swift; sourceTree = "<group>"; };
+		AA1200000000000000002001 /* WKHLSCookieProxyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WKHLSCookieProxyUITests.swift; sourceTree = "<group>"; };
+		AA1300000000000000002001 /* BotGuardPoTokenUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotGuardPoTokenUITests.swift; sourceTree = "<group>"; };
+		AA1400000000000000002001 /* BotGuardLivePipelineUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BotGuardLivePipelineUITests.swift; sourceTree = "<group>"; };
+		AA1500000000000000002001 /* SIDPlaybackStallingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SIDPlaybackStallingUITests.swift; sourceTree = "<group>"; };
+		AA1600000000000000002001 /* WKHLSReplayRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WKHLSReplayRegressionUITests.swift; sourceTree = "<group>"; };
+		AA1700000000000000002001 /* WrongVideoRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WrongVideoRegressionUITests.swift; sourceTree = "<group>"; };
+		AA1800000000000000002001 /* StreamMethodProbeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StreamMethodProbeUITests.swift; sourceTree = "<group>"; };
+		AB01CD23EF456789AB01CD24 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		AE55B486AFD7F51FEF1874FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		AP000000000000000000001A /* AirPlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayUITests.swift; sourceTree = "<group>"; };
+		B2C3D4E5F6A7B8C9D0E1F2A3 /* PlayerNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerNavigationUITests.swift; sourceTree = "<group>"; };
+		B7482B081D440A26079AA9BC /* iPocketTube */ = {isa = PBXFileReference; lastKnownFileType = folder; name = iPocketTube; path = ../iPocketTube; sourceTree = SOURCE_ROOT; };
+		C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsPlaybackUITests.swift; sourceTree = "<group>"; };
+		C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedAndSettingsUITests.swift; sourceTree = "<group>"; };
+		CA34C2AD8A70726C11C5F851 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CA34C2AD8A70726C11C5F852 /* Info-macOS.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Info-macOS.plist"; sourceTree = "<group>"; };
+		CC2480000000000000000010 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = Localizable.xcstrings; path = ../iPocketTube/Sources/iPocketTube/Localizable.xcstrings; sourceTree = SOURCE_ROOT; };
+		CC4400000000000000004401 /* VideoCacheUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheUITests.swift; sourceTree = "<group>"; };
+		D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsScrollRestorationUITests.swift; sourceTree = "<group>"; };
+		DA3810E40296738F4C5E0B95 /* iPocketTubeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPocketTubeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2F3A4B5C6D7E8F9A0B1C2D3 /* HomeShortsRowUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeShortsRowUITests.swift; sourceTree = "<group>"; };
+		F4A5B6C7D8E9F0A1B2C3D4E5 /* CategoryChipHTTP400UITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryChipHTTP400UITests.swift; sourceTree = "<group>"; };
+		F8A9B0C1D2E3F4A5B6C7D8E9 /* LibraryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryUITests.swift; sourceTree = "<group>"; };
+		MAC000000000000000001A1 /* MacVideoPlaybackBenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacVideoPlaybackBenchmarkUITests.swift; sourceTree = "<group>"; };
+		MAC000000000000000002A1 /* MacWKHLSReplayRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacWKHLSReplayRegressionUITests.swift; sourceTree = "<group>"; };
+		MAC000000000000000003A1 /* TOSPlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOSPlayerUITests.swift; sourceTree = "<group>"; };
+		RS000000000000000000001A /* RSSFeedsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RSSFeedsUITests.swift; sourceTree = "<group>"; };
+		SE000000000000000000001A /* iPocketTubeShareExtensionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPocketTubeShareExtensionUITests.swift; sourceTree = "<group>"; };
+		SE000000000000000000002A /* iPocketTubeShareExtensionE2EUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iPocketTubeShareExtensionE2EUITests.swift; sourceTree = "<group>"; };
+		SP0000000000000000001A1 /* ShortsEmbedPauseControlsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsEmbedPauseControlsUITests.swift; sourceTree = "<group>"; };
+		SS0000000000000000001A1 /* ShortsEmbedSrcSwapSpikeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsEmbedSrcSwapSpikeUITests.swift; sourceTree = "<group>"; };
+		SX0000000000000000001A1 /* ShortsEmbedPlayerUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsEmbedPlayerUITests.swift; sourceTree = "<group>"; };
+		SX0000000000000000001B1 /* ShortsVisualPlaybackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShortsVisualPlaybackUITests.swift; sourceTree = "<group>"; };
+		TI0000000000000000001A1 /* TOSPlayerIOSUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOSPlayerIOSUITests.swift; sourceTree = "<group>"; };
+		TV00000000000000000000B01 /* TVVideoPlaybackBenchmarkUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVVideoPlaybackBenchmarkUITests.swift; sourceTree = "<group>"; };
+		TV00000000000000000000R01 /* TVWKHLSReplayRegressionUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TVWKHLSReplayRegressionUITests.swift; sourceTree = "<group>"; };
+		TW0000000000000000001A1 /* TOSPlayerSwipeNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TOSPlayerSwipeNavigationUITests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		67A5E80C2FB3932400C53D61 /* Exceptions for "iPocketTubeSafariExtension" folder in "iPocketTubeSafariExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 67A5E7F22FB3932400C53D61 /* iPocketTubeSafariExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		67A5E7F42FB3932400C53D61 /* iPocketTubeSafariExtension */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				67A5E80C2FB3932400C53D61 /* Exceptions for "iPocketTubeSafariExtension" folder in "iPocketTubeSafariExtension" target */,
+			);
+			path = iPocketTubeSafariExtension;
+			sourceTree = "<group>";
+		};
+		67E6B67C2F9535CD00CD372F /* iPocketTube */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = "iPocketTube";
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		2BAA25ED5DBB8F5241B0AA13 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				06412259452CCFBF300F2D4B /* iPocketTube in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67A5E7F02FB3932400C53D61 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67E6B6782F9535CD00CD372F /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				67E6B6872F9535CD00CD372F /* iPocketTube in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA01000000000000000000A9 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA01000000000000000000A5 /* iPocketTubeCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B6C0B99892FC28B6BAE2EEE7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD550C82FB83F1B06A867F3F /* Foundation.framework in Frameworks */,
+				F1CDC40190BFE18C52E5AD1B /* iPocketTubeCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		10B1F40F599FC1A0781AF6D9 = {
+			isa = PBXGroup;
+			children = (
+				CC2480000000000000000010 /* Localizable.xcstrings */,
+				D1E07E1C2FBB3A95D6BDC0EF /* Packages */,
+				32582044D5D706C4EC49DA00 /* iPocketTubeApp */,
+				9084B7F6DD70E282DD4342A7 /* Sources */,
+				30B4BA37D4FD93516937E9D9 /* UITests */,
+				67E6B67C2F9535CD00CD372F /* iPocketTube */,
+				67A5E7F42FB3932400C53D61 /* iPocketTubeSafariExtension */,
+				5EF0B6AF2643BF476B25C7C0 /* Products */,
+				A6606018E9CE8927C08D84DF /* Frameworks */,
+				3A6CBA986681DD6D6BBFD4EA /* iPocketTubeDownloadWidget */,
+				AA01000000000000000000AE /* iPocketTubeShareExtension */,
+			);
+			sourceTree = "<group>";
+		};
+		30B4BA37D4FD93516937E9D9 /* UITests */ = {
+			isa = PBXGroup;
+			children = (
+				AA11000000000000000001A1 /* UITestHelpers.swift */,
+				AA02000000000000000001B1 /* SiriShortcutsUITests.swift */,
+				43AC502830145DD05002B5A2 /* PlaylistsNavigationUITests.swift */,
+				A9B0C1D2E3F4A5B6C7D8E9F0 /* ShortsNavigationUITests.swift */,
+				E2F3A4B5C6D7E8F9A0B1C2D3 /* HomeShortsRowUITests.swift */,
+				A7B8C9D0E1F2A3B4C5D6E7F8 /* HomeShortsUITests.swift */,
+				52716A7F61A547A0959DAF30 /* HomeShortsCountUITests.swift */,
+				B2C3D4E5F6A7B8C9D0E1F2A3 /* PlayerNavigationUITests.swift */,
+				F4A5B6C7D8E9F0A1B2C3D4E5 /* CategoryChipHTTP400UITests.swift */,
+				C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */,
+				D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */,
+				1A2B3C4D5E6F1A2B3C4D5E62 /* TVFocusChainUITests.swift */,
+				67B1B1722FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift */,
+				AA11000000000000000002A1 /* SettingsUITests.swift */,
+				AA11000000000000000003A1 /* LibraryPlaylistsUITests.swift */,
+				AA11000000000000000004A1 /* HomeInteractionsUITests.swift */,
+				AA11000000000000000005A1 /* LibrarySubscriptionsUITests.swift */,
+				AA11000000000000000006A1 /* LibraryHistoryUITests.swift */,
+				AA11000000000000000007A1 /* ChannelViewUITests.swift */,
+				AA11000000000000000008A1 /* ShortsPlayerUITests.swift */,
+				AA11000000000000000009A1 /* PlayerControlsUITests.swift */,
+				AA1100000000000000000AA1 /* AudioGhostStreamRegressionUITests.swift */,
+				AA1100000000000000000BA1 /* AudioOriginalTrackSelectionUITests.swift */,
+				AA1100000000000000001D01 /* SIDAudioTrackUITests.swift */,
+				AA11000000000000000021A1 /* PlayerMoreMenuAudioTrackUITests.swift */,
+				AA11000000000000000022A1 /* PlayerMoreMenuDuplicationUITests.swift */,
+				AA11000000000000000023A1 /* NextVideoPrefetchUITests.swift */,
+				AA11000000000000000024A1 /* VideoPlaybackBenchmarkUITests.swift */,
+				MAC000000000000000001A1 /* MacVideoPlaybackBenchmarkUITests.swift */,
+				MAC000000000000000002A1 /* MacWKHLSReplayRegressionUITests.swift */,
+				MAC000000000000000003A1 /* TOSPlayerUITests.swift */,
+				TI0000000000000000001A1 /* TOSPlayerIOSUITests.swift */,
+				TW0000000000000000001A1 /* TOSPlayerSwipeNavigationUITests.swift */,
+				SP0000000000000000001A1 /* ShortsEmbedPauseControlsUITests.swift */,
+				SS0000000000000000001A1 /* ShortsEmbedSrcSwapSpikeUITests.swift */,
+				SX0000000000000000001A1 /* ShortsEmbedPlayerUITests.swift */,
+				SX0000000000000000001B1 /* ShortsVisualPlaybackUITests.swift */,
+				AA11000000000000000025A1 /* TimeToPlayBenchmarkUITests.swift */,
+				AA1100000000000000001E01 /* ScrubberUITests.swift */,
+				AA1100000000000000001F01 /* HLSResolutionUITests.swift */,
+				AA1200000000000000002001 /* WKHLSCookieProxyUITests.swift */,
+				AA1300000000000000002001 /* BotGuardPoTokenUITests.swift */,
+				AA1400000000000000002001 /* BotGuardLivePipelineUITests.swift */,
+				AA1500000000000000002001 /* SIDPlaybackStallingUITests.swift */,
+				AA1600000000000000002001 /* WKHLSReplayRegressionUITests.swift */,
+				AA1700000000000000002001 /* WrongVideoRegressionUITests.swift */,
+				AA1800000000000000002001 /* StreamMethodProbeUITests.swift */,
+				AA11000000000000000020A1 /* ShortsVerticalSwipeUITests.swift */,
+				AA1100000000000000000CA1 /* RecommendedChipUITests.swift */,
+				AA1100000000000000000DA1 /* TVPlayerSettingsUITests.swift */,
+				AA1100000000000000001201 /* TVSettingsUITests.swift */,
+				AA1100000000000000001401 /* TVHomeFeedUITests.swift */,
+				AA1100000000000000001501 /* TVLibraryUITests.swift */,
+				AA1100000000000000001601 /* TVPlayerControlsUITests.swift */,
+				AA1100000000000000001701 /* TVVideoPlaybackRegressionUITests.swift */,
+				8937147FE98F4B8490EB7D0A /* TVShortsDownNavigationUITests.swift */,
+				A4D9C6E73B2F4180960E52FA /* TVMoreMenuNavigationUITests.swift */,
+				AA1100000000000000001801 /* TVAudioAndCaptionPickerUITests.swift */,
+				TV00000000000000000000B01 /* TVVideoPlaybackBenchmarkUITests.swift */,
+				TV00000000000000000000R01 /* TVWKHLSReplayRegressionUITests.swift */,
+				AA1100000000000000000EA1 /* AudioOnlyModeUITests.swift */,
+				AA1100000000000000000FA1 /* PlayerMoreMenuLayoutUITests.swift */,
+				AA1100000000000000001001 /* PlayerPickerOverlayLayoutUITests.swift */,
+				67E2B0732FAD1BBE005F70E6 /* MiniPlayerUITests.swift */,
+				67E2B0B12FADFE59005F70E6 /* PlayerDoubleTapUITests.swift */,
+				SE000000000000000000001A /* iPocketTubeShareExtensionUITests.swift */,
+				SE000000000000000000002A /* iPocketTubeShareExtensionE2EUITests.swift */,
+				AP000000000000000000001A /* AirPlayUITests.swift */,
+				RS000000000000000000001A /* RSSFeedsUITests.swift */,
+				67AEAB0E2FAF96BC00820F4D /* VideoDownloadUITests.swift */,
+				4CD3DC338DC0106A0F179BC1 /* SpinnerDismissalUITests.swift */,
+				CC4400000000000000004401 /* VideoCacheUITests.swift */,
+				29446E9C8CE04B2FBCDD8A2E /* FallbackVideoPlaybackUITests.swift */,
+				C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */,
+				A3B7C2D4E5F6A7B8C9D0E1F2 /* PlayerAndMiniPlayerUITests.swift */,
+				F8A9B0C1D2E3F4A5B6C7D8E9 /* LibraryUITests.swift */,
+				AA1100000000000000001101 /* AudioAndLandscapePlayerUITests.swift */,
+				AA1100000000000000001901 /* DownloadsPlaybackUITests.swift */,
+				AA1100000000000000001A01 /* HideShortsHomeUITests.swift */,
+				AA1100000000000000001B01 /* OrientationCrashRegressionUITests.swift */,
+				AA1100000000000000001C01 /* QuickAccessRowUITests.swift */,
+			);
+			path = UITests;
+			sourceTree = "<group>";
+		};
+		32582044D5D706C4EC49DA00 /* iPocketTubeApp */ = {
+			isa = PBXGroup;
+			children = (
+				AE55B486AFD7F51FEF1874FF /* Assets.xcassets */,
+				673C1D002F7F20340021583B /* Launch Screen.storyboard */,
+				AA01000000000000000000C1 /* iPocketTubeApp.entitlements */,
+				AA01000000000000000000D1 /* PrivacyInfo.xcprivacy */,
+				CA34C2AD8A70726C11C5F852 /* Info-macOS.plist */,
+			);
+			path = iPocketTubeApp;
+			sourceTree = "<group>";
+		};
+		3A6CBA986681DD6D6BBFD4EA /* iPocketTubeDownloadWidget */ = {
+			isa = PBXGroup;
+			children = (
+				46FAE8C7AB41057B392DF731 /* DownloadLiveActivity.swift */,
+				CA34C2AD8A70726C11C5F851 /* Info.plist */,
+			);
+			path = iPocketTubeDownloadWidget;
+			sourceTree = "<group>";
+		};
+		5EF0B6AF2643BF476B25C7C0 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6ACA5CEA633CF065619F786C /* iPocketTube.app */,
+				DA3810E40296738F4C5E0B95 /* iPocketTubeUITests.xctest */,
+				79E77E6DD18B12CA7A5341D0 /* iPocketTubeDownloadWidget.appex */,
+				AA01000000000000000000A3 /* iPocketTubeShareExtension.appex */,
+				67E6B67B2F9535CD00CD372F /* iPocketTube.app */,
+				1A2B3C4D5E6F1A2B3C4D5E61 /* iPocketTubeTVUITests.xctest */,
+				67A5E7F32FB3932400C53D61 /* iPocketTubeSafariExtension.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		78DAA0F76567709E5E23C9CF /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				161D597B9340722805A04592 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
+		9084B7F6DD70E282DD4342A7 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				AB01CD23EF456789AB01CD24 /* AppDelegate.swift */,
+				29356C9641042E3DA5F16175 /* AppEntry.swift */,
+				AA02000000000000000000B1 /* SiriShortcuts.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		A6606018E9CE8927C08D84DF /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				78DAA0F76567709E5E23C9CF /* iOS */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		AA01000000000000000000AE /* iPocketTubeShareExtension */ = {
+			isa = PBXGroup;
+			children = (
+				AA01000000000000000000A1 /* ShareViewController.swift */,
+				AA01000000000000000000A2 /* Info.plist */,
+				AA01000000000000000000C2 /* iPocketTubeShareExtension.entitlements */,
+			);
+			path = iPocketTubeShareExtension;
+			sourceTree = "<group>";
+		};
+		D1E07E1C2FBB3A95D6BDC0EF /* Packages */ = {
+			isa = PBXGroup;
+			children = (
+				B7482B081D440A26079AA9BC /* iPocketTube */,
+			);
+			name = Packages;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		1A2B3C4D5E6F1A2B3C4D5E64 /* iPocketTubeTVUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 1A2B3C4D5E6F1A2B3C4D5E68 /* Build configuration list for PBXNativeTarget "iPocketTubeTVUITests" */;
+			buildPhases = (
+				1A2B3C4D5E6F1A2B3C4D5E65 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				1A2B3C4D5E6F1A2B3C4D5E6A /* PBXTargetDependency */,
+			);
+			name = iPocketTubeTVUITests;
+			productName = iPocketTubeTVUITests;
+			productReference = 1A2B3C4D5E6F1A2B3C4D5E61 /* iPocketTubeTVUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		38EEA5DF9BAA36788D776AB0 /* iPocketTubeUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AEAB87BD362E4200A8AED20B /* Build configuration list for PBXNativeTarget "iPocketTubeUITests" */;
+			buildPhases = (
+				B3C0A889127D7404950A6815 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E375F1AE8C8F1602CC3963FA /* PBXTargetDependency */,
+			);
+			name = iPocketTubeUITests;
+			productName = iPocketTubeUITests;
+			productReference = DA3810E40296738F4C5E0B95 /* iPocketTubeUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		5A4C56D3A7C36BE68C3C3CE0 /* iPocketTube */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A25E75A9105B7E731FA11D5F /* Build configuration list for PBXNativeTarget "iPocketTube" */;
+			buildPhases = (
+				BB7C0F594F9F78E351469840 /* Sources */,
+				1BB79844535C5D78AAD554A6 /* Resources */,
+				2BAA25ED5DBB8F5241B0AA13 /* Frameworks */,
+				058A178EA117F7F7EA83573C /* Embed Foundation Extensions */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0FBA651F0825F996F27B7476 /* PBXTargetDependency */,
+				AA01000000000000000000B0 /* PBXTargetDependency */,
+				67A5E80A2FB3932400C53D61 /* PBXTargetDependency */,
+			);
+			name = iPocketTube;
+			packageProductDependencies = (
+				B8401470D9A590E7F3685830 /* iPocketTube */,
+			);
+			productName = iPocketTube;
+			productReference = 6ACA5CEA633CF065619F786C /* iPocketTube.app */;
+			productType = "com.apple.product-type.application";
+		};
+		67A5E7F22FB3932400C53D61 /* iPocketTubeSafariExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 67A5E80D2FB3932400C53D61 /* Build configuration list for PBXNativeTarget "iPocketTubeSafariExtension" */;
+			buildPhases = (
+				67A5E7EF2FB3932400C53D61 /* Sources */,
+				67A5E7F02FB3932400C53D61 /* Frameworks */,
+				67A5E7F12FB3932400C53D61 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				67A5E7F42FB3932400C53D61 /* iPocketTubeSafariExtension */,
+			);
+			name = iPocketTubeSafariExtension;
+			productName = iPocketTubeSafariExtension;
+			productReference = 67A5E7F32FB3932400C53D61 /* iPocketTubeSafariExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		67E6B67A2F9535CD00CD372F /* iPocketTubeTV */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 67E6B6852F9535CD00CD372F /* Build configuration list for PBXNativeTarget "iPocketTubeTV" */;
+			buildPhases = (
+				67E6B6772F9535CD00CD372F /* Sources */,
+				67E6B6782F9535CD00CD372F /* Frameworks */,
+				67E6B6792F9535CD00CD372F /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				67E6B67C2F9535CD00CD372F /* iPocketTube */,
+			);
+			name = iPocketTubeTV;
+			packageProductDependencies = (
+				67E6B6862F9535CD00CD372F /* iPocketTube */,
+			);
+			productName = "iPocketTube";
+			productReference = 67E6B67B2F9535CD00CD372F /* iPocketTube.app */;
+			productType = "com.apple.product-type.application";
+		};
+		92FF8ABD9CCECACCB7D9D2F1 /* iPocketTubeDownloadWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7D9289AB39EE378EB64C7F41 /* Build configuration list for PBXNativeTarget "iPocketTubeDownloadWidget" */;
+			buildPhases = (
+				F7FB9220CD15997A4898F205 /* Sources */,
+				B6C0B99892FC28B6BAE2EEE7 /* Frameworks */,
+				2700A04D56CBFAD56656C383 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = iPocketTubeDownloadWidget;
+			packageProductDependencies = (
+				4D96747315A9E066D09F1F4E /* iPocketTubeCore */,
+			);
+			productName = iPocketTubeDownloadWidget;
+			productReference = 79E77E6DD18B12CA7A5341D0 /* iPocketTubeDownloadWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+		AA01000000000000000000A7 /* iPocketTubeShareExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA01000000000000000000AD /* Build configuration list for PBXNativeTarget "iPocketTubeShareExtension" */;
+			buildPhases = (
+				AA01000000000000000000A8 /* Sources */,
+				AA01000000000000000000A9 /* Frameworks */,
+				AA01000000000000000000AA /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = iPocketTubeShareExtension;
+			packageProductDependencies = (
+				AA01000000000000000000B1 /* iPocketTubeCore */,
+			);
+			productName = iPocketTubeShareExtension;
+			productReference = AA01000000000000000000A3 /* iPocketTubeShareExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CF958B49C3E80CFAE3F092E3 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastSwiftUpdateCheck = 2640;
+				LastUpgradeCheck = 2650;
+				TargetAttributes = {
+					1A2B3C4D5E6F1A2B3C4D5E64 = {
+						TestTargetID = 67E6B67A2F9535CD00CD372F;
+					};
+					38EEA5DF9BAA36788D776AB0 = {
+						TestTargetID = 5A4C56D3A7C36BE68C3C3CE0;
+					};
+					5A4C56D3A7C36BE68C3C3CE0 = {
+						ProvisioningStyle = Automatic;
+					};
+					67A5E7F22FB3932400C53D61 = {
+						CreatedOnToolsVersion = 26.4.1;
+					};
+					67E6B67A2F9535CD00CD372F = {
+						CreatedOnToolsVersion = 26.4;
+					};
+				};
+			};
+			buildConfigurationList = 0B664A7C4FCE77DC38FBE17B /* Build configuration list for PBXProject "iPocketTubeApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				ar,
+				de,
+				es,
+				fr,
+				hi,
+				hr,
+				id,
+				it,
+				ja,
+				ko,
+				"pt-BR",
+				ru,
+				sr,
+				tr,
+				"zh-Hans",
+			);
+			mainGroup = 10B1F40F599FC1A0781AF6D9;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5EF0B6AF2643BF476B25C7C0 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5A4C56D3A7C36BE68C3C3CE0 /* iPocketTube */,
+				38EEA5DF9BAA36788D776AB0 /* iPocketTubeUITests */,
+				92FF8ABD9CCECACCB7D9D2F1 /* iPocketTubeDownloadWidget */,
+				AA01000000000000000000A7 /* iPocketTubeShareExtension */,
+				67E6B67A2F9535CD00CD372F /* iPocketTubeTV */,
+				1A2B3C4D5E6F1A2B3C4D5E64 /* iPocketTubeTVUITests */,
+				67A5E7F22FB3932400C53D61 /* iPocketTubeSafariExtension */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		1BB79844535C5D78AAD554A6 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2480000000000000000001 /* Localizable.xcstrings in Resources */,
+				673C1D012F7F20340021583B /* Launch Screen.storyboard in Resources */,
+				494A17316084B602873D7C05 /* Assets.xcassets in Resources */,
+				AA01000000000000000000D2 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		2700A04D56CBFAD56656C383 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2480000000000000000003 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67A5E7F12FB3932400C53D61 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2480000000000000000005 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67E6B6792F9535CD00CD372F /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2480000000000000000002 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA01000000000000000000AA /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CC2480000000000000000004 /* Localizable.xcstrings in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1A2B3C4D5E6F1A2B3C4D5E65 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA1100000000000000001301 /* UITestHelpers.swift in Sources */,
+				1A2B3C4D5E6F1A2B3C4D5E63 /* TVFocusChainUITests.swift in Sources */,
+				AA1100000000000000000DA2 /* TVPlayerSettingsUITests.swift in Sources */,
+				AA1100000000000000001202 /* TVSettingsUITests.swift in Sources */,
+				AA1100000000000000001302 /* TVHomeFeedUITests.swift in Sources */,
+				AA1100000000000000001502 /* TVLibraryUITests.swift in Sources */,
+				AA1100000000000000001602 /* TVPlayerControlsUITests.swift in Sources */,
+				AA1100000000000000001702 /* TVVideoPlaybackRegressionUITests.swift in Sources */,
+				BE1E910C1C5E4CFBB7475AAE /* TVShortsDownNavigationUITests.swift in Sources */,
+				CF3A820B5D1E4A9F8E2C71BD /* TVMoreMenuNavigationUITests.swift in Sources */,
+				AA1100000000000000001802 /* TVAudioAndCaptionPickerUITests.swift in Sources */,
+				TV00000000000000000000B02 /* TVVideoPlaybackBenchmarkUITests.swift in Sources */,
+				TV00000000000000000000R02 /* TVWKHLSReplayRegressionUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67A5E7EF2FB3932400C53D61 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		67E6B6772F9535CD00CD372F /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA01000000000000000000A8 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA01000000000000000000A4 /* ShareViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		B3C0A889127D7404950A6815 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA11000000000000000001A2 /* UITestHelpers.swift in Sources */,
+				AA02000000000000000001B2 /* SiriShortcutsUITests.swift in Sources */,
+				D222FD43501FE20610A249CC /* PlaylistsNavigationUITests.swift in Sources */,
+				B0C1D2E3F4A5B6C7D8E9F0A1 /* ShortsNavigationUITests.swift in Sources */,
+				F1A2B3C4D5E6F7A8B9C0D1E2 /* HomeShortsRowUITests.swift in Sources */,
+				B8C9D0E1F2A3B4C5D6E7F8A9 /* HomeShortsUITests.swift in Sources */,
+				C4D5E6F7A8B9C0D1E2F3A4B5 /* HomeShortsCountUITests.swift in Sources */,
+				C1D2E3F4A5B6C7D8E9F0A1B2 /* PlayerNavigationUITests.swift in Sources */,
+				67AEAB0F2FAF96BC00820F4D /* VideoDownloadUITests.swift in Sources */,
+				E3F4A5B6C7D8E9F0A1B2C3D4 /* CategoryChipHTTP400UITests.swift in Sources */,
+				67B1B1732FA5384E0059D847 /* VideoPlaybackRegressionUITests.swift in Sources */,
+				D4F5A6B7C8D9E0F1A2B3C4D5 /* SubscriptionsPlaybackUITests.swift in Sources */,
+				E5F6A7B8C9D0E1F2A3B4C5D6 /* SubscriptionsScrollRestorationUITests.swift in Sources */,
+				AA11000000000000000002A2 /* SettingsUITests.swift in Sources */,
+				AA11000000000000000003A2 /* LibraryPlaylistsUITests.swift in Sources */,
+				AA11000000000000000004A2 /* HomeInteractionsUITests.swift in Sources */,
+				AA11000000000000000005A2 /* LibrarySubscriptionsUITests.swift in Sources */,
+				67E2B0B22FADFE59005F70E6 /* PlayerDoubleTapUITests.swift in Sources */,
+				AA11000000000000000006A2 /* LibraryHistoryUITests.swift in Sources */,
+				67E2B0742FAD1BBE005F70E6 /* MiniPlayerUITests.swift in Sources */,
+				AA11000000000000000007A2 /* ChannelViewUITests.swift in Sources */,
+				AA11000000000000000008A2 /* ShortsPlayerUITests.swift in Sources */,
+				AA11000000000000000009A2 /* PlayerControlsUITests.swift in Sources */,
+				AA1100000000000000000AA2 /* AudioGhostStreamRegressionUITests.swift in Sources */,
+				AA1100000000000000000BA2 /* AudioOriginalTrackSelectionUITests.swift in Sources */,
+				AA1100000000000000001D02 /* SIDAudioTrackUITests.swift in Sources */,
+				AA11000000000000000021A2 /* PlayerMoreMenuAudioTrackUITests.swift in Sources */,
+				AA11000000000000000022A2 /* PlayerMoreMenuDuplicationUITests.swift in Sources */,
+				AA11000000000000000023A2 /* NextVideoPrefetchUITests.swift in Sources */,
+				AA11000000000000000024A2 /* VideoPlaybackBenchmarkUITests.swift in Sources */,
+				MAC000000000000000001A2 /* MacVideoPlaybackBenchmarkUITests.swift in Sources */,
+				MAC000000000000000002A2 /* MacWKHLSReplayRegressionUITests.swift in Sources */,
+				MAC000000000000000003A2 /* TOSPlayerUITests.swift in Sources */,
+				TI0000000000000000001A2 /* TOSPlayerIOSUITests.swift in Sources */,
+				TW0000000000000000001A2 /* TOSPlayerSwipeNavigationUITests.swift in Sources */,
+				SP0000000000000000001A2 /* ShortsEmbedPauseControlsUITests.swift in Sources */,
+				SS0000000000000000001A2 /* ShortsEmbedSrcSwapSpikeUITests.swift in Sources */,
+				SX0000000000000000001A2 /* ShortsEmbedPlayerUITests.swift in Sources */,
+				SX0000000000000000001B2 /* ShortsVisualPlaybackUITests.swift in Sources */,
+				AA11000000000000000025A2 /* TimeToPlayBenchmarkUITests.swift in Sources */,
+				AA1100000000000000001E02 /* ScrubberUITests.swift in Sources */,
+				AA1100000000000000001F02 /* HLSResolutionUITests.swift in Sources */,
+				AA1200000000000000002002 /* WKHLSCookieProxyUITests.swift in Sources */,
+				AA1300000000000000002002 /* BotGuardPoTokenUITests.swift in Sources */,
+				AA1400000000000000002002 /* BotGuardLivePipelineUITests.swift in Sources */,
+				AA1500000000000000002002 /* SIDPlaybackStallingUITests.swift in Sources */,
+				AA1600000000000000002002 /* WKHLSReplayRegressionUITests.swift in Sources */,
+				AA1700000000000000002002 /* WrongVideoRegressionUITests.swift in Sources */,
+				AA1800000000000000002002 /* StreamMethodProbeUITests.swift in Sources */,
+				AA11000000000000000020A2 /* ShortsVerticalSwipeUITests.swift in Sources */,
+				AA1100000000000000000CA2 /* RecommendedChipUITests.swift in Sources */,
+				AA1100000000000000000EA2 /* AudioOnlyModeUITests.swift in Sources */,
+				AA1100000000000000000FA2 /* PlayerMoreMenuLayoutUITests.swift in Sources */,
+				AA1100000000000000001002 /* PlayerPickerOverlayLayoutUITests.swift in Sources */,
+				SE000000000000000000001B /* iPocketTubeShareExtensionUITests.swift in Sources */,
+				SE000000000000000000002B /* iPocketTubeShareExtensionE2EUITests.swift in Sources */,
+				AP000000000000000000001B /* AirPlayUITests.swift in Sources */,
+				RS000000000000000000001B /* RSSFeedsUITests.swift in Sources */,
+				53352CFF63CF0A5B34A1998B /* SpinnerDismissalUITests.swift in Sources */,
+				7AECD855592A4E3EA60955D6 /* FallbackVideoPlaybackUITests.swift in Sources */,
+				D6E0F5A6B7C8D9E0F1A2B3C4 /* HomeFeedAndSettingsUITests.swift in Sources */,
+				B4C8D3E4F5A6B7C8D9E0F1A2 /* PlayerAndMiniPlayerUITests.swift in Sources */,
+				E7F8A9B0C1D2E3F4A5B6C7D8 /* LibraryUITests.swift in Sources */,
+				AA1100000000000000001102 /* AudioAndLandscapePlayerUITests.swift in Sources */,
+				AA1100000000000000001902 /* DownloadsPlaybackUITests.swift in Sources */,
+				AA1100000000000000001A02 /* HideShortsHomeUITests.swift in Sources */,
+				AA1100000000000000001B02 /* OrientationCrashRegressionUITests.swift in Sources */,
+				AA1100000000000000001C02 /* QuickAccessRowUITests.swift in Sources */,
+				CC4400000000000000004402 /* VideoCacheUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BB7C0F594F9F78E351469840 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB01CD23EF456789AB01CD23 /* AppDelegate.swift in Sources */,
+				DD2551477B9F9B6D89AE6FCB /* AppEntry.swift in Sources */,
+				AA02000000000000000000B2 /* SiriShortcuts.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F7FB9220CD15997A4898F205 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				03863DDC82B3DC452E915BF7 /* DownloadLiveActivity.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		0FBA651F0825F996F27B7476 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = iPocketTubeDownloadWidget;
+			target = 92FF8ABD9CCECACCB7D9D2F1 /* iPocketTubeDownloadWidget */;
+			targetProxy = 49607BD3D63D4720113FA32C /* PBXContainerItemProxy */;
+		};
+		1A2B3C4D5E6F1A2B3C4D5E6A /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 67E6B67A2F9535CD00CD372F /* iPocketTubeTV */;
+			targetProxy = 1A2B3C4D5E6F1A2B3C4D5E69 /* PBXContainerItemProxy */;
+		};
+		67A5E80A2FB3932400C53D61 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 67A5E7F22FB3932400C53D61 /* iPocketTubeSafariExtension */;
+			targetProxy = 67A5E8092FB3932400C53D61 /* PBXContainerItemProxy */;
+		};
+		AA01000000000000000000B0 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = iPocketTubeShareExtension;
+			target = AA01000000000000000000A7 /* iPocketTubeShareExtension */;
+			targetProxy = AA01000000000000000000AF /* PBXContainerItemProxy */;
+		};
+		E375F1AE8C8F1602CC3963FA /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 5A4C56D3A7C36BE68C3C3CE0 /* iPocketTube */;
+			targetProxy = 5B9FD798A2B61FB0B894387A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		0451DED328B2EF41079875ED /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeApp/iPocketTubeApp.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "iPocketTubeApp/iPocketTubeApp-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = iPocketTubeApp/Info.plist;
+				"INFOPLIST_FILE[sdk=macosx*]" = "iPocketTubeApp/Info-macOS.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local;
+				PRODUCT_MODULE_NAME = iPocketTubeApp;
+				PRODUCT_NAME = iPocketTube;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		1A2B3C4D5E6F1A2B3C4D5E66 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.tv.uitests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = iPocketTubeTV;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+			};
+			name = Debug;
+		};
+		1A2B3C4D5E6F1A2B3C4D5E67 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.tv.uitests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = appletvos;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = iPocketTubeTV;
+				TVOS_DEPLOYMENT_TARGET = 17.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		4AF41A3BD9270B2E62E2D1FD /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MARKETING_VERSION = 5.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		517A04DB1FAD3B9453134C2F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.uitests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = iPocketTube;
+			};
+			name = Debug;
+		};
+		67A5E80E2FB3932400C53D61 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeSafariExtension/iPocketTubeSafariExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				INFOPLIST_FILE = iPocketTubeSafariExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.safari;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		67A5E80F2FB3932400C53D61 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeSafariExtension/iPocketTubeSafariExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				INFOPLIST_FILE = iPocketTubeSafariExtension/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				OTHER_LDFLAGS = (
+					"-framework",
+					SafariServices,
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.safari;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		67E6B6832F9535CD00CD372F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = "";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.tv;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = "iPocketTube TV";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.6;
+			};
+			name = Debug;
+		};
+		67E6B6842F9535CD00CD372F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = "App Icon & Top Shelf Image";
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = "";
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = "";
+				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UIUserInterfaceStyle = Automatic;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.tv;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				"PROVISIONING_PROFILE_SPECIFIER[sdk=appletvos*]" = "iPocketTube TV";
+				SDKROOT = appletvos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "appletvos appletvsimulator";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 3;
+				TVOS_DEPLOYMENT_TARGET = 17.6;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		8C071631C8CB52D3A77F733C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = iPocketTubeDownloadWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.downloadwidget;
+				PRODUCT_NAME = iPocketTubeDownloadWidget;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		9356239C117922436ED4FA14 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = iPocketTubeDownloadWidget/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.downloadwidget;
+				PRODUCT_NAME = iPocketTubeDownloadWidget;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		9EE8D597F302E6F05047F968 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.uitests;
+				PROVISIONING_PROFILE_SPECIFIER = "";
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = iPocketTube;
+			};
+			name = Release;
+		};
+		AA01000000000000000000AB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeShareExtension/iPocketTubeShareExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = iPocketTubeShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.share;
+				PRODUCT_NAME = iPocketTubeShareExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA01000000000000000000AC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeShareExtension/iPocketTubeShareExtension.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				INFOPLIST_FILE = iPocketTubeShareExtension/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local.share;
+				PRODUCT_NAME = iPocketTubeShareExtension;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		B114FDA1A112D6CFA1203000 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
+				CODE_SIGN_ENTITLEMENTS = iPocketTubeApp/iPocketTubeApp.entitlements;
+				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "iPocketTubeApp/iPocketTubeApp-macOS.entitlements";
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				DEAD_CODE_STRIPPING = YES;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				INFOPLIST_FILE = iPocketTubeApp/Info.plist;
+				"INFOPLIST_FILE[sdk=macosx*]" = "iPocketTubeApp/Info-macOS.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.alexlane.smarttube.local;
+				PRODUCT_MODULE_NAME = iPocketTubeApp;
+				PRODUCT_NAME = iPocketTube;
+				SDKROOT = auto;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		FF8768BF04D8F26434D2CCCD /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MARKETING_VERSION = 5.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = auto;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		0B664A7C4FCE77DC38FBE17B /* Build configuration list for PBXProject "iPocketTubeApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4AF41A3BD9270B2E62E2D1FD /* Debug */,
+				FF8768BF04D8F26434D2CCCD /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		1A2B3C4D5E6F1A2B3C4D5E68 /* Build configuration list for PBXNativeTarget "iPocketTubeTVUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1A2B3C4D5E6F1A2B3C4D5E66 /* Debug */,
+				1A2B3C4D5E6F1A2B3C4D5E67 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		67A5E80D2FB3932400C53D61 /* Build configuration list for PBXNativeTarget "iPocketTubeSafariExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67A5E80E2FB3932400C53D61 /* Debug */,
+				67A5E80F2FB3932400C53D61 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		67E6B6852F9535CD00CD372F /* Build configuration list for PBXNativeTarget "iPocketTubeTV" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67E6B6832F9535CD00CD372F /* Debug */,
+				67E6B6842F9535CD00CD372F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7D9289AB39EE378EB64C7F41 /* Build configuration list for PBXNativeTarget "iPocketTubeDownloadWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9356239C117922436ED4FA14 /* Release */,
+				8C071631C8CB52D3A77F733C /* Debug */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A25E75A9105B7E731FA11D5F /* Build configuration list for PBXNativeTarget "iPocketTube" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0451DED328B2EF41079875ED /* Debug */,
+				B114FDA1A112D6CFA1203000 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AA01000000000000000000AD /* Build configuration list for PBXNativeTarget "iPocketTubeShareExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA01000000000000000000AB /* Debug */,
+				AA01000000000000000000AC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		AEAB87BD362E4200A8AED20B /* Build configuration list for PBXNativeTarget "iPocketTubeUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				517A04DB1FAD3B9453134C2F /* Debug */,
+				9EE8D597F302E6F05047F968 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../iPocketTube;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		4D96747315A9E066D09F1F4E /* iPocketTubeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			productName = iPocketTubeCore;
+		};
+		67E6B6862F9535CD00CD372F /* iPocketTube */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			productName = iPocketTube;
+		};
+		AA01000000000000000000B1 /* iPocketTubeCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			productName = iPocketTubeCore;
+		};
+		B8401470D9A590E7F3685830 /* iPocketTube */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = iPocketTube;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = CF958B49C3E80CFAE3F092E3 /* Project object */;
+}
