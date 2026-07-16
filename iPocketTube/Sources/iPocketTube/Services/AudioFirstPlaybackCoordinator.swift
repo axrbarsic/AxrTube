@@ -52,6 +52,8 @@ public final class AudioFirstPlaybackCoordinator {
     private var supervisedLoaderID: UUID?
     private var supervisedVideoID: String?
     private var reconciliationTask: Task<Void, Never>?
+    private var reconciliationVideoID: String?
+    private var reconciliationGeneration: UInt64 = 0
     private var reconciliationWatchdogTask: Task<Void, Never>?
     private var applicationIsActive = false
     private var wasPlayingBeforeScrub = false
@@ -141,7 +143,7 @@ public final class AudioFirstPlaybackCoordinator {
             return
         }
 
-        guard DownloadStore.shared.begin(video: video, kind: .audio) else {
+        guard DownloadStore.shared.claimForPlayback(video: video, kind: .audio) else {
             if let active = DownloadStore.shared.entry(videoId: video.id, kind: .audio), active.status.isActive {
                 apply(.buffering(generation: generation))
             }
@@ -189,6 +191,9 @@ public final class AudioFirstPlaybackCoordinator {
             .first else { return }
 
         DownloadStore.shared.markAutomaticRecoveryPending(videoId: entry.videoId, kind: entry.kind)
+        reconciliationGeneration &+= 1
+        let generation = reconciliationGeneration
+        reconciliationVideoID = entry.videoId
         AudioDiagnostics.shared.record(
             source: "download-supervisor",
             event: "reconcile.begin",
@@ -197,7 +202,7 @@ public final class AudioFirstPlaybackCoordinator {
             itemID: entry.videoId
         )
         reconciliationTask = Task { [weak self] in
-            await self?.resumeIncompleteAudio(entry)
+            await self?.resumeIncompleteAudio(entry, reconciliationGeneration: generation)
         }
     }
 
@@ -214,9 +219,15 @@ public final class AudioFirstPlaybackCoordinator {
 
     public func pauseDownload(_ entry: DownloadedVideo) {
         guard entry.kind == .audio else { return }
+        if reconciliationVideoID == entry.videoId {
+            reconciliationGeneration &+= 1
+            reconciliationTask?.cancel()
+            reconciliationTask = nil
+            reconciliationVideoID = nil
+        }
         if supervisedVideoID == entry.videoId {
             supervisedLoader?.cancel(discardCache: false)
-            clearSupervisedDownload()
+            clearSupervisedDownload(discardCache: false)
         }
         DownloadStore.shared.markUserPaused(videoId: entry.videoId, kind: entry.kind)
     }
@@ -485,7 +496,14 @@ public final class AudioFirstPlaybackCoordinator {
               currentVideo?.id == video.id else { return }
         switch result {
         case .failure(let error):
-            fail(video: video, error: error, generation: generation)
+            if !scheduleProgressiveRecovery(
+                video: video,
+                error: error,
+                generation: generation,
+                loaderID: loaderID
+            ) {
+                fail(video: video, error: error, generation: generation)
+            }
         case .success(let progress):
             milestones.downloadCompleted()
             _ = playbackState.finish(
@@ -499,7 +517,10 @@ public final class AudioFirstPlaybackCoordinator {
                 let bytes: Int64
                 switch plan.source {
                 case .directM4A:
-                    guard canStore(progress.downloadedBytes) else { throw storageLimitError() }
+                    // The final file replaces the matching sparse allocation via
+                    // hard link/atomic install, so this is not an additional copy
+                    // against the user's logical storage budget.
+                    guard canStore(0) else { throw storageLimitError() }
                     bytes = try await resourceLoader.finalize(to: destination)
                     guard commandGate.isCurrent(generation), activeLoaderID == loaderID,
                           currentVideo?.id == video.id else { return }
@@ -542,15 +563,29 @@ public final class AudioFirstPlaybackCoordinator {
         }
     }
 
-    private func resumeIncompleteAudio(_ entry: DownloadedVideo) async {
-        defer { reconciliationTask = nil }
+    private func resumeIncompleteAudio(
+        _ entry: DownloadedVideo,
+        reconciliationGeneration generation: UInt64
+    ) async {
+        defer {
+            if reconciliationGeneration == generation {
+                reconciliationTask = nil
+                reconciliationVideoID = nil
+            }
+        }
         guard applicationIsActive, entry.kind == .audio,
+              reconciliationGeneration == generation,
+              reconciliationVideoID == entry.videoId,
               DownloadStore.shared.entry(videoId: entry.videoId, kind: .audio)?.shouldAutomaticallyResume == true,
               entry.videoId != currentVideo?.id else { return }
         do {
             let video = entry.video
             let (plan, userAgent) = try await resolveDownloadPlan(for: video)
-            guard applicationIsActive, !Task.isCancelled,
+            try Task.checkCancellation()
+            guard applicationIsActive,
+                  reconciliationGeneration == generation,
+                  reconciliationVideoID == entry.videoId,
+                  entry.videoId != currentVideo?.id,
                   DownloadStore.shared.entry(videoId: entry.videoId, kind: .audio)?.shouldAutomaticallyResume == true,
                   let url = plan.format.url,
                   OfflineAudioFormatSelector.supportsInstantPlayback(plan) else {
@@ -613,6 +648,10 @@ public final class AudioFirstPlaybackCoordinator {
                     }
                 }
             )
+            try Task.checkCancellation()
+            guard reconciliationGeneration == generation,
+                  reconciliationVideoID == entry.videoId,
+                  entry.videoId != currentVideo?.id else { throw CancellationError() }
             supervisedLoader = loader
             supervisedLoaderID = loaderID
             supervisedVideoID = video.id
@@ -689,7 +728,7 @@ public final class AudioFirstPlaybackCoordinator {
               let loader = supervisedLoader else { return }
         switch result {
         case .failure(let error):
-            clearSupervisedDownload()
+            clearSupervisedDownload(discardCache: false)
             handleSupervisedFailure(error, video: video)
         case .success(let progress):
             do {
@@ -697,7 +736,7 @@ public final class AudioFirstPlaybackCoordinator {
                 let bytes: Int64
                 switch plan.source {
                 case .directM4A:
-                    guard canStore(progress.downloadedBytes) else { throw storageLimitError() }
+                    guard canStore(0) else { throw storageLimitError() }
                     bytes = try await loader.finalize(to: destination)
                 case .directNativeAudio, .muxedMP4Extraction:
                     let sourceURL = try await loader.completedSourceURL()
@@ -715,10 +754,10 @@ public final class AudioFirstPlaybackCoordinator {
                     try atomicallyInstall(staging: staging, destination: destination)
                 }
                 DownloadStore.shared.complete(video: video, kind: .audio, fileURL: destination, fileSizeBytes: bytes)
-                clearSupervisedDownload()
+                clearSupervisedDownload(discardCache: true)
                 reconcileDownloads(trigger: "job-completed")
             } catch {
-                clearSupervisedDownload()
+                clearSupervisedDownload(discardCache: false)
                 handleSupervisedFailure(error, video: video)
             }
         }
@@ -775,9 +814,20 @@ public final class AudioFirstPlaybackCoordinator {
     }
 
     private func cancelSupervisedDownload(ifMatching videoID: String) {
-        guard supervisedVideoID == videoID else { return }
-        supervisedLoader?.cancel(discardCache: false)
-        clearSupervisedDownload()
+        var claimedOwnership = false
+        if reconciliationVideoID == videoID {
+            reconciliationGeneration &+= 1
+            reconciliationTask?.cancel()
+            reconciliationTask = nil
+            reconciliationVideoID = nil
+            claimedOwnership = true
+        }
+        if supervisedVideoID == videoID {
+            supervisedLoader?.cancel(discardCache: false)
+            clearSupervisedDownload(discardCache: false)
+            claimedOwnership = true
+        }
+        guard claimedOwnership else { return }
         if let entry = DownloadStore.shared.entry(videoId: videoID, kind: .audio) {
             DownloadStore.shared.update(
                 videoId: videoID,
@@ -790,13 +840,17 @@ public final class AudioFirstPlaybackCoordinator {
         }
     }
 
-    private func clearSupervisedDownload() {
+    private func clearSupervisedDownload(discardCache: Bool) {
+        if discardCache {
+            supervisedLoader?.cancel(discardCache: true)
+        }
         supervisedLoader = nil
         supervisedLoaderID = nil
         supervisedVideoID = nil
     }
 
     nonisolated private static func isTransientDownloadFailure(_ error: Error) -> Bool {
+        if ProgressiveAudioResourceLoader.isRetryableFailure(error) { return true }
         let code = (error as? URLError)?.code
         return code == .timedOut || code == .cannotFindHost || code == .cannotConnectToHost
             || code == .networkConnectionLost || code == .dnsLookupFailed || code == .notConnectedToInternet
@@ -859,6 +913,55 @@ public final class AudioFirstPlaybackCoordinator {
             }
             try? await Task.sleep(for: .milliseconds(100))
         }
+    }
+
+    @discardableResult
+    private func scheduleProgressiveRecovery(
+        video: Video,
+        error: Error,
+        generation: UInt64,
+        loaderID: UUID
+    ) -> Bool {
+        guard commandGate.isCurrent(generation), activeLoaderID == loaderID,
+              currentVideo?.id == video.id,
+              Self.isTransientDownloadFailure(error) else { return false }
+        let entry = DownloadStore.shared.entry(videoId: video.id, kind: .audio)
+        let retry = (entry?.retryCount ?? 0) + 1
+        guard retry <= 3 else { return false }
+
+        resourceLoader?.cancel(discardCache: false)
+        resourceLoader = nil
+        activeLoaderID = nil
+        apply(.reconnecting(generation: generation))
+        DownloadStore.shared.update(
+            videoId: video.id,
+            kind: .audio,
+            status: .reconnecting,
+            progress: entry?.progress ?? downloadProgress,
+            errorMessage: String(localized: "Reconnecting…", bundle: .module),
+            retryCount: retry,
+            resumePolicy: .automatic
+        )
+        AudioDiagnostics.shared.record(
+            source: "audio-first",
+            event: "range.recovery.scheduled",
+            decision: "attempt=\(retry)",
+            player: playerState.vm.player,
+            itemID: video.id,
+            commandGeneration: generation,
+            error: error
+        )
+        workTask?.cancel()
+        workTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(
+                SparseDownloadRetryPolicy.delayMilliseconds(attempt: retry - 1, seed: 0)
+            ))
+            guard let self, !Task.isCancelled,
+                  self.commandGate.isCurrent(generation),
+                  self.currentVideo?.id == video.id else { return }
+            await self.resolveAndStart(video: video, generation: generation)
+        }
+        return true
     }
 
     private func fail(video: Video, error: Error, generation: UInt64) {
@@ -936,7 +1039,10 @@ public final class AudioFirstPlaybackCoordinator {
         timelineTask = nil
         positionHydrationTask?.cancel()
         positionHydrationTask = nil
-        resourceLoader?.cancel(discardCache: markCancelled)
+        let completedCurrentAudio = video.flatMap {
+            DownloadStore.shared.entry(videoId: $0.id, kind: .audio)
+        }?.status == .completed
+        resourceLoader?.cancel(discardCache: markCancelled || completedCurrentAudio)
         resourceLoader = nil
         activeLoaderID = nil
         currentPlan = nil

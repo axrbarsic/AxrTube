@@ -135,6 +135,37 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.ended(shouldResume: true) == .stayPaused)
     }
 
+    @Test("Spoken hint cannot resume while a real interruption is still active")
+    func overlappingHintEndsBeforeSystemInterruption() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.sourceBegan(.secondaryAudioHint, wasPlaying: true) == .pauseAndYield)
+        #expect(state.sourceBegan(.systemInterruption, wasPlaying: false) == .ignore)
+        #expect(state.sourceEnded(.secondaryAudioHint, shouldResume: true) == .ignore)
+        #expect(state.isHandling)
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: true) == .rebuildGraphAndResume)
+        #expect(!state.isHandling)
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: true) == .ignore)
+    }
+
+    @Test("System resume permission wins when a spoken hint overlaps")
+    func systemDenialWinsOverHintPermission() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.sourceBegan(.systemInterruption, wasPlaying: true) == .pauseAndYield)
+        #expect(state.sourceBegan(.secondaryAudioHint, wasPlaying: false) == .ignore)
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: false) == .ignore)
+        #expect(state.sourceEnded(.secondaryAudioHint, shouldResume: true) == .stayPaused)
+    }
+
+    @Test("Manual pause wins across overlapping audio sources")
+    func manualPauseWinsAcrossOverlappingSources() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.sourceBegan(.secondaryAudioHint, wasPlaying: true) == .pauseAndYield)
+        #expect(state.sourceBegan(.systemInterruption, wasPlaying: false) == .ignore)
+        state.userPaused()
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: true) == .ignore)
+        #expect(state.sourceEnded(.secondaryAudioHint, shouldResume: true) == .stayPaused)
+    }
+
     @Test("Interruption flags default to false")
     func interruptionFlagsDefaultToFalse() {
         let vm = PlaybackViewModel()

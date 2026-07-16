@@ -250,6 +250,27 @@ public final class DownloadStore {
         return true
     }
 
+    /// A user playback command atomically takes ownership from foreground
+    /// reconciliation without deleting verified sparse ranges. Unlike `begin`,
+    /// this succeeds for an active persisted job so the first tap after launch
+    /// cannot become a no-op while a supervisor is resolving fresh metadata.
+    @discardableResult
+    public func claimForPlayback(video: Video, kind: OfflineMediaKind) -> Bool {
+        if let index = entries.firstIndex(where: { $0.videoId == video.id && $0.kind == kind }) {
+            guard entries[index].status != .completed else { return false }
+            entries[index].status = .queued
+            entries[index].errorMessage = nil
+            entries[index].resumePolicy = .automatic
+            if kind == .audio, let partial = bestPartialSnapshot(videoID: video.id) {
+                entries[index].fileSizeBytes = max(entries[index].fileSizeBytes, partial.verifiedBytes)
+                entries[index].progress = max(entries[index].progress, partial.progress)
+            }
+            saveManifest()
+            return true
+        }
+        return begin(video: video, kind: kind)
+    }
+
     public func update(
         videoId: String,
         kind: OfflineMediaKind,
@@ -438,8 +459,31 @@ public final class DownloadStore {
                 restored.progress = 0
                 restored.fileSizeBytes = 0
                 restored.errorMessage = "Offline file is missing. Tap Retry."
+            } else if restored.status != .completed,
+                      exists,
+                      actualURL.standardizedFileURL == expectedURL.standardizedFileURL,
+                      let size = try? actualURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                      size > 0 {
+                // Atomic media installation may finish immediately before a
+                // process termination and the following manifest commit. The
+                // durable final path is authoritative in this narrow window;
+                // promote it instead of resolving the network from zero.
+                restored.status = .completed
+                restored.progress = 1
+                restored.fileSizeBytes = Int64(size)
+                restored.downloadedAt = restored.downloadedAt
+                    ?? inferredFinalizationDate(
+                        for: actualURL,
+                        status: .completed,
+                        fileExists: true
+                    )
+                restored.errorMessage = nil
+                restored.resumePolicy = .automatic
             }
             return restored
+        }
+        for completed in entries where completed.status == .completed {
+            removePartialArtifacts(videoId: completed.videoId, kind: completed.kind)
         }
         reconcilePartialProgress()
         saveManifest()

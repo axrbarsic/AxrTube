@@ -116,6 +116,23 @@ extension PlaybackViewModel {
                         #endif
                         return
                     }
+                    if self.audioOnlyItemActive {
+                        // Progressive audio owns its range loader and retry policy.
+                        // Escalating into the legacy video/HLS extractor here creates
+                        // a second source owner and can replace a still-valid sparse
+                        // item after a temporary range wait.
+                        #if canImport(UIKit)
+                        AudioDiagnostics.shared.record(
+                            event: "rate.zero.progressiveAudio",
+                            decision: "rangeLoaderOwnsRecovery",
+                            player: self.player,
+                            recoveryGeneration: classificationGeneration,
+                            itemID: self.currentVideo?.id
+                        )
+                        #endif
+                        self.player.playImmediately(atRate: Float(self.settings.playbackSpeed))
+                        return
+                    }
                     self.isPlaying = false
                     #if canImport(UIKit)
                     AudioDiagnostics.shared.record(

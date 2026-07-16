@@ -2,6 +2,11 @@
 /// from AVFoundation lets notification sequences be regression-tested on every
 /// Swift Package test host while the iOS build verifies the concrete session calls.
 public struct AudioInterruptionStateMachine: Sendable {
+    public enum Source: Sendable {
+        case systemInterruption
+        case secondaryAudioHint
+    }
+
     public enum Action: Equatable, Sendable {
         case pauseAndYield
         /// Reactivate the session, rebuild the presentation graph, and resume once.
@@ -18,6 +23,11 @@ public struct AudioInterruptionStateMachine: Sendable {
     public private(set) var generation: UInt = 0
     public private(set) var mediaServicesAreLost = false
     public private(set) var wasPlayingBeforeMediaServicesLoss = false
+    private var systemInterruptionActive = false
+    private var secondaryAudioHintActive = false
+    private var systemParticipatedInCycle = false
+    private var systemResumePermission: Bool?
+    private var hintResumePermission = false
 
     public init() {}
 
@@ -27,6 +37,50 @@ public struct AudioInterruptionStateMachine: Sendable {
         isHandling = true
         self.wasPlaying = wasPlaying
         return .pauseAndYield
+    }
+
+    /// Coalesces overlapping AVAudioSession interruption and spoken-prompt hint
+    /// notifications into one pause/resume cycle. An end for one source cannot
+    /// resume while the other source still owns audio.
+    public mutating func sourceBegan(_ source: Source, wasPlaying: Bool) -> Action {
+        let hadBlocker = systemInterruptionActive || secondaryAudioHintActive
+        switch source {
+        case .systemInterruption:
+            guard !systemInterruptionActive else { return .ignore }
+            systemInterruptionActive = true
+            systemParticipatedInCycle = true
+        case .secondaryAudioHint:
+            guard !secondaryAudioHintActive else { return .ignore }
+            secondaryAudioHintActive = true
+        }
+        if !hadBlocker {
+            systemParticipatedInCycle = source == .systemInterruption
+            systemResumePermission = nil
+            hintResumePermission = false
+            return began(wasPlaying: wasPlaying)
+        }
+        return .ignore
+    }
+
+    public mutating func sourceEnded(_ source: Source, shouldResume: Bool) -> Action {
+        switch source {
+        case .systemInterruption:
+            guard systemInterruptionActive else { return .ignore }
+            systemInterruptionActive = false
+            systemResumePermission = shouldResume
+        case .secondaryAudioHint:
+            guard secondaryAudioHintActive else { return .ignore }
+            secondaryAudioHintActive = false
+            hintResumePermission = shouldResume
+        }
+        guard !systemInterruptionActive, !secondaryAudioHintActive else { return .ignore }
+        let permitted = systemParticipatedInCycle
+            ? systemResumePermission == true
+            : hintResumePermission
+        systemParticipatedInCycle = false
+        systemResumePermission = nil
+        hintResumePermission = false
+        return ended(shouldResume: permitted)
     }
 
     public mutating func ended(shouldResume: Bool) -> Action {
@@ -44,6 +98,7 @@ public struct AudioInterruptionStateMachine: Sendable {
     /// media-services outage remains non-recoverable until reset arrives.
     public mutating func userRequestedPlay() -> Action {
         guard !mediaServicesAreLost else { return .stayPaused }
+        clearAudioSources()
         generation &+= 1
         isHandling = false
         wasPlaying = false
@@ -110,6 +165,15 @@ public struct AudioInterruptionStateMachine: Sendable {
         wasPlaying = false
         mediaServicesAreLost = false
         wasPlayingBeforeMediaServicesLoss = false
+        clearAudioSources()
+    }
+
+    private mutating func clearAudioSources() {
+        systemInterruptionActive = false
+        secondaryAudioHintActive = false
+        systemParticipatedInCycle = false
+        systemResumePermission = nil
+        hintResumePermission = false
     }
 }
 

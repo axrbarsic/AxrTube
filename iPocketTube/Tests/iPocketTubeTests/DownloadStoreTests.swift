@@ -67,6 +67,31 @@ struct DownloadStoreTests {
         #expect(entry?.fileSizeBytes == 32)
     }
 
+    @Test("Relaunch promotes an atomically installed final file after a manifest crash window")
+    func finalFileWinsManifestCrashWindow() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let video = fixture(id: "finalization-window")
+        let first = DownloadStore(baseDirectory: dir)
+        #expect(first.begin(video: video, kind: .audio))
+        first.update(
+            videoId: video.id,
+            kind: .audio,
+            status: .finalizationPending,
+            progress: 1,
+            fileSizeBytes: 48
+        )
+        let finalURL = first.destinationURL(for: video.id, kind: .audio)
+        try Data(repeating: 0x77, count: 48).write(to: finalURL, options: .atomic)
+
+        let reopened = DownloadStore(baseDirectory: dir)
+        let entry = reopened.entry(videoId: video.id, kind: .audio)
+        #expect(entry?.status == .completed)
+        #expect(entry?.progress == 1)
+        #expect(entry?.fileSizeBytes == 48)
+        #expect(entry?.errorMessage == nil)
+    }
+
     @Test("Interrupted download preserves progress and enters automatic reconciliation after relaunch")
     func interruptedDownloadBecomesAutomaticallyResumable() throws {
         let dir = try directory()
@@ -122,6 +147,31 @@ struct DownloadStoreTests {
 
         #expect(store.begin(video: video, kind: .audio))
         #expect(store.entry(videoId: video.id, kind: .audio)?.status == .queued)
+        #expect(store.entries.filter { $0.videoId == video.id && $0.kind == .audio }.count == 1)
+    }
+
+    @Test("First user tap claims an active reconciled job without losing progress")
+    func userPlaybackClaimsActiveReconciliation() throws {
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let store = DownloadStore(baseDirectory: dir)
+        let video = fixture(id: "active-claim")
+
+        #expect(store.begin(video: video, kind: .audio))
+        store.update(
+            videoId: video.id,
+            kind: .audio,
+            status: .reconnecting,
+            progress: 0.42,
+            fileSizeBytes: 4_200,
+            resumePolicy: .automatic
+        )
+        #expect(!store.begin(video: video, kind: .audio))
+        #expect(store.claimForPlayback(video: video, kind: .audio))
+        let claimed = store.entry(videoId: video.id, kind: .audio)
+        #expect(claimed?.status == .queued)
+        #expect(claimed?.progress == 0.42)
+        #expect(claimed?.fileSizeBytes == 4_200)
         #expect(store.entries.filter { $0.videoId == video.id && $0.kind == .audio }.count == 1)
     }
 

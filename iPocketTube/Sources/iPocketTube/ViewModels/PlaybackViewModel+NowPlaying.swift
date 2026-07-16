@@ -364,11 +364,12 @@ extension PlaybackViewModel {
         type: AVAudioSession.InterruptionType,
         options: AVAudioSession.InterruptionOptions = [],
         reason: UInt? = nil,
-        wasSuspended: Bool = false
+        wasSuspended: Bool = false,
+        source: AudioInterruptionStateMachine.Source = .systemInterruption
     ) {
         AudioDiagnostics.shared.record(
             event: "interruption.notification",
-            decision: type == .began ? "began" : "ended",
+            decision: "\(source) \(type == .began ? "began" : "ended")",
             player: player,
             interruptionType: type.rawValue,
             interruptionOptions: options.rawValue,
@@ -381,7 +382,8 @@ extension PlaybackViewModel {
             // Duplicate began notifications are possible while voice input negotiates
             // its route. Never overwrite the original was-playing snapshot with the
             // paused state from a later duplicate.
-            let action = audioInterruptionState.began(
+            let action = audioInterruptionState.sourceBegan(
+                source,
                 wasPlaying: isPlaying || player.rate > 0
             )
             guard action == .pauseAndYield else {
@@ -401,7 +403,8 @@ extension PlaybackViewModel {
             playerLog.notice("[interruption] began — player paused and route yielded; wasPlaying=\(self.wasPlayingBeforeInterruption)")
 
         case .ended:
-            let action = audioInterruptionState.ended(
+            let action = audioInterruptionState.sourceEnded(
+                source,
                 shouldResume: options.contains(.shouldResume)
             )
             guard action != .ignore else {
@@ -598,9 +601,21 @@ extension PlaybackViewModel {
                 guard let self else { return }
                 switch type {
                 case .begin:
-                    self.handleAudioInterruption(type: .began, options: [], reason: nil, wasSuspended: false)
+                    self.handleAudioInterruption(
+                        type: .began,
+                        options: [],
+                        reason: nil,
+                        wasSuspended: false,
+                        source: .secondaryAudioHint
+                    )
                 case .end:
-                    self.handleAudioInterruption(type: .ended, options: [.shouldResume], reason: nil, wasSuspended: false)
+                    self.handleAudioInterruption(
+                        type: .ended,
+                        options: [.shouldResume],
+                        reason: nil,
+                        wasSuspended: false,
+                        source: .secondaryAudioHint
+                    )
                 @unknown default:
                     break
                 }

@@ -64,6 +64,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
 
     private struct InFlightRange {
         let reason: String
+        let generation: UInt64
         let task: Task<Void, Never>
     }
 
@@ -108,6 +109,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
     private var pendingRequests: [AVAssetResourceLoadingRequest] = []
     private var inFlight: [SparseByteRange: InFlightRange] = [:]
     private var requestSet = SparseByteRangeRequestSet()
+    private var requestGenerationGate = SparseRangeRequestGenerationGate()
     private var isCancelled = false
     private var isTerminal = false
     private var isComplete = false
@@ -230,6 +232,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             for request in self.inFlight.values { request.task.cancel() }
             self.inFlight.removeAll()
             self.requestSet.removeAll()
+            self.requestGenerationGate.invalidateAll()
             let error = CancellationError()
             for request in self.pendingRequests { request.finishLoading(with: error) }
             self.pendingRequests.removeAll()
@@ -274,7 +277,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                     )
                     let staging = destination.appendingPathExtension("new")
                     try? FileManager.default.removeItem(at: staging)
-                    try FileManager.default.copyItem(at: self.readURL, to: staging)
+                    do {
+                        try FileManager.default.linkItem(at: self.readURL, to: staging)
+                    } catch {
+                        try FileManager.default.copyItem(at: self.readURL, to: staging)
+                    }
                     if FileManager.default.fileExists(atPath: destination.path) {
                         _ = try FileManager.default.replaceItemAt(
                             destination,
@@ -285,6 +292,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                     } else {
                         try FileManager.default.moveItem(at: staging, to: destination)
                     }
+                    self.readURL = destination
+                    try? FileManager.default.removeItem(at: self.cacheURL)
+                    try? FileManager.default.removeItem(at: self.sidecarURL)
+                    try? FileManager.default.removeItem(at: self.exportAliasURL)
                     continuation.resume(returning: self.expectedBytes)
                 } catch {
                     continuation.resume(throwing: error)
@@ -391,12 +402,14 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 request.task.cancel()
                 inFlight[range] = nil
                 requestSet.remove(range)
+                requestGenerationGate.invalidate(range)
             }
             if inFlight.count >= 3,
                let background = inFlight.first(where: { $0.value.reason == "background-fill" }) {
                 background.value.task.cancel()
                 inFlight[background.key] = nil
                 requestSet.remove(background.key)
+                requestGenerationGate.invalidate(background.key)
             }
         }
         guard inFlight.count < 3 else { return }
@@ -404,6 +417,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
 
         emitDiagnostic(stage: reason, requested: clamped)
         let sourceSnapshot = source
+        let requestGeneration = requestGenerationGate.issue(for: clamped)
         let task = Task { [weak self] in
             guard let self else { return }
             var attempt = 0
@@ -417,7 +431,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 }
                 do {
                     let result = try await self.fetch(clamped, source: sourceSnapshot, permitRefresh: true)
-                    self.queue.async { [weak self] in self?.receive(result, requested: clamped) }
+                    self.queue.async { [weak self] in
+                        self?.receive(result, requested: clamped, generation: requestGeneration)
+                    }
                     return
                 } catch is CancellationError {
                     return
@@ -427,7 +443,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                         failure: failure,
                         attempt: attempt
                     ) else {
-                        self.queue.async { [weak self] in self?.failRange(clamped, error: error) }
+                        self.queue.async { [weak self] in
+                            self?.failRange(clamped, generation: requestGeneration, error: error)
+                        }
                         return
                     }
                     attempt += 1
@@ -445,7 +463,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 }
             }
         }
-        inFlight[clamped] = InFlightRange(reason: reason, task: task)
+        inFlight[clamped] = InFlightRange(
+            reason: reason,
+            generation: requestGeneration,
+            task: task
+        )
     }
 
     private func fetch(_ range: SparseByteRange, source: Source, permitRefresh: Bool) async throws -> FetchResult {
@@ -513,6 +535,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         let probe = SparseByteRange(0, min(2, expectedBytes))
         emitDiagnostic(stage: "cache-validator-probe", requested: probe)
         let sourceSnapshot = source
+        let requestGeneration = requestGenerationGate.issue(for: probe)
         let task = Task { [weak self] in
             guard let self else { return }
             var attempt = 0
@@ -520,7 +543,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 do {
                     let result = try await self.fetch(probe, source: sourceSnapshot, permitRefresh: true)
                     self.queue.async { [weak self] in
-                        self?.receiveCacheValidation(result, requested: probe)
+                        self?.receiveCacheValidation(
+                            result,
+                            requested: probe,
+                            generation: requestGeneration
+                        )
                     }
                     return
                 } catch is CancellationError {
@@ -531,7 +558,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                         failure: failure,
                         attempt: attempt
                     ) else {
-                        self.queue.async { [weak self] in self?.failRange(probe, error: error) }
+                        self.queue.async { [weak self] in
+                            self?.failRange(probe, generation: requestGeneration, error: error)
+                        }
                         return
                     }
                     attempt += 1
@@ -549,10 +578,19 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 }
             }
         }
-        inFlight[probe] = InFlightRange(reason: "cache-validator", task: task)
+        inFlight[probe] = InFlightRange(
+            reason: "cache-validator",
+            generation: requestGeneration,
+            task: task
+        )
     }
 
-    private func receiveCacheValidation(_ result: FetchResult, requested: SparseByteRange) {
+    private func receiveCacheValidation(
+        _ result: FetchResult,
+        requested: SparseByteRange,
+        generation: UInt64
+    ) {
+        guard requestGenerationGate.consume(generation, for: requested) else { return }
         inFlight[requested] = nil
         guard !isCancelled, !isTerminal, requiresRestoredCacheValidation else { return }
         let activeSource = result.refreshedSource ?? source
@@ -564,9 +602,12 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             bodyCount: result.data.count
         ) else {
             emitDiagnostic(stage: "cache-validator-invalid", statusCode: result.statusCode, requested: requested)
-            resetCacheForFreshRepresentation(source: activeSource)
-            requiresRestoredCacheValidation = false
-            requestRange(requested, reason: "probe-after-validator-reset")
+            if SparseRestoredCacheResponsePolicy.decide(
+                hasValidPlacement: false,
+                validatorAccepted: false
+            ) == .failPreservingVerifiedCache {
+                failSession(LoaderError.invalidRangeResponse)
+            }
             return
         }
 
@@ -587,7 +628,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             responseFingerprint: responseFingerprint
         )
 
-        if exactPartialMatch {
+        let decision = SparseRestoredCacheResponsePolicy.decide(
+            hasValidPlacement: true,
+            validatorAccepted: exactPartialMatch
+        )
+        if decision == .resumeVerifiedCache {
             source = Source(
                 url: activeSource.url,
                 userAgent: activeSource.userAgent,
@@ -618,7 +663,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             legacyProfile: activeSource.legacyProfile
         ))
         requiresRestoredCacheValidation = false
-        receive(result, requested: requested)
+        receiveAccepted(result, requested: requested)
     }
 
     private func resumeAfterCacheValidation() {
@@ -633,6 +678,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
     }
 
     private func resetCacheForFreshRepresentation(source: Source) {
+        requestGenerationGate.invalidateAll()
         try? FileManager.default.removeItem(at: sidecarURL)
         try? FileManager.default.removeItem(at: exportAliasURL)
         if let handle = try? FileHandle(forWritingTo: cacheURL) {
@@ -653,7 +699,16 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         didReportCompletion = false
     }
 
-    private func receive(_ result: FetchResult, requested: SparseByteRange) {
+    private func receive(
+        _ result: FetchResult,
+        requested: SparseByteRange,
+        generation: UInt64
+    ) {
+        guard requestGenerationGate.consume(generation, for: requested) else { return }
+        receiveAccepted(result, requested: requested)
+    }
+
+    private func receiveAccepted(_ result: FetchResult, requested: SparseByteRange) {
         inFlight[requested] = nil
         requestSet.remove(requested)
         if let refreshed = result.refreshedSource { source = refreshed }
@@ -665,7 +720,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             contentLength: result.contentLength,
             bodyCount: result.data.count
         ) else {
-            failRange(requested, error: LoaderError.invalidRangeResponse)
+            failSession(LoaderError.invalidRangeResponse)
             return
         }
 
@@ -676,6 +731,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 for (range, request) in inFlight {
                     request.task.cancel()
                     requestSet.remove(range)
+                    requestGenerationGate.invalidate(range)
                 }
                 inFlight.removeAll()
             }
@@ -704,11 +760,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 fingerprint: responseFingerprint,
                 legacyProfile: source.legacyProfile
             )
-            verifiedChunks.removeAll { $0.range.intersects(placement.storedRange) }
-            verifiedChunks.append(VerifiedSparseChunk(
-                range: placement.storedRange,
-                digest: Self.digest(result.data)
-            ))
+            try replaceVerifiedChunks(
+                intersecting: placement.storedRange,
+                insertedData: result.data
+            )
             persistSidecar()
             emitDiagnostic(
                 stage: networkBytes == Int64(result.data.count) ? "first-response" : "range-response",
@@ -736,7 +791,12 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         }
     }
 
-    private func failRange(_ range: SparseByteRange, error: Error) {
+    private func failRange(
+        _ range: SparseByteRange,
+        generation: UInt64,
+        error: Error
+    ) {
+        guard requestGenerationGate.consume(generation, for: range) else { return }
         inFlight[range] = nil
         requestSet.remove(range)
         guard !isCancelled, !isTerminal else { return }
@@ -751,6 +811,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         for request in inFlight.values { request.task.cancel() }
         inFlight.removeAll()
         requestSet.removeAll()
+        requestGenerationGate.invalidateAll()
         for request in pendingRequests { request.finishLoading(with: error) }
         pendingRequests.removeAll()
         persistSidecar()
@@ -829,6 +890,41 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         if let data = try? JSONEncoder().encode(manifest) {
             try? data.write(to: sidecarURL, options: .atomic)
         }
+    }
+
+    /// Re-hashes only the unaffected fragments of an overlapped verified chunk.
+    /// This keeps the durable invariant `manifest.index == union(chunks)` without
+    /// repeatedly hashing the whole growing file.
+    private func replaceVerifiedChunks(
+        intersecting insertedRange: SparseByteRange,
+        insertedData: Data
+    ) throws {
+        var replacements: [VerifiedSparseChunk] = []
+        for chunk in verifiedChunks {
+            guard chunk.range.intersects(insertedRange) else {
+                replacements.append(chunk)
+                continue
+            }
+            if chunk.range.lowerBound < insertedRange.lowerBound {
+                let prefix = SparseByteRange(chunk.range.lowerBound, insertedRange.lowerBound)
+                guard let bytes = readBytesFromDisk(range: prefix) else {
+                    throw URLError(.cannotOpenFile)
+                }
+                replacements.append(VerifiedSparseChunk(range: prefix, digest: Self.digest(bytes)))
+            }
+            if insertedRange.upperBound < chunk.range.upperBound {
+                let suffix = SparseByteRange(insertedRange.upperBound, chunk.range.upperBound)
+                guard let bytes = readBytesFromDisk(range: suffix) else {
+                    throw URLError(.cannotOpenFile)
+                }
+                replacements.append(VerifiedSparseChunk(range: suffix, digest: Self.digest(bytes)))
+            }
+        }
+        replacements.append(VerifiedSparseChunk(
+            range: insertedRange,
+            digest: Self.digest(insertedData)
+        ))
+        verifiedChunks = replacements.sorted { $0.range < $1.range }
     }
 
     private var networkPermitsTransfer: Bool {
@@ -995,6 +1091,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             return SparseDownloadRetryPolicy.classify(urlErrorCode: nsError.code, httpStatus: nil)
         }
         return .terminal
+    }
+
+    static func isRetryableFailure(_ error: Error) -> Bool {
+        let failure = classify(error)
+        return failure == .transient || failure == .staleSource || failure == .waitingForWiFi
     }
 
     private func emitDiagnostic(

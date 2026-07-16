@@ -160,6 +160,38 @@ struct InstantAudioSparseCacheTests {
         #expect(gate.isCurrent(secondA))
     }
 
+    @Test("Cancelled range response cannot overwrite its reissued generation")
+    func rangeGenerationRejectsLateResponse() {
+        let range = SparseByteRange(1_024, 2_048)
+        var gate = SparseRangeRequestGenerationGate()
+        let cancelled = gate.issue(for: range)
+        gate.invalidate(range)
+        let current = gate.issue(for: range)
+
+        let acceptedCancelled = gate.consume(cancelled, for: range)
+        #expect(!acceptedCancelled)
+        #expect(gate.accepts(current, for: range))
+        let acceptedCurrent = gate.consume(current, for: range)
+        #expect(acceptedCurrent)
+        #expect(!gate.accepts(current, for: range))
+    }
+
+    @Test("Invalid restored Content-Range preserves verified bytes")
+    func invalidValidatorResponsePreservesCache() {
+        #expect(SparseRestoredCacheResponsePolicy.decide(
+            hasValidPlacement: false,
+            validatorAccepted: false
+        ) == .failPreservingVerifiedCache)
+        #expect(SparseRestoredCacheResponsePolicy.decide(
+            hasValidPlacement: true,
+            validatorAccepted: true
+        ) == .resumeVerifiedCache)
+        #expect(SparseRestoredCacheResponsePolicy.decide(
+            hasValidPlacement: true,
+            validatorAccepted: false
+        ) == .resetChangedRepresentation)
+    }
+
     @Test("Lock lifecycle is not classified as a stall")
     func lockDoesNotRunStallRecovery() {
         #expect(PlaybackLifecyclePolicy.shouldRunStallRecovery(

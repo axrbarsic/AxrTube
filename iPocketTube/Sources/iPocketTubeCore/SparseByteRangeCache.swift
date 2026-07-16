@@ -18,6 +18,42 @@ public struct PlaybackCommandGate: Sendable, Equatable {
     }
 }
 
+/// Rejects completions from a cancelled or superseded byte-range request. A
+/// range can be reissued immediately for player priority, so range identity
+/// alone is insufficient to decide whether an async URLSession response is
+/// still allowed to mutate the durable cache.
+public struct SparseRangeRequestGenerationGate: Sendable, Equatable {
+    private var nextGeneration: UInt64 = 0
+    private var generations: [SparseByteRange: UInt64] = [:]
+
+    public init() {}
+
+    public mutating func issue(for range: SparseByteRange) -> UInt64 {
+        nextGeneration &+= 1
+        generations[range] = nextGeneration
+        return nextGeneration
+    }
+
+    public func accepts(_ generation: UInt64, for range: SparseByteRange) -> Bool {
+        generations[range] == generation
+    }
+
+    @discardableResult
+    public mutating func consume(_ generation: UInt64, for range: SparseByteRange) -> Bool {
+        guard accepts(generation, for: range) else { return false }
+        generations[range] = nil
+        return true
+    }
+
+    public mutating func invalidate(_ range: SparseByteRange) {
+        generations[range] = nil
+    }
+
+    public mutating func invalidateAll() {
+        generations.removeAll()
+    }
+}
+
 public enum PlaybackSceneState: String, Codable, Sendable {
     case active
     case inactive
@@ -203,6 +239,25 @@ public enum SparseRestoredCacheValidator {
         !serverReturnedWholeBody
             && cachedProbe == responseProbe
             && cachedFingerprint.isCompatible(with: responseFingerprint)
+    }
+}
+
+public enum SparseRestoredCacheResponseDecision: Sendable, Equatable {
+    case resumeVerifiedCache
+    case resetChangedRepresentation
+    case failPreservingVerifiedCache
+}
+
+/// Only proof of a changed entity may invalidate verified bytes. A malformed
+/// or mismatched Content-Range is a failed transfer, not evidence that the
+/// persisted representation changed.
+public enum SparseRestoredCacheResponsePolicy {
+    public static func decide(
+        hasValidPlacement: Bool,
+        validatorAccepted: Bool
+    ) -> SparseRestoredCacheResponseDecision {
+        guard hasValidPlacement else { return .failPreservingVerifiedCache }
+        return validatorAccepted ? .resumeVerifiedCache : .resetChangedRepresentation
     }
 }
 
