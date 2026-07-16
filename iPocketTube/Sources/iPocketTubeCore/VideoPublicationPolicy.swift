@@ -19,6 +19,74 @@ public enum YouTubePublicationDateParser {
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.date(from: value)
     }
+
+    /// Last-resort extraction from the public watch page. YouTube exposes the
+    /// same locale-independent publication values in player microformat JSON
+    /// and, for some renderer variants, in schema.org meta tags.
+    public static func parseWatchHTML(_ html: String) -> Date? {
+        let patterns = [
+            #"\"publishDate\"\s*:\s*\"([^\"]+)\""#,
+            #"\"uploadDate\"\s*:\s*\"([^\"]+)\""#,
+            #"itemprop=[\"'](?:datePublished|uploadDate)[\"'][^>]*content=[\"']([^\"']+)[\"']"#,
+            #"content=[\"']([^\"']+)[\"'][^>]*itemprop=[\"'](?:datePublished|uploadDate)[\"']"#,
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
+                  let match = regex.firstMatch(
+                    in: html,
+                    range: NSRange(html.startIndex..., in: html)
+                  ),
+                  let range = Range(match.range(at: 1), in: html)
+            else { continue }
+            if let date = parseUTCDate(String(html[range])) { return date }
+        }
+        return nil
+    }
+}
+
+/// Converts YouTube's coarse relative labels to a typed age used only for
+/// chronology. The original text remains the display source; no approximate
+/// age is ever presented as an invented exact calendar date.
+public enum YouTubePublicationRelativeParser {
+    public static func approximateAge(_ raw: String) -> TimeInterval? {
+        let value = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "ё", with: "е")
+        guard !value.isEmpty else { return nil }
+        if value == "today" || value == "сегодня" { return 0 }
+        if value == "yesterday" || value == "вчера" { return 24 * 60 * 60 }
+
+        let pattern = #"(\d+)\s+([\p{L}]+)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern),
+              let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+              let numberRange = Range(match.range(at: 1), in: value),
+              let unitRange = Range(match.range(at: 2), in: value),
+              let amount = Double(value[numberRange])
+        else { return nil }
+
+        let unit = String(value[unitRange])
+        let unitSeconds: TimeInterval
+        switch unit {
+        case "second", "seconds", "секунда", "секунды", "секунд", "секунду":
+            unitSeconds = 1
+        case "minute", "minutes", "минута", "минуты", "минут", "минуту":
+            unitSeconds = 60
+        case "hour", "hours", "час", "часа", "часов":
+            unitSeconds = 60 * 60
+        case "day", "days", "день", "дня", "дней":
+            unitSeconds = 24 * 60 * 60
+        case "week", "weeks", "неделя", "недели", "недель", "неделю":
+            unitSeconds = 7 * 24 * 60 * 60
+        case "month", "months", "месяц", "месяца", "месяцев":
+            unitSeconds = 30 * 24 * 60 * 60
+        case "year", "years", "год", "года", "лет":
+            unitSeconds = 365 * 24 * 60 * 60
+        default:
+            return nil
+        }
+        return amount * unitSeconds
+    }
 }
 
 /// Production routes that render collections of videos. Explicitly ordered
@@ -38,16 +106,17 @@ public enum VideoListRoute: String, Sendable, CaseIterable {
 
     public var usesNewestFirstPublicationOrder: Bool {
         switch self {
-        case .search, .home, .recommended, .subscriptions, .history, .channel, .rss:
+        case .search, .home, .recommended, .subscriptions, .channel, .rss:
             true
-        case .playlist, .queue, .downloads:
+        case .history, .playlist, .queue, .downloads:
             false
         }
     }
 }
 
 /// One stable, typed publication-date ordering policy shared by every feed.
-/// Display strings such as "today" or "Дата неизвестна" never participate.
+/// Exact dates are preferred; parseable relative metadata contributes only a
+/// coarse typed age. Localized labels are never compared lexicographically.
 public enum VideoPublicationSortPolicy {
     private enum MetadataQuality: Int {
         case unknown = 0
@@ -105,11 +174,23 @@ public enum VideoPublicationSortPolicy {
         })
     }
 
-    public static func sorted(_ videos: [Video], for route: VideoListRoute) -> [Video] {
+    public static func sorted(
+        _ videos: [Video],
+        for route: VideoListRoute,
+        now: Date = Date()
+    ) -> [Video] {
         guard route.usesNewestFirstPublicationOrder else { return videos }
 
+        func chronologyDate(_ video: Video) -> Date? {
+            if let exact = video.publishedAt { return exact }
+            guard let relative = normalizedRelativeLabel(video),
+                  let age = YouTubePublicationRelativeParser.approximateAge(relative)
+            else { return nil }
+            return now.addingTimeInterval(-age)
+        }
+
         return videos.enumerated().sorted { lhs, rhs in
-            switch (lhs.element.publishedAt, rhs.element.publishedAt) {
+            switch (chronologyDate(lhs.element), chronologyDate(rhs.element)) {
             case let (left?, right?) where left != right:
                 return left > right
             case (_?, nil):
@@ -143,6 +224,14 @@ public enum VideoPublicationSortPolicy {
             }
         }
         return sorted(merged, for: route)
+    }
+}
+
+/// Playlist catalogue rows reuse the card geometry but describe a collection,
+/// not a YouTube video. They must not claim a missing video publication date.
+public enum VideoPublicationPresentationPolicy {
+    public static func showsPublicationDate(for video: Video) -> Bool {
+        video.playlistId == nil || video.playlistId != video.id
     }
 }
 

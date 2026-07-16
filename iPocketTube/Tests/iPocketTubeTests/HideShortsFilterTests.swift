@@ -284,6 +284,22 @@ extension HideShortsFilterTests {
         #expect(group.videos.first?.isShort == false, "playlistVideoRenderer with watchEndpoint must not be isShort")
     }
 
+    @Test("playlistVideoRenderer keeps dateText as video publication fallback")
+    func playlistVideoRendererDateText() async throws {
+        let json: [String: Any] = [
+            "items": [
+                playlistVideoRendererJSON(videoId: "VIDEO_DATE_1", extras: [
+                    "navigationEndpoint": ["watchEndpoint": ["videoId": "VIDEO_DATE_1"]],
+                    "dateText": ["simpleText": "6 дней назад"],
+                ])
+            ]
+        ]
+        let api = InnerTubeAPI()
+        let group = try await api.parseVideoGroupForTesting(json, title: nil)
+
+        #expect(group.videos.first?.publishedTimeText == "6 дней назад")
+    }
+
     @Test("playlistVideoRenderer Short is hidden when hideShorts is enabled")
     func playlistVideoRendererShort_hiddenWhenHideShortsEnabled() async throws {
         let json: [String: Any] = [

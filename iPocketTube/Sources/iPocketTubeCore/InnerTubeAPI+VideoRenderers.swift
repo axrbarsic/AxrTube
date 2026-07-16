@@ -732,6 +732,7 @@ extension InnerTubeAPI {
                     }
                 }
             }
+            publishedTimeText = extractPublicationLabel(from: lockup)
             return nil
         }()
 
@@ -891,6 +892,7 @@ extension InnerTubeAPI {
 
         let publishedTimeText: String? = (r["publishedTimeText"] as? [String: Any]).flatMap { extractText($0) }
             ?? (r["dateText"] as? [String: Any]).flatMap { extractText($0) }
+            ?? extractPublicationLabel(from: r)
         // Relative text is presentation metadata only. Exact publication dates
         // are enriched from player microformat and stored in `publishedAt`.
         let publishedAt: Date? = nil
@@ -966,6 +968,8 @@ extension InnerTubeAPI {
         }
 
         let publishedTimeText: String? = (r["publishedTimeText"] as? [String: Any]).flatMap { extractText($0) }
+            ?? (r["dateText"] as? [String: Any]).flatMap { extractText($0) }
+            ?? extractPublicationLabel(from: r)
         // Preserve explicit playlist order; the relative label is never a sort key.
         let publishedAt: Date? = nil
         let _ptp = publishedTimeText ?? "nil"

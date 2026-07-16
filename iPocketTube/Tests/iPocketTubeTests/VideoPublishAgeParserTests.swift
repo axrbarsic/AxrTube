@@ -4,8 +4,8 @@ import Testing
 
 // MARK: - VideoPublishAgeParserTests
 //
-// Relative renderer labels are presentation metadata only. Exact publication
-// dates come from player microformat and are the sole sorting source.
+// Relative renderer labels remain honest presentation metadata. Chronology may
+// use their typed coarse age until exact player/watch metadata becomes available.
 //
 // All assertions are pure value transforms — no SwiftUI, no network.
 
@@ -189,6 +189,22 @@ struct LockupViewModelPublishAgeTests {
             for: video,
             locale: Locale(identifier: "ru_RU")
         ) == "3 дня назад")
+    }
+
+    @Test("Nested lockup publication field is found outside legacy metadata rows")
+    func lockupViewModel_nestedPublishedDateText() async throws {
+        var lockup = makeLockup(metadataRows: [
+            ["metadataParts": [["text": ["content": "Channel Name"]]]],
+        ])
+        lockup["accessibilityText"] = [
+            "publishedDateText": ["content": "4 часа назад"],
+        ]
+        let response = makeLockupViewModelAgeResponse(lockup)
+        let api = InnerTubeAPI()
+        let group = try await api.parseVideoGroupForTesting(response, title: nil)
+        let video = try #require(group.videos.first)
+
+        #expect(video.publishedTimeText == "4 часа назад")
     }
 
     @Test("parseLockupViewModel with no relative-date text leaves publishedAt nil")

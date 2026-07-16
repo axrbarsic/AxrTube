@@ -22,8 +22,10 @@ extension InnerTubeAPI {
         }
 
         var lastError: Error?
+        var receivedMetadataResponse = false
         do {
             let json = try await postPlayer(body: body(client: iosClientContext))
+            receivedMetadataResponse = true
             if let date = exactPublicationDate(from: json) { return date }
         } catch {
             lastError = error
@@ -34,12 +36,36 @@ extension InnerTubeAPI {
         // InnerTube client contract already used by downloads.
         do {
             let json = try await post(endpoint: "player", body: body(client: webClientContext))
-            return exactPublicationDate(from: json)
+            receivedMetadataResponse = true
+            if let date = exactPublicationDate(from: json) { return date }
         } catch {
             lastError = error
         }
 
-        if let lastError { throw lastError }
+        // Some channel/playlist/lockup variants omit microformat from both
+        // player clients while the public watch document still exposes the
+        // locale-independent schema.org/player date. Fetch only this page and
+        // retain neither its URL nor body after parsing.
+        do {
+            var components = URLComponents(string: "https://www.youtube.com/watch")!
+            components.queryItems = [URLQueryItem(name: "v", value: videoId)]
+            guard let url = components.url else { return nil }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = Self.requestTimeoutInterval
+            request.setValue(InnerTubeClients.Web.userAgent, forHTTPHeaderField: "User-Agent")
+            request.setValue("text/html", forHTTPHeaderField: "Accept")
+            let (data, response) = try await session.data(for: request)
+            guard let http = response as? HTTPURLResponse,
+                  (200..<300).contains(http.statusCode),
+                  let html = String(data: data, encoding: .utf8)
+            else { return nil }
+            receivedMetadataResponse = true
+            if let date = YouTubePublicationDateParser.parseWatchHTML(html) { return date }
+        } catch {
+            lastError = error
+        }
+
+        if !receivedMetadataResponse, let lastError { throw lastError }
         return nil
     }
 

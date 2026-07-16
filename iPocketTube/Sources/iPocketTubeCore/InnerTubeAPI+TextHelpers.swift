@@ -168,6 +168,44 @@ extension InnerTubeAPI {
         return markers.contains { normalized == $0.trimmingCharacters(in: .whitespaces) || normalized.contains($0) }
     }
 
+    /// Covers current lockup/channel/playlist renderer variants without tying
+    /// the publication pipeline to one brittle metadata-row index. The walk is
+    /// bounded and accepts only explicit date keys or text recognized as a
+    /// YouTube publication label.
+    func extractPublicationLabel(from value: Any, depth: Int = 0) -> String? {
+        guard depth < 10 else { return nil }
+        if let dictionary = value as? [String: Any] {
+            for key in ["publishedTimeText", "dateText", "publishedDateText", "uploadDateText"] {
+                guard let candidate = dictionary[key] else { continue }
+                if let text = candidate as? String, isPublicationDateLabel(text) { return text }
+                if let textObject = candidate as? [String: Any],
+                   let text = textObject["content"] as? String ?? extractText(textObject),
+                   isPublicationDateLabel(text) {
+                    return text
+                }
+            }
+            if let content = dictionary["content"] as? String,
+               isPublicationDateLabel(content) {
+                return content
+            }
+            if let extracted = extractText(dictionary), isPublicationDateLabel(extracted) {
+                return extracted
+            }
+            for child in dictionary.values {
+                if let result = extractPublicationLabel(from: child, depth: depth + 1) {
+                    return result
+                }
+            }
+        } else if let array = value as? [Any] {
+            for child in array {
+                if let result = extractPublicationLabel(from: child, depth: depth + 1) {
+                    return result
+                }
+            }
+        }
+        return nil
+    }
+
     func extractNumber(_ text: String) -> Int? {
         // Suffix path: extract leading decimal + K/M/B multiplier (e.g. "1.5K" → 1500)
         let pattern = #"([\d,]+(?:\.\d+)?)\s*([KkMmBb])\b"#

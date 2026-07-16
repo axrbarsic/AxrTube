@@ -384,7 +384,9 @@ public struct VideoCardView: View {
                 }
                 .font(.caption2)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                VideoPublicationLabel(video: video)
+                if VideoPublicationPresentationPolicy.showsPublicationDate(for: video) {
+                    VideoPublicationLabel(video: video)
+                }
             }
             .padding(.horizontal, 2)
         }
@@ -431,8 +433,10 @@ public struct VideoCardView: View {
                         )
                     }
                     .accessibilityIdentifier("video.card.channelName")
-                VideoPublicationLabel(video: video)
-                    .lineLimit(1)
+                if VideoPublicationPresentationPolicy.showsPublicationDate(for: video) {
+                    VideoPublicationLabel(video: video)
+                        .lineLimit(1)
+                }
             }
             Spacer(minLength: 0)
         }

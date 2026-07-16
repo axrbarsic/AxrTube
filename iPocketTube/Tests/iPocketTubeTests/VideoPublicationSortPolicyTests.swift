@@ -23,6 +23,7 @@ struct VideoPublicationSortPolicyTests {
         #expect(!VideoListRoute.playlist.usesNewestFirstPublicationOrder)
         #expect(!VideoListRoute.queue.usesNewestFirstPublicationOrder)
         #expect(!VideoListRoute.downloads.usesNewestFirstPublicationOrder)
+        #expect(!VideoListRoute.history.usesNewestFirstPublicationOrder)
     }
 
     @Test("Exact UTC dates sort newest first and unknown dates stay last")
@@ -52,12 +53,26 @@ struct VideoPublicationSortPolicyTests {
         #expect(date == ISO8601DateFormatter().date(from: "2026-07-15T16:00:37Z"))
     }
 
-    @Test("Localized display labels never drive ordering")
-    func localizedLabelIsIgnored() {
-        let first = video("first", date: nil, label: "10 years ago")
-        let second = video("second", date: nil, label: "today")
+    @Test("Watch HTML player and schema metadata parse ISO publication dates")
+    func watchHTMLParsing() throws {
+        let player = #"<script>{"microformat":{"playerMicroformatRenderer":{"publishDate":"2026-07-15"}}}</script>"#
+        let schema = #"<meta itemprop="datePublished" content="2025-06-14T11:12:13Z">"#
 
-        #expect(VideoPublicationSortPolicy.sorted([first, second], for: .search).map(\.id) == ["first", "second"])
+        #expect(YouTubePublicationDateParser.parseWatchHTML(player) != nil)
+        #expect(YouTubePublicationDateParser.parseWatchHTML(schema) == ISO8601DateFormatter().date(from: "2025-06-14T11:12:13Z"))
+    }
+
+    @Test("English and Russian relative dates sort newest first; unknown stays last")
+    func relativeChronologyAndUnknownLast() {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let input = [
+            video("unknown", date: nil),
+            video("years", date: nil, label: "2 года назад"),
+            video("hours", date: nil, label: "3 hours ago"),
+            video("today", date: nil, label: "сегодня"),
+        ]
+
+        #expect(VideoPublicationSortPolicy.sorted(input, for: .search, now: now).map(\.id) == ["today", "hours", "years", "unknown"])
     }
 
     @Test("Equal dates and unknown blocks retain stable source order")
@@ -70,7 +85,7 @@ struct VideoPublicationSortPolicyTests {
             video("unknown-a", date: nil),
         ]
 
-        #expect(VideoPublicationSortPolicy.sorted(input, for: .history).map(\.id) == input.map(\.id))
+        #expect(VideoPublicationSortPolicy.sorted(input, for: .home).map(\.id) == input.map(\.id))
     }
 
     @Test("Continuation merge inserts a newer result without duplicates")
@@ -96,6 +111,27 @@ struct VideoPublicationSortPolicyTests {
 
         #expect(VideoPublicationSortPolicy.sorted(input, for: .playlist).map(\.id) == input.map(\.id))
         #expect(VideoPublicationSortPolicy.sorted(input, for: .queue).map(\.id) == input.map(\.id))
+    }
+
+    @Test("History preserves watch chronology while publication metadata remains intact")
+    func historyPreservesWatchChronology() {
+        let input = [
+            video("watched-first", date: Date(timeIntervalSince1970: 100), label: "2 года назад"),
+            video("watched-second", date: Date(timeIntervalSince1970: 300), label: "сегодня"),
+        ]
+
+        let result = VideoPublicationSortPolicy.sorted(input, for: .history)
+        #expect(result.map(\.id) == input.map(\.id))
+        #expect(result.map(\.publishedTimeText) == input.map(\.publishedTimeText))
+    }
+
+    @Test("Playlist summaries do not claim a video publication date")
+    func playlistSummaryPresentation() {
+        let summary = Video(id: "PL123", title: "Playlist", channelTitle: "", playlistId: "PL123")
+        let item = Video(id: "video", title: "Video", channelTitle: "", playlistId: "PL123")
+
+        #expect(!VideoPublicationPresentationPolicy.showsPublicationDate(for: summary))
+        #expect(VideoPublicationPresentationPolicy.showsPublicationDate(for: item))
     }
 
     @Test("Enrichment succeeds once, deduplicates IDs, and reuses TTL cache")
@@ -153,6 +189,19 @@ struct VideoPublicationSortPolicyTests {
             for: merged,
             locale: Locale(identifier: "ru_RU")
         ) != "Дата неизвестна")
+    }
+
+    @Test("A late exact enrichment atomically re-sorts a secondary route")
+    func lateEnrichmentResortsChannel() async {
+        let enricher = VideoPublicationDateEnricher(successTTL: 60, failureTTL: 60, maxConcurrentRequests: 2)
+        let input = [video("old", date: nil), video("new", date: nil)]
+        let dates = [
+            "old": Date(timeIntervalSince1970: 100),
+            "new": Date(timeIntervalSince1970: 300),
+        ]
+
+        let enriched = await enricher.enrich(input) { dates[$0] }
+        #expect(VideoPublicationSortPolicy.sorted(enriched, for: .channel).map(\.id) == ["new", "old"])
     }
 
     @Test("Channel route uses the same publication merge and display fallback")
