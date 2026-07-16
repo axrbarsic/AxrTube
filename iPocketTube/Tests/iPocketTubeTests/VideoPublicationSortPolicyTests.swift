@@ -106,6 +106,18 @@ struct VideoPublicationSortPolicyTests {
         #expect(await counter.callCount == 1)
     }
 
+    @Test("Duplicate IDs across Home shelves build one metadata entry without trapping")
+    func duplicateHomeShelfMetadataIsSafe() {
+        let exactDate = Date(timeIntervalSince1970: 600)
+        let unresolved = video("shared-video", date: nil)
+        let exact = video("shared-video", date: exactDate)
+
+        let metadata = VideoPublicationSortPolicy.metadataByVideoID([unresolved, exact, unresolved])
+
+        #expect(metadata.count == 1)
+        #expect(metadata["shared-video"]?.publishedAt == exactDate)
+    }
+
     @Test("Failed enrichment is negatively cached and remains unknown")
     func enrichmentFailureCache() async {
         let counter = PublicationResolverCounter(result: nil)

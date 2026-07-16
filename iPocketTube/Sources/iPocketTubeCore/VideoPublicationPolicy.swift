@@ -41,6 +41,18 @@ public enum VideoListRoute: String, Sendable, CaseIterable {
 /// One stable, typed publication-date ordering policy shared by every feed.
 /// Display strings such as "today" or "Дата неизвестна" never participate.
 public enum VideoPublicationSortPolicy {
+    /// Builds a stable lookup for feed snapshots where the same YouTube video
+    /// can legitimately appear in multiple shelves. Prefer the copy carrying
+    /// an exact publication date, but never trap on a duplicate ID.
+    public static func metadataByVideoID(_ videos: [Video]) -> [String: Video] {
+        Dictionary(videos.map { ($0.id, $0) }, uniquingKeysWith: { existing, candidate in
+            if existing.publishedAt == nil, candidate.publishedAt != nil {
+                return candidate
+            }
+            return existing
+        })
+    }
+
     public static func sorted(_ videos: [Video], for route: VideoListRoute) -> [Video] {
         guard route.usesNewestFirstPublicationOrder else { return videos }
 

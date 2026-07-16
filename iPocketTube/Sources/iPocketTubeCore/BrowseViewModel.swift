@@ -702,7 +702,7 @@ public final class BrowseViewModel {
         guard !Task.isCancelled,
               currentSection.type == type,
               videoGroups.map({ $0.videos.map(\.id) }) == expectedIDs else { return }
-        let metadata = Dictionary(uniqueKeysWithValues: enriched.map { ($0.id, $0) })
+        let metadata = VideoPublicationSortPolicy.metadataByVideoID(enriched)
         videoGroups = videoGroups.map { group in
             var copy = group
             let patched = group.videos.map { video -> Video in

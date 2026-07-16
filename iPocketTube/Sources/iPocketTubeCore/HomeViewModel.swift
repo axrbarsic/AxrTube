@@ -278,7 +278,7 @@ public final class HomeViewModel {
         let enriched = await VideoPublicationDateEnricher.shared.enrich(all) { [api] id in
             try? await api.fetchExactPublicationDate(videoId: id)
         }
-        let metadata = Dictionary(uniqueKeysWithValues: enriched.map { ($0.id, $0) })
+        let metadata = VideoPublicationSortPolicy.metadataByVideoID(enriched)
         return snapshots.enumerated().map { index, videos in
             let route: VideoListRoute = sections[index].section.type == .subscriptions ? .subscriptions : .home
             let patched = videos.map { video -> Video in
