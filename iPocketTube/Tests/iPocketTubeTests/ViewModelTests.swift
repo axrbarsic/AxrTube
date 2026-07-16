@@ -722,6 +722,84 @@ struct SearchViewModelTests {
         let afterCount = mock.calls.filter { $0.method == "search" }.count
         #expect(afterCount > beforeCount)
     }
+
+    @Test("Clearing a completed query resets results pagination filter and discovery route")
+    func clearQueryRestoresDiscovery() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(
+            title: "Results",
+            videos: [makeVideo("old_result")],
+            nextPageToken: "stale-token"
+        )
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "Michael Naki"
+        vm.search()
+        await waitForTasks(until: { vm.results.count == 1 })
+        var nonDefault = SearchFilter.default
+        nonDefault.sortOrder = .viewCount
+        vm.filter = nonDefault
+        let previousDiscoveryGeneration = vm.discoveryGeneration
+
+        vm.resetToDiscovery()
+        vm.loadMore()
+
+        #expect(vm.query.isEmpty)
+        #expect(vm.activeQuery == nil)
+        #expect(vm.results.isEmpty)
+        #expect(vm.filter.isDefault)
+        #expect(vm.discoveryGeneration == previousDiscoveryGeneration + 1)
+        #expect(mock.calls.filter { $0.method == "search" }.count == 1)
+    }
+
+    @Test("Pull to refresh repeats a nonempty search from its first page")
+    func refreshActiveQueryFromFirstPage() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(
+            title: "Results",
+            videos: [makeVideo("old_result")],
+            nextPageToken: "page-two"
+        )
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "query"
+        vm.search()
+        await waitForTasks(until: { vm.results.first?.id == "old_result" })
+
+        mock.searchResult = VideoGroup(title: "Results", videos: [makeVideo("fresh_result")])
+        await vm.refreshSearch()
+
+        #expect(vm.results.map(\.id) == ["fresh_result"])
+        let searchCalls = mock.calls.filter { $0.method == "search" }
+        #expect(searchCalls.count == 2)
+        #expect(searchCalls.last?.args.last == "nil")
+    }
+
+    @Test("Empty-query refresh stays on discovery and never replays stale search")
+    func refreshEmptyQueryUsesDiscoveryRoute() async {
+        let mock = MockInnerTubeAPI()
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "   "
+        await vm.refreshSearch()
+
+        #expect(!vm.hasActiveSearch)
+        #expect(vm.results.isEmpty)
+        #expect(!mock.calls.contains { $0.method == "search" })
+    }
+
+    @Test("Initial search page compacts duplicate video IDs before SwiftUI layout")
+    func firstPageDeduplicatesStableIDs() async {
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(title: "Results", videos: [
+            makeVideo("same-id"),
+            makeVideo("same-id"),
+            makeVideo("unique-id"),
+        ])
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "duplicates"
+        vm.search()
+        await waitForTasks(until: { !vm.isLoading && !vm.results.isEmpty })
+
+        #expect(vm.results.map(\.id) == ["same-id", "unique-id"])
+    }
 }
 
 // MARK: - PlaylistViewModelTests

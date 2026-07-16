@@ -45,6 +45,24 @@ struct FeedShortsPresentationTests {
         #expect(FeedCatalogPolicy.iOSColumnCount == 1)
     }
 
+    @Test("Visible catalogue compacts invalid and duplicate identities without empty slots")
+    func visibleCatalogueHasStableUniqueIDs() {
+        let first = video("stable", duration: 60, isShort: false)
+        var richerDuplicate = video("stable", duration: 60, isShort: false)
+        richerDuplicate.publishedTimeText = "сегодня"
+        let invalid = video("", duration: 60, isShort: false)
+        let other = video("other", duration: 60, isShort: false)
+
+        let visible = FeedCatalogPolicy.visibleVideos(
+            [first, invalid, richerDuplicate, other],
+            showShorts: true
+        )
+
+        #expect(visible.map(\.id) == ["stable", "other"])
+        #expect(visible.first?.publishedTimeText == "сегодня")
+        #expect(Set(visible.map(\.id)).count == visible.count)
+    }
+
     @Test("Search and media compact toggles select independent shared card variants")
     func independentCompactCardPolicy() {
         #expect(VideoCardLayoutPolicy.variant(

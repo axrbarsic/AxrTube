@@ -11,6 +11,8 @@ public final class SearchViewModel {
 
     public var query: String = ""
     public var filter: SearchFilter = .default
+    public private(set) var activeQuery: String?
+    public private(set) var discoveryGeneration: Int = 0
     public private(set) var results: [Video] = []
     public private(set) var suggestions: [String] = []
     public private(set) var history: [SearchHistoryEntry] = []
@@ -24,6 +26,9 @@ public final class SearchViewModel {
     private var publicationTask: Task<Void, Never>?
     private var suggestTask: Task<Void, Never>?
     private var hideObserverTasks: [Task<Void, Never>] = []
+    private var searchGeneration: UInt = 0
+
+    public var hasActiveSearch: Bool { activeQuery != nil }
 
     /// History entries that match the current query (case-insensitive). Returns
     /// the full history when the query is empty.
@@ -45,6 +50,7 @@ public final class SearchViewModel {
     public func updateSuggestions(for q: String) async {
         print("[Suggestions] updateSuggestions called, q='\(q)'")
         if q.isEmpty {
+            suggestTask?.cancel()
             suggestions = []
             return
         }
@@ -58,13 +64,65 @@ public final class SearchViewModel {
 
     public func search() {
         let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
-        results = []
-        nextPageToken = nil
+        guard !trimmed.isEmpty else {
+            resetToDiscovery()
+            return
+        }
+        beginSearch(query: trimmed, recordHistory: true)
+    }
+
+    /// Clears every state owned by the search route. This is deliberately more
+    /// than setting the editor text to empty: stale pagination, filters and late
+    /// callbacks must not keep the old results surface alive as discovery.
+    public func resetToDiscovery() {
+        searchGeneration &+= 1
         searchTask?.cancel()
         publicationTask?.cancel()
-        searchTask = Task { await performSearch(query: trimmed, filter: filter) }
-        Task { await recordSearch(trimmed) }
+        suggestTask?.cancel()
+        query = ""
+        activeQuery = nil
+        filter = .default
+        results = []
+        suggestions = []
+        nextPageToken = nil
+        error = nil
+        isLoading = false
+        discoveryGeneration &+= 1
+    }
+
+    /// Pull-to-refresh for active results. Empty-query discovery owns its own
+    /// HomeView refreshable and therefore returns without issuing a search.
+    public func refreshSearch() async {
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else {
+            resetToDiscovery()
+            return
+        }
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        searchTask?.cancel()
+        publicationTask?.cancel()
+        activeQuery = trimmed
+        results = []
+        nextPageToken = nil
+        error = nil
+        let task = Task { await performSearch(query: trimmed, filter: filter, generation: generation) }
+        searchTask = task
+        await task.value
+    }
+
+    private func beginSearch(query trimmed: String, recordHistory: Bool) {
+        searchGeneration &+= 1
+        let generation = searchGeneration
+        activeQuery = trimmed
+        query = trimmed
+        results = []
+        nextPageToken = nil
+        error = nil
+        searchTask?.cancel()
+        publicationTask?.cancel()
+        searchTask = Task { await performSearch(query: trimmed, filter: filter, generation: generation) }
+        if recordHistory { Task { await recordSearch(trimmed) } }
     }
 
     // MARK: - History management
@@ -99,28 +157,47 @@ public final class SearchViewModel {
     /// Apply a new filter and re-run the current search immediately.
     public func applyFilter(_ newFilter: SearchFilter) {
         filter = newFilter
-        guard !query.trimmingCharacters(in: .whitespaces).isEmpty else { return }
-        results = []
-        nextPageToken = nil
-        searchTask?.cancel()
-        publicationTask?.cancel()
-        searchTask = Task { await performSearch(query: query, filter: filter) }
+        guard let activeQuery else { return }
+        beginSearch(query: activeQuery, recordHistory: false)
     }
 
     public func loadMore() {
-        guard let token = nextPageToken, !isLoading else { return }
-        searchTask = Task { await performSearch(query: query, continuationToken: token, filter: filter) }
+        guard let activeQuery, let token = nextPageToken, !isLoading else { return }
+        let generation = searchGeneration
+        searchTask = Task {
+            await performSearch(
+                query: activeQuery,
+                continuationToken: token,
+                filter: filter,
+                generation: generation
+            )
+        }
     }
 
-    private func performSearch(query: String, continuationToken: String? = nil, filter: SearchFilter = .default) async {
+    private func performSearch(
+        query: String,
+        continuationToken: String? = nil,
+        filter: SearchFilter = .default,
+        generation: UInt
+    ) async {
+        guard generation == searchGeneration else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            if generation == searchGeneration { isLoading = false }
+        }
         do {
             let group = try await retryWithBackoff(label: "SearchVM") {
                 try await api.search(query: query, continuationToken: continuationToken, filter: filter)
             }
+            guard !Task.isCancelled,
+                  generation == searchGeneration,
+                  activeQuery == query else { return }
             if continuationToken == nil {
-                results = VideoPublicationSortPolicy.sorted(group.videos, for: .search)
+                results = VideoPublicationSortPolicy.merging(
+                    existing: [],
+                    page: group.videos,
+                    for: .search
+                )
             } else {
                 results = VideoPublicationSortPolicy.merging(
                     existing: results,
@@ -129,13 +206,13 @@ public final class SearchViewModel {
                 )
             }
             nextPageToken = group.nextPageToken
-            schedulePublicationEnrichment()
+            schedulePublicationEnrichment(generation: generation)
         } catch {
-            if !Task.isCancelled { self.error = error }
+            if !Task.isCancelled, generation == searchGeneration { self.error = error }
         }
     }
 
-    private func schedulePublicationEnrichment() {
+    private func schedulePublicationEnrichment(generation: UInt) {
         publicationTask?.cancel()
         let snapshot = results
         let expectedIDs = snapshot.map(\.id)
@@ -143,18 +220,21 @@ public final class SearchViewModel {
             let enriched = await VideoPublicationDateEnricher.shared.enrich(snapshot) { id in
                 try? await api.fetchExactPublicationDate(videoId: id)
             }
-            guard let self, !Task.isCancelled, self.results.map(\.id) == expectedIDs else { return }
+            guard let self,
+                  !Task.isCancelled,
+                  generation == self.searchGeneration,
+                  self.results.map(\.id) == expectedIDs else { return }
             self.results = VideoPublicationSortPolicy.sorted(enriched, for: .search)
         }
     }
 
-    private func fetchSuggestions(for query: String) {
-        print("[Suggestions] fetchSuggestions spawning task for q='\(query)'")
+    private func fetchSuggestions(for requestedQuery: String) {
+        print("[Suggestions] fetchSuggestions spawning task for q='\(requestedQuery)'")
         suggestTask?.cancel()
         suggestTask = Task {
             do {
-                let s = try await api.fetchSearchSuggestions(query: query)
-                guard !Task.isCancelled else {
+                let s = try await api.fetchSearchSuggestions(query: requestedQuery)
+                guard !Task.isCancelled, self.query == requestedQuery else {
                     print("[Suggestions] Task cancelled after fetch")
                     return
                 }

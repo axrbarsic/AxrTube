@@ -39,9 +39,9 @@ public struct SearchView: View {
                 #else
                 if isSearchFocused {
                     suggestionsListView
-                } else if vm.isLoading || !vm.results.isEmpty {
+                } else if vm.hasActiveSearch && (vm.isLoading || !visibleSearchResults.isEmpty) {
                     resultsView
-                } else if !vm.query.isEmpty {
+                } else if vm.hasActiveSearch {
                     noResultsView
                 } else {
                     discoveryView
@@ -74,6 +74,18 @@ public struct SearchView: View {
         .onChange(of: isSearchFocused) { _, focused in
             if focused { Task { await vm.updateSuggestions(for: vm.query) } }
         }
+        .onChange(of: vm.query) { _, newQuery in
+            if newQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               vm.hasActiveSearch {
+                vm.resetToDiscovery()
+            }
+        }
+        .onAppear {
+            if vm.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               vm.hasActiveSearch {
+                vm.resetToDiscovery()
+            }
+        }
     }
 
     // MARK: - Search bar
@@ -104,7 +116,7 @@ public struct SearchView: View {
                 .onSubmit { vm.search(); isSearchFocused = false }
             if !vm.query.isEmpty {
                 Button {
-                    vm.query = ""
+                    vm.resetToDiscovery()
                 } label: {
                     Image(systemName: AppSymbol.xmarkCircle)
                         .foregroundStyle(.secondary)
@@ -170,6 +182,7 @@ public struct SearchView: View {
         // field, so discovery has one owner and one tab. Recent queries moved
         // into the clock menu beside the field and no longer consume height.
         HomeView(api: api)
+            .id(vm.discoveryGeneration)
             .accessibilityIdentifier("search.discoveryFeed")
     }
 
@@ -210,15 +223,17 @@ public struct SearchView: View {
 
     // MARK: - Results
 
-    private var resultsView: some View {
-        let hideLiveShorts = store.settings.hideLiveShorts
-        let hideVideoPremieres = store.settings.hideVideoPremieres
-        let displayResults = FeedCatalogPolicy.visibleVideos(
+    private var visibleSearchResults: [Video] {
+        FeedCatalogPolicy.visibleVideos(
             vm.results,
             showShorts: store.settings.showShorts
         )
-            .filter { !hideLiveShorts || !($0.isLive && $0.isShort) }
-            .filter { !hideVideoPremieres || !$0.isUpcoming }
+        .filter { !store.settings.hideLiveShorts || !($0.isLive && $0.isShort) }
+        .filter { !store.settings.hideVideoPremieres || !$0.isUpcoming }
+    }
+
+    private var resultsView: some View {
+        let displayResults = visibleSearchResults
         return ScrollView {
             if vm.isLoading && vm.results.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding()
@@ -245,6 +260,7 @@ public struct SearchView: View {
                 ProgressView().frame(maxWidth: .infinity).padding()
             }
         }
+        .refreshable { await vm.refreshSearch() }
         .accessibilityIdentifier("search.results")
         #if os(iOS)
         .scrollDismissesKeyboard(.immediately)

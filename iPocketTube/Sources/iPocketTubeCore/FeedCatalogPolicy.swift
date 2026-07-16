@@ -10,7 +10,17 @@ public enum FeedCatalogPolicy {
         _ videos: [Video],
         showShorts: Bool
     ) -> [Video] {
-        showShorts ? videos : videos.filter { !$0.isShort }
+        let filtered = showShorts ? videos : videos.filter { !$0.isShort }
+        let metadata = VideoPublicationSortPolicy.metadataByVideoID(filtered)
+        var seen = Set<String>()
+        return filtered.compactMap { video in
+            guard !video.id.isEmpty, seen.insert(video.id).inserted else { return nil }
+            guard let candidate = metadata[video.id] else { return video }
+            return VideoPublicationSortPolicy.mergingPublicationMetadata(
+                base: video,
+                candidate: candidate
+            )
+        }
     }
 }
 
