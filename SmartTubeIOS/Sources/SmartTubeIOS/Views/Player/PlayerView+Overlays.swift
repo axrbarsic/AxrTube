@@ -351,6 +351,10 @@ extension PlayerView {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .smartTubeEDRPressEffect(
+            enabled: store.settings.experimentalEDRPressGlowEnabled,
+            cornerRadius: 12
+        )
         .foregroundStyle(.primary)
         .accessibilityIdentifier("player.moreMenu.speedRow")
         #if os(tvOS)
@@ -544,13 +548,13 @@ extension PlayerView {
         #if !os(tvOS)
         Button {
             showMoreMenu = false
-            downloadService.download(video: vm.playerInfo?.video ?? video)
+            showDownloadFormatPicker = true
         } label: {
             Group {
                 if downloadService.state.isActive {
                     Label("Downloading…", systemImage: AppSymbol.download)
                 } else {
-                    Label("Download to Gallery", systemImage: AppSymbol.download)
+                    Label("Save Offline", systemImage: AppSymbol.download)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -561,6 +565,10 @@ extension PlayerView {
         .foregroundStyle(.primary)
         .disabled(downloadService.state.isActive)
         .accessibilityIdentifier("player.moreMenu.downloadButton")
+        .smartTubeEDRPressEffect(
+            enabled: store.settings.experimentalEDRPressGlowEnabled,
+            cornerRadius: 12
+        )
         Divider()
         #endif
     }

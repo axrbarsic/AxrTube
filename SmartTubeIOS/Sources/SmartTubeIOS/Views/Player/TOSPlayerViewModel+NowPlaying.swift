@@ -24,7 +24,17 @@ private func makeNonisolatedArtworkProvider(image: UIImage) -> (CGSize) -> UIIma
 // PiP — both were investigated and found not feasible without a hybrid
 // AVPlayer-handoff approach the user explicitly rejected (see task-283).
 
-extension TOSPlayerViewModel {
+extension TOSPlayerViewModel: WebPlaybackAudioRecoveryDelegate {
+
+    var webAudioPlaybackIsActive: Bool {
+        playerState == .playing || playerState == .buffering
+    }
+
+    var webAudioPlaybackCanOwnSession: Bool { true }
+
+    func resumeWebPlaybackAfterSystemAudioEvent() {
+        _ = play()
+    }
 
     func setupRemoteCommandCenter() {
         tosNowPlayingLog.notice("[NowPlaying] setupRemoteCommandCenter() called")
@@ -42,8 +52,7 @@ extension TOSPlayerViewModel {
         center.previousTrackCommand.removeTarget(nil)
 
         center.playCommand.addTarget { [weak self] _ in
-            self?.play()
-            return .success
+            self?.play() == true ? .success : .commandFailed
         }
         center.pauseCommand.addTarget { [weak self] _ in
             self?.pause()

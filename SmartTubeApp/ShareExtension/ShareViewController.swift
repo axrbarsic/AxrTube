@@ -7,7 +7,7 @@ private let shareLog = Logger(subsystem: "com.void.smarttube.app.shareextension"
 
 // MARK: - ShareViewController
 //
-// Presents a compact sheet with an "Open in SmartTube" button. The button tap
+// Presents a compact sheet with an "Open in iPocketTube" button. The button tap
 // is user-initiated, which is required for `extensionContext?.open(_:)` to
 // reliably launch the containing app from a Share Extension in modern iOS —
 // programmatic (non-user-initiated) calls are not honoured when the host is a
@@ -38,7 +38,7 @@ final class ShareViewController: UIViewController {
 
     private let openButton: UIButton = {
         var config = UIButton.Configuration.filled()
-        config.title = "Open in SmartTube"
+        config.title = String(localized: "Open in iPocketTube")
         config.cornerStyle = .large
         config.baseBackgroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
         let b = UIButton(configuration: config)
@@ -48,7 +48,7 @@ final class ShareViewController: UIViewController {
 
     private let watchLaterButton: UIButton = {
         var config = UIButton.Configuration.bordered()
-        config.title = "Add to Watch Later"
+        config.title = String(localized: "Add to Watch Later")
         config.cornerStyle = .large
         config.baseForegroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
         config.image = UIImage(
@@ -63,7 +63,7 @@ final class ShareViewController: UIViewController {
 
     private let addToQueueButton: UIButton = {
         var config = UIButton.Configuration.bordered()
-        config.title = "Add to Queue"
+        config.title = String(localized: "Add to Queue")
         config.cornerStyle = .large
         config.baseForegroundColor = UIColor(red: 0.40, green: 0.20, blue: 0.80, alpha: 1)
         config.image = UIImage(
@@ -78,7 +78,7 @@ final class ShareViewController: UIViewController {
 
     private let addToRSSButton: UIButton = {
         var config = UIButton.Configuration.bordered()
-        config.title = "Add to RSS Feeds"
+        config.title = String(localized: "Add to RSS Feeds")
         config.cornerStyle = .large
         config.baseForegroundColor = UIColor(red: 0.20, green: 0.50, blue: 0.20, alpha: 1)
         config.image = UIImage(
@@ -103,7 +103,7 @@ final class ShareViewController: UIViewController {
 
     private let statusLabel: UILabel = {
         let l = UILabel()
-        l.text = "Looking for video\u{2026}"
+        l.text = String(localized: "Looking for video\u{2026}")
         l.textColor = .secondaryLabel
         l.font = .systemFont(ofSize: 15)
         l.textAlignment = .center
@@ -113,7 +113,7 @@ final class ShareViewController: UIViewController {
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.text = "SmartTube"
+        l.text = "iPocketTube"
         l.font = .systemFont(ofSize: 17, weight: .semibold)
         l.textColor = .label
         l.translatesAutoresizingMaskIntoConstraints = false
@@ -132,7 +132,7 @@ final class ShareViewController: UIViewController {
         cfg.background.cornerRadius = 15          // half of the 30 pt button size → perfect circle
         cfg.contentInsets = .zero
         let b = UIButton(configuration: cfg)
-        b.accessibilityLabel = "Close"
+        b.accessibilityLabel = String(localized: "Close")
         b.translatesAutoresizingMaskIntoConstraints = false
         return b
     }()
@@ -275,7 +275,7 @@ final class ShareViewController: UIViewController {
             logEntry("✅ Queued for Watch Later")
             watchLaterButton.isEnabled = false
             var cfg = watchLaterButton.configuration
-            cfg?.title = "Added to Watch Later"
+            cfg?.title = String(localized: "Added to Watch Later")
             watchLaterButton.configuration = cfg
         } else {
             logEntry("❌ Could not write to shared storage")
@@ -295,7 +295,7 @@ final class ShareViewController: UIViewController {
             logEntry("✅ Added to Queue")
             addToQueueButton.isEnabled = false
             var cfg = addToQueueButton.configuration
-            cfg?.title = "Added to Queue"
+            cfg?.title = String(localized: "Added to Queue")
             addToQueueButton.configuration = cfg
         } else {
             logEntry("❌ Could not write to shared storage")
@@ -355,7 +355,7 @@ final class ShareViewController: UIViewController {
         }
 
         logEntry("❌ No UIApplication in chain (depth \(depth))")
-        logEntry("App Group written — open SmartTube manually")
+        logEntry("App Group written — open iPocketTube manually")
         shareLog.error("no UIApplication found after \(depth) hops — App Group fallback")
         extensionContext?.completeRequest(returningItems: nil)
     }
@@ -380,7 +380,7 @@ final class ShareViewController: UIViewController {
             shareLog.error("No YouTube URL found")
             spinner.stopAnimating()
             spinner.isHidden = true
-            statusLabel.text = "Cannot find a YouTube video URL."
+            statusLabel.text = String(localized: "Cannot find a YouTube video URL.")
             statusLabel.textColor = .secondaryLabel
             try? await Task.sleep(for: .seconds(2))
             cancel()
@@ -465,7 +465,7 @@ final class ShareViewController: UIViewController {
             logEntry("✅ Queued for RSS Feeds")
             addToRSSButton.isEnabled = false
             var cfg = addToRSSButton.configuration
-            cfg?.title = "Added to RSS Feeds"
+            cfg?.title = String(localized: "Added to RSS Feeds")
             addToRSSButton.configuration = cfg
         } else {
             logEntry("❌ Could not write to shared storage")

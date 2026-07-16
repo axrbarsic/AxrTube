@@ -66,9 +66,8 @@ public final class RSSFeedsViewModel {
         }
 
         var seen = Set<String>()
-        videos = allVideos
-            .sorted { ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast) }
-            .filter { seen.insert($0.id).inserted }
+        let deduplicated = allVideos.filter { seen.insert($0.id).inserted }
+        videos = VideoPublicationSortPolicy.sorted(deduplicated, for: .rss)
     }
 
     public func removeFeed(id: UUID) {

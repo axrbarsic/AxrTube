@@ -751,30 +751,51 @@ extension PlayerView {
         }
         #endif
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: .standard)
         }
         #if !os(tvOS)
-        .onChange(of: downloadService.state) { _, newState in
-            switch newState {
-            case .done:
-                let title = vm.playerInfo?.video.title ?? video.title
-                downloadAlertItem = DownloadAlertItem(
-                    title: String(localized: "Saved to Gallery", bundle: .module),
-                    message: String(localized: "\"\(title)\" has been saved to your Photos library.", bundle: .module)
-                )
-                downloadService.reset()
-            case .failed(let reason):
-                downloadAlertItem = DownloadAlertItem(
-                    title: String(localized: "Download Failed", bundle: .module),
-                    message: reason
-                )
-                downloadService.reset()
-            default:
-                break
+        .onChange(of: vm.isPlaying) { _, playing in
+            guard playing,
+                  !video.isDownloaded,
+                  !downloadService.state.isActive else { return }
+            let kind: OfflineMediaKind
+            switch store.settings.offlineAutoSaveMode {
+            case .off: return
+            case .audio: kind = .audio
+            case .video: kind = .video
             }
+            downloadService.download(
+                video: vm.playerInfo?.video ?? video,
+                kind: kind,
+                saveVideoToPhotos: false,
+                storageLimitMB: store.settings.offlineStorageLimitMB,
+                isAutomatic: true
+            )
         }
-        .alert(item: $downloadAlertItem) { item in
-            Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
+        .confirmationDialog(
+            "Save Offline",
+            isPresented: $showDownloadFormatPicker,
+            titleVisibility: .visible
+        ) {
+            Button("Video — iPocketTube + Photos") {
+                downloadService.download(
+                    video: vm.playerInfo?.video ?? video,
+                    kind: .video,
+                    saveVideoToPhotos: true,
+                    storageLimitMB: store.settings.offlineStorageLimitMB
+                )
+            }
+            Button("Audio — iPocketTube") {
+                downloadService.download(
+                    video: vm.playerInfo?.video ?? video,
+                    kind: .audio,
+                    saveVideoToPhotos: false,
+                    storageLimitMB: store.settings.offlineStorageLimitMB
+                )
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Choose what to save in the offline collection.")
         }
         #endif
         // Intercept smarttube://seek/<seconds> links emitted by timestamp spans in

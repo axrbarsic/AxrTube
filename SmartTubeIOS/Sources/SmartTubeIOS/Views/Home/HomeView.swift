@@ -94,15 +94,16 @@ public struct HomeView: View {
                 }
                 #endif
                 .navigationDestination(item: $selectedPlaylist) { stub in
-                    PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api)
+                    PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api, catalogContext: .search)
                 }
                 .navigationDestination(item: $channelDestination) { dest in
-                    ChannelView(channelId: dest.channelId)
+                    ChannelView(channelId: dest.channelId, catalogContext: .search)
                 }
                 #if os(tvOS)
                 .focusSection()
                 #endif
         }
+        .smartTubeScreenSurface()
         #if os(iOS)
         // Player cover is centralised in MainTabView; deep-link handled there too.
         .toolbar(.hidden, for: .navigationBar)
@@ -166,7 +167,8 @@ public struct HomeView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 2)
+            .background(SmartTubeVisualTokens.panel.opacity(0.94))
         }
         .accessibilityIdentifier("home.chipBar")
         #endif
@@ -174,6 +176,7 @@ public struct HomeView: View {
 
     private func chipButton(section: BrowseSection) -> some View {
         let isSelected = selectedSection == section
+        let localizedTitle = section.type.localizedTitle
         let action = {
             let isNewSection = selectedSection != section
             if isNewSection { selectedSection = section }
@@ -190,12 +193,14 @@ public struct HomeView: View {
         #if os(tvOS)
         let isFocused = focusedSection == section
         return Button(action: action) {
-            Text(section.title)
+            Text(verbatim: localizedTitle)
                 .font(.headline)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 12)
                 .background(
-                    (isSelected || isFocused) ? Color.primary : Color.secondary.opacity(0.15),
+                    (isSelected || isFocused)
+                        ? (colorScheme == .dark ? SmartTubeVisualTokens.mint : Color.primary)
+                        : (colorScheme == .dark ? SmartTubeVisualTokens.panel.opacity(0.9) : Color.secondary.opacity(0.15)),
                     in: Capsule()
                 )
                 .foregroundStyle(
@@ -206,21 +211,27 @@ public struct HomeView: View {
                 .focusEffectDisabled()
         }
         .buttonStyle(.borderless)
+        .smartTubeEDRPressEffect(
+            enabled: store.settings.experimentalEDRPressGlowEnabled,
+            cornerRadius: 24
+        )
         .scaleEffect(isFocused ? 1.12 : 1.0)
         .animation(.easeInOut(duration: 0.15), value: focusedSection)
         .animation(.easeInOut(duration: 0.15), value: selectedSection)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
-        .accessibilityLabel(section.title)
+        .accessibilityLabel(Text(verbatim: localizedTitle))
         .accessibilityIdentifier("chip.\(section.title)")
         .focused($focusedSection, equals: section)
         #else
         return Button(action: action) {
-            Text(section.title)
+            Text(verbatim: localizedTitle)
                 .font(.subheadline.weight(.medium))
                 .padding(.horizontal, 14)
-                .padding(.vertical, 7)
+                .frame(minHeight: 44)
                 .background(
-                    isSelected ? Color.primary : Color.secondary.opacity(0.15),
+                    isSelected
+                        ? (colorScheme == .dark ? SmartTubeVisualTokens.mint : Color.primary)
+                        : (colorScheme == .dark ? SmartTubeVisualTokens.panel.opacity(0.9) : Color.secondary.opacity(0.15)),
                     in: Capsule()
                 )
                 .foregroundStyle(
@@ -230,6 +241,10 @@ public struct HomeView: View {
                 )
         }
         .buttonStyle(.plain)
+        .smartTubeEDRPressEffect(
+            enabled: store.settings.experimentalEDRPressGlowEnabled,
+            cornerRadius: 20
+        )
         .animation(.easeInOut(duration: 0.15), value: selectedSection)
         .accessibilityAddTraits(isSelected ? [.isSelected] : [])
         #endif
@@ -290,41 +305,37 @@ public struct HomeView: View {
                 ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                let hideShorts = store.settings.hideShorts
-                let regularVideos = homeVM.homeRegularVideos
-                let shortsVideos = hideShorts ? [] : homeVM.homeShortsVideos
-                // ShortsRowSection is placed OUTSIDE the ScrollView so it stays
-                // pinned at the top while the video grid scrolls beneath it.
-                VStack(spacing: 0) {
-                    if !shortsVideos.isEmpty {
-                        ShortsRowSection(
-                            videos: shortsVideos,
-                            onSelect: { selectVideo($0, from: shortsVideos) },
-                            accessibilityID: "home.shortsRow",
-                            loadMore: { homeVM.loadNextShortsPage() }
+                let sourceVideos = store.settings.showShorts
+                    ? homeVM.mergedVideos + homeVM.homeShortsVideos
+                    : homeVM.mergedVideos
+                var seen = Set<String>()
+                let videos = FeedCatalogPolicy.visibleVideos(
+                    sourceVideos.filter { seen.insert($0.id).inserted },
+                    showShorts: store.settings.showShorts
+                )
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 0) {
+                        VideoGridSection(
+                            videos: videos,
+                            onSelect: { selectVideo($0, from: videos) },
+                            loadMore: {
+                                homeVM.loadMoreMerged()
+                                if store.settings.showShorts {
+                                    homeVM.loadNextShortsPage()
+                                }
+                            },
+                            catalogContext: .search
                         )
-                        #if os(tvOS)
-                        .focusSection()
-                        #endif
-                    }
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: 0) {
-                            VideoGridSection(
-                                videos: regularVideos,
-                                onSelect: { selectVideo($0, from: regularVideos) },
-                                loadMore: { homeVM.loadMoreMerged() }
-                            )
-                            let isLoadingMore = homeVM.sections.contains { $0.isLoadingMore }
-                            if isLoadingMore {
-                                ProgressView().frame(maxWidth: .infinity).padding()
-                            }
+                        let isLoadingMore = homeVM.sections.contains { $0.isLoadingMore }
+                        if isLoadingMore {
+                            ProgressView().frame(maxWidth: .infinity).padding()
                         }
                     }
-                    .refreshable { homeVM.load() }
-                    #if os(tvOS)
-                    .focusSection()
-                    #endif
                 }
+                .refreshable { homeVM.load() }
+                #if os(tvOS)
+                .focusSection()
+                #endif
             }
         }
     }
@@ -339,9 +350,54 @@ public struct HomeView: View {
         } else if sectionVM.videoGroups.isEmpty && !sectionVM.isLoading {
             feedEmptyState
         } else {
+            #if os(iOS)
+            unifiedSectionFeedContent
+            #else
             feedContent
+            #endif
         }
     }
+
+    #if os(iOS)
+    /// One vertically scrolling catalog on iPhone. Row-style renderers and the
+    /// dedicated Shorts endpoint are presentation hints only; neither creates a
+    /// second horizontal surface.
+    private var unifiedSectionFeedContent: some View {
+        let rawVideos = sectionVM.videoGroups.flatMap(\.videos)
+            + (selectedSection.type == .recommended ? sectionVM.recommendedShortsVideos : [])
+        var seen = Set<String>()
+        let videos = FeedCatalogPolicy.visibleVideos(
+            rawVideos.filter { seen.insert($0.id).inserted },
+            showShorts: store.settings.showShorts
+        )
+            .filter { !store.settings.hideLiveShorts || !($0.isLive && $0.isShort) }
+            .filter { !store.settings.hideVideoPremieres || !$0.isUpcoming }
+        let paginationTrigger = sectionVM.videoGroups.last?.videos.last
+
+        return ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                if selectedSection.type == .playlists, queueVideosCount > 0 {
+                    currentQueueRow
+                }
+                VideoGridSection(
+                    videos: videos,
+                    onSelect: { selectVideo($0, from: videos) },
+                    loadMore: {
+                        if let paginationTrigger {
+                            sectionVM.loadMoreIfNeeded(lastVideo: paginationTrigger)
+                        }
+                    },
+                    catalogContext: .search
+                )
+                if sectionVM.isLoading {
+                    ProgressView().frame(maxWidth: .infinity).padding()
+                }
+            }
+        }
+        .accessibilityIdentifier("home.sectionFeed.singleColumn")
+        .refreshable { sectionVM.loadContent(refresh: true) }
+    }
+    #endif
 
     private var feedContent: some View {
         let hideShorts = store.settings.hideShorts
@@ -457,7 +513,7 @@ public struct HomeView: View {
                         }
                         ForEach(rowGroups) { group in
                             if let title = group.title, !title.isEmpty {
-                                Text(title)
+                                Text(LocalizedStringKey(title), bundle: .module)
                                     .font(.headline)
                                     .padding(.horizontal)
                                     .padding(.top, 16)
@@ -486,7 +542,8 @@ public struct HomeView: View {
                                     if let last = paginationTrigger {
                                         sectionVM.loadMoreIfNeeded(lastVideo: last)
                                     }
-                                }
+                                },
+                                catalogContext: .search
                             )
                         }
                         if sectionVM.isLoading {
@@ -578,7 +635,7 @@ public struct HomeView: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.primary)
-                Text("\(queueVideosCount) video\(queueVideosCount == 1 ? "" : "s")")
+                Text("\(queueVideosCount) videos")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -593,7 +650,7 @@ public struct HomeView: View {
         .onTapGesture {
             selectedPlaylist = Video(
                 id: CurrentQueueStore.playlistID,
-                title: "Current Queue",
+                title: String(localized: "Current Queue", bundle: .module),
                 channelTitle: ""
             )
         }
@@ -650,9 +707,7 @@ public struct HomeView: View {
             selectedPlaylist = video
         } else if video.isShort {
             #if os(iOS)
-            let shorts = groupVideos.filter { $0.isShort }
-            let idx = shorts.firstIndex(where: { $0.id == video.id }) ?? 0
-            shortsPresentation = ShortsPresentation(videos: shorts, startIndex: idx)
+            playerRouter.open(video: video, api: api)
             #else
             selectedVideo = video
             #endif

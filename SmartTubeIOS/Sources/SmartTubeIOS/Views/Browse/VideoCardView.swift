@@ -248,13 +248,19 @@ public struct VideoCardView: View {
             }
             #if !os(tvOS)
             Button {
-                downloadService.download(video: video)
+                downloadService.download(
+                    video: video,
+                    kind: .video,
+                    saveVideoToPhotos: true,
+                    storageLimitMB: store.settings.offlineStorageLimitMB
+                )
             } label: {
-                if downloadService.state.isActive {
-                    Label("Downloading…", systemImage: AppSymbol.download)
-                } else {
-                    Label("Download to Gallery", systemImage: AppSymbol.download)
-                }
+                Label(
+                    downloadService.state.isActive
+                        ? String(localized: "Downloading…", bundle: .module)
+                        : String(localized: "Save Video", bundle: .module),
+                    systemImage: AppSymbol.download
+                )
             }
             .disabled(downloadService.state.isActive)
             #endif
@@ -300,6 +306,7 @@ public struct VideoCardView: View {
         // • .focusable() between contextMenu and onTapGesture keeps the view in the
         //   focus engine so D-pad UP/DOWN can reach it.
         cardContent
+            .smartTubeCardSurface(cornerRadius: 12)
             .focusable()
             .onTapGesture { onSelect?() }
             .focused($isFocused)
@@ -324,6 +331,7 @@ public struct VideoCardView: View {
             }
         #else
         cardContent
+            .smartTubeCardSurface(cornerRadius: 12)
             .onAppear { feedLog.info("[feed] id=\(self.video.id) title=\(self.video.title)") }
             .alert(item: $watchLaterAlert) { item in
                 Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
@@ -348,9 +356,6 @@ public struct VideoCardView: View {
                     let dur = video.formattedDuration
                     if !dur.isEmpty { durationBadge(dur) }
                 }
-                .overlay(alignment: .bottomLeading) {
-                    if let label = uploadDateLabel { durationBadge(label) }
-                }
                 .overlay(alignment: .topLeading) {
                     if video.isLive { liveBadge }
                 }
@@ -358,7 +363,7 @@ public struct VideoCardView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayTitle)
                     .font(.subheadline.weight(.medium))
-                    .lineLimit(2, reservesSpace: true)
+                    .lineLimit(3)
                     .accessibilityIdentifier("video.card.title")
                 Text(video.channelTitle)
                     .font(.caption)
@@ -378,7 +383,8 @@ public struct VideoCardView: View {
                     if !vc.isEmpty { Text(vc) }
                 }
                 .font(.caption2)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                VideoPublicationLabel(video: video)
             }
             .padding(.horizontal, 2)
         }
@@ -387,9 +393,9 @@ public struct VideoCardView: View {
     // MARK: Compact (list) layout
 
     private var compactLayout: some View {
-        HStack(alignment: .top, spacing: 10) {
+        HStack(alignment: .center, spacing: 12) {
             thumbnailView
-                .frame(width: 120, height: 68)
+                .frame(width: 144, height: 81)
                 .overlay(alignment: .bottom) {
                     if let progress = effectiveProgress, progress > 0 {
                         watchProgressBar(progress)
@@ -400,17 +406,22 @@ public struct VideoCardView: View {
                     let dur = video.formattedDuration
                     if !dur.isEmpty { durationBadge(dur) }
                 }
-                .overlay(alignment: .bottomLeading) {
-                    if let label = uploadDateLabel { durationBadge(label) }
-                }
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayTitle)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                     .accessibilityIdentifier("video.card.title")
-                Text(video.channelTitle)
+                HStack(spacing: 4) {
+                    Text(video.channelTitle)
+                        .lineLimit(1)
+                    let vc = video.formattedViewCount
+                    if !vc.isEmpty {
+                        Text("•")
+                        Text(vc).lineLimit(1)
+                    }
+                }
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SmartTubeVisualTokens.secondaryText)
                     .onTapGesture {
                         guard let channelId = video.channelId, !channelId.isEmpty else { return }
                         NotificationCenter.default.post(
@@ -420,12 +431,8 @@ public struct VideoCardView: View {
                         )
                     }
                     .accessibilityIdentifier("video.card.channelName")
-                let vc = video.formattedViewCount
-                if !vc.isEmpty {
-                    Text(vc)
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                VideoPublicationLabel(video: video)
+                    .lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -533,52 +540,6 @@ public struct VideoCardView: View {
             .foregroundStyle(.white)
             .clipShape(RoundedRectangle(cornerRadius: 3))
             .padding(4)
-    }
-
-    private var uploadDateLabel: String? {
-        guard !video.isLive else { return nil }
-        // Upcoming/scheduled: show when the stream starts instead of an upload date.
-        if video.isUpcoming {
-            guard let date = video.publishedAt else { return nil }
-            let cal = Calendar.current
-            let timeFmt = DateFormatter()
-            timeFmt.locale = .autoupdatingCurrent
-            timeFmt.timeStyle = .short
-            if cal.isDateInToday(date) {
-                return "Scheduled: Today, \(timeFmt.string(from: date))"
-            }
-            if cal.isDateInTomorrow(date) {
-                return "Scheduled: Tomorrow, \(timeFmt.string(from: date))"
-            }
-            let dateFmt = DateFormatter()
-            dateFmt.locale = .autoupdatingCurrent
-            dateFmt.dateStyle = .medium
-            dateFmt.timeStyle = .short
-            return "Scheduled: \(dateFmt.string(from: date))"
-        }
-        guard let date = video.publishedAt else { return nil }
-        let now = Date()
-        let elapsed = now.timeIntervalSince(date)
-        if elapsed < 86_400 { return "Today" }
-        let days = Int(elapsed / 86_400)
-        // For recent videos (<7 days) always compute fresh relative label — avoids
-        // showing a stale "2 hours ago" from a cached `publishedTimeText`.
-        if days < 7 { return days == 1 ? "1 day ago" : "\(days) days ago" }
-        // For older videos, prefer the raw API text (e.g. "2 years ago", "3 months ago").
-        // Formatting an approximate publishedAt as "May 12" looks precise but can be weeks off.
-        if let raw = video.publishedTimeText, !raw.isEmpty {
-            let cleaned = raw.replacingOccurrences(
-                of: #"^(Streamed|Premiered|Started)\s+"#,
-                with: "",
-                options: .regularExpression
-            ).trimmingCharacters(in: .whitespaces)
-            if !cleaned.isEmpty { return cleaned }
-        }
-        // Fallback: format the computed Date (exact for RSS feed videos, approximate for others).
-        let sameYear = Calendar.current.component(.year, from: date) == Calendar.current.component(.year, from: now)
-        return sameYear
-            ? date.formatted(.dateTime.month(.abbreviated).day())
-            : date.formatted(.dateTime.month(.abbreviated).year())
     }
 
     private var liveBadge: some View {

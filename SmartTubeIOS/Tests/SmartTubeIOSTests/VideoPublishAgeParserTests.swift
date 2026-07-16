@@ -4,11 +4,8 @@ import Testing
 
 // MARK: - VideoPublishAgeParserTests
 //
-// Tests for task #97: video publish age (publishedAt) extraction in parser functions.
-//
-// Root cause: parseVideoRenderer and parseLockupViewModel hardcoded publishedAt: nil.
-// parseTileRenderer already extracted it correctly (TV client). These tests verify the
-// fix extracts the relative-date string from the JSON and populates Video.publishedAt.
+// Relative renderer labels are presentation metadata only. Exact publication
+// dates come from player microformat and are the sole sorting source.
 //
 // All assertions are pure value transforms — no SwiftUI, no network.
 
@@ -48,12 +45,7 @@ private func makeLockupViewModelAgeResponse(_ lockup: [String: Any]) -> [String:
     ]
 }
 
-/// Returns the approximate expected Date for a relative string like "2 years ago".
-private func approximateDate(yearsAgo: Int) -> Date {
-    Date(timeIntervalSinceNow: -TimeInterval(yearsAgo * 365 * 86_400))
-}
-
-// MARK: - parseVideoRenderer publishedAt
+// MARK: - parseVideoRenderer publication label
 
 @Suite("Task #97 — parseVideoRenderer publishedAt extraction")
 struct VideoRendererPublishAgeTests {
@@ -73,7 +65,7 @@ struct VideoRendererPublishAgeTests {
         return r
     }
 
-    @Test("parseVideoRenderer with simpleText publishedTimeText populates publishedAt")
+    @Test("Relative simpleText is preserved but never promoted to exact publishedAt")
     func videoRenderer_simpleText_populatesPublishedAt() async throws {
         let response = makeVideoRendererAgeResponse(makeRenderer(
             publishedTimeText: ["simpleText": "2 years ago"]
@@ -81,14 +73,11 @@ struct VideoRendererPublishAgeTests {
         let api = InnerTubeAPI()
         let group = try await api.parseVideoGroupForTesting(response, title: nil)
         let video = try #require(group.videos.first, "Expected at least one video from response")
-        let publishedAt = try #require(video.publishedAt, "publishedAt should be non-nil for '2 years ago'")
-        let expectedDate = approximateDate(yearsAgo: 2)
-        // Allow 7-day tolerance for calendar approximations in parseRelativeDate.
-        #expect(abs(publishedAt.timeIntervalSince(expectedDate)) < 7 * 86_400,
-                "publishedAt should be approximately 2 years ago")
+        #expect(video.publishedAt == nil)
+        #expect(video.publishedTimeText == "2 years ago")
     }
 
-    @Test("parseVideoRenderer with runs publishedTimeText populates publishedAt")
+    @Test("Relative runs text is preserved but exact date stays nil")
     func videoRenderer_runsText_populatesPublishedAt() async throws {
         let response = makeVideoRendererAgeResponse(makeRenderer(
             publishedTimeText: ["runs": [["text": "3 months ago"]]]
@@ -96,8 +85,8 @@ struct VideoRendererPublishAgeTests {
         let api = InnerTubeAPI()
         let group = try await api.parseVideoGroupForTesting(response, title: nil)
         let video = try #require(group.videos.first, "Expected at least one video from response")
-        #expect(video.publishedAt != nil,
-                "publishedAt should be non-nil for runs-format '3 months ago'")
+        #expect(video.publishedAt == nil)
+        #expect(video.publishedTimeText == "3 months ago")
     }
 
     @Test("parseVideoRenderer without publishedTimeText leaves publishedAt nil")
@@ -146,7 +135,7 @@ struct LockupViewModelPublishAgeTests {
         ]
     }
 
-    @Test("parseLockupViewModel extracts publishedAt from second metadataRow")
+    @Test("Lockup relative label does not become an exact date")
     func lockupViewModel_secondRow_populatesPublishedAt() async throws {
         let rows: [[String: Any]] = [
             // Row 0: channel name
@@ -161,10 +150,8 @@ struct LockupViewModelPublishAgeTests {
         let api = InnerTubeAPI()
         let group = try await api.parseVideoGroupForTesting(response, title: nil)
         let video = try #require(group.videos.first, "Expected at least one video from lockupViewModel response")
-        let publishedAt = try #require(video.publishedAt, "publishedAt should be non-nil when metadataRows contain '2 years ago'")
-        let expectedDate = approximateDate(yearsAgo: 2)
-        #expect(abs(publishedAt.timeIntervalSince(expectedDate)) < 7 * 86_400,
-                "publishedAt should be approximately 2 years ago")
+        #expect(video.publishedAt == nil)
+        #expect(video.publishedTimeText == "2 years ago")
     }
 
     @Test("parseLockupViewModel with no relative-date text leaves publishedAt nil")

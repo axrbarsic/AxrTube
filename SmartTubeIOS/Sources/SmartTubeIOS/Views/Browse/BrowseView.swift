@@ -41,10 +41,10 @@ public struct BrowseView: View {
         }
         #endif
         .navigationDestination(item: $selectedPlaylist) { stub in
-            PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api)
+            PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api, catalogContext: .search)
         }
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: .search)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
@@ -74,30 +74,23 @@ public struct BrowseView: View {
     // MARK: - Subviews
 
     private var content: some View {
-        let isShorts = vm.currentSection.type == .shorts
-        let hideShorts = settings.settings.hideShorts
-        let axis: Axis.Set = isShorts ? .vertical : .horizontal
-
-        // Flatten all video groups into a single ordered list, filtering hidden shorts.
-        // Non-Shorts chips show portrait cards in a horizontal shelf; the Shorts chip
-        // shows them in a vertical scrolling layout.
-        let allVideos: [Video] = vm.videoGroups
-            .flatMap(\.videos)
-            .filter { !hideShorts || !$0.isShort }
+        let allVideos = FeedCatalogPolicy.visibleVideos(
+            vm.videoGroups.flatMap(\.videos),
+            showShorts: settings.settings.showShorts
+        )
 
         return ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
                 if vm.isAuthRequired && !auth.isSignedIn { guestBanner }
-                ShortsRowSection(
+                VideoGridSection(
                     videos: allVideos,
                     onSelect: { selectVideo($0, from: allVideos) },
-                    accessibilityID: isShorts ? "shorts.section" : "browse.section",
                     loadMore: {
                         if let last = allVideos.last {
                             vm.loadMoreIfNeeded(lastVideo: last)
                         }
                     },
-                    scrollAxis: axis
+                    catalogContext: .search
                 )
                 if vm.isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding()
@@ -110,9 +103,13 @@ public struct BrowseView: View {
         if vm.currentSection.type == .playlists {
             selectedPlaylist = video
         } else if video.isShort {
+            #if os(iOS)
+            playerRouter.open(video: video, api: api)
+            #else
             let shorts = groupVideos.filter { $0.isShort }
             let idx = shorts.firstIndex(where: { $0.id == video.id }) ?? 0
             shortsPresentation = ShortsPresentation(videos: shorts, startIndex: idx)
+            #endif
         } else {
             #if os(iOS)
             playerRouter.open(video: video, api: api)
@@ -179,7 +176,7 @@ public struct BrowseView: View {
                 set: { vm.select(section: $0) }
             )) {
                 ForEach(vm.sections) { section in
-                    Text(section.title).tag(section)
+                    Text(LocalizedStringKey(section.title), bundle: .module).tag(section)
                 }
             }
             .pickerStyle(.segmented)
@@ -194,25 +191,27 @@ struct VideoGridSection: View {
     let videos: [Video]
     let onSelect: (Video) -> Void
     var loadMore: (() -> Void)? = nil
+    var catalogContext: VideoCardCatalogContext = .standard
 
     @Environment(SettingsStore.self) private var store
-    #if !os(tvOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    /// Rotated on every UIDevice orientation change so `.id(orientationToken)` forces
-    /// SwiftUI to fully recreate the LazyVGrid, preventing hit-test/layout mismatches
-    /// after rotation on iPad (GitHub issue #82 — wrong video tapped in landscape).
-    @State private var orientationToken = UUID()
-    #endif
 
     var body: some View {
+        #if os(iOS)
+        let compact = VideoCardLayoutPolicy.variant(
+            for: catalogContext,
+            compactSearchCards: store.settings.compactSearchCards,
+            compactMediaLibraryCards: store.settings.compactMediaLibraryCards
+        ) == .compact
+        #else
         let compact = store.settings.compactThumbnails
+        #endif
         if compact {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: 8) {
                 ForEach(videos) { video in
                     #if os(tvOS)
                     VideoCardView(video: video, compact: true, onSelect: { onSelect(video) })
                         .padding(.horizontal)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 2)
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .onAppear {
                             if video.id == videos.last?.id { loadMore?() }
@@ -221,7 +220,7 @@ struct VideoGridSection: View {
 
                     VideoCardView(video: video, compact: true)
                         .padding(.horizontal)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 2)
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .accessibilityValue(video.isShort ? "short" : "")
                         .onTapGesture { onSelect(video) }
@@ -229,7 +228,6 @@ struct VideoGridSection: View {
                             if video.id == videos.last?.id { loadMore?() }
                         }
                     #endif
-                    Divider().padding(.horizontal)
                 }
             }
             #if os(tvOS)
@@ -269,7 +267,10 @@ struct VideoGridSection: View {
             .focusSection()
             #endif
             #else
-            let columns = horizontalSizeClass == .compact ? compactVideoGridColumns : regularVideoGridColumns
+            let columns = Array(
+                repeating: GridItem(.flexible(), spacing: videoGridRowSpacing),
+                count: FeedCatalogPolicy.iOSColumnCount
+            )
             LazyVGrid(columns: columns, spacing: videoGridRowSpacing) {
                 ForEach(videos) { video in
                     VideoCardView(video: video, compact: false)
@@ -281,14 +282,8 @@ struct VideoGridSection: View {
                         }
                 }
             }
-            .id(orientationToken)
             .padding(.horizontal)
             .padding(.vertical, 8)
-            #if canImport(UIKit)
-            .onReceive(NotificationCenter.default.publisher(for: UIDevice.orientationDidChangeNotification)) { _ in
-                orientationToken = UUID()
-            }
-            #endif
             #endif
         }
     }
@@ -325,4 +320,3 @@ struct VideoRowSection: View {
         #endif
     }
 }
-

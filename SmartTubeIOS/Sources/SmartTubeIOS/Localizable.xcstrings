@@ -2,6 +2,17 @@
   "sourceLanguage": "en",
   "strings": {
     "": {},
+    "Audio": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Аудио"
+          }
+        }
+      }
+    },
     "\"%@\" has been saved to your Photos library.": {
       "comment": "Download success alert message. %@ = video title.",
       "extractionState": "manual",
@@ -75,7 +86,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "«%@» сохранено в Фотографии."
+            "value": "«%@» сохранено в медиатеке приложения «Фото»."
           }
         },
         "sr": {
@@ -169,7 +180,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "«%@» добавлено в список «Смотреть позже»."
+            "value": "«%@» добавлено в плейлист «Смотреть позже»."
           }
         },
         "sr": {
@@ -263,7 +274,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Песня \"%@\" была удалена из плейлиста \"Посмотреть позже\"."
+            "value": "«%@» удалено из плейлиста «Смотреть позже»."
           }
         },
         "sr": {
@@ -858,102 +869,324 @@
         }
       }
     },
-    "%lld video%@": {
+    "%lld videos": {
       "localizations": {
         "ar": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "zero": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديو"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديو"
+                }
+              },
+              "two": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديو"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديوهات"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديو"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld فيديو"
+                }
+              }
+            }
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld Videos"
+                }
+              }
+            }
           }
         },
         "en": {
-          "stringUnit": {
-            "state": "new",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "new",
+                  "value": "%lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "new",
+                  "value": "%lld videos"
+                }
+              }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos"
+                }
+              }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vidéos"
+                }
+              }
+            }
           }
         },
         "hi": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld वीडियो"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld वीडियो"
+                }
+              }
+            }
           }
         },
         "hr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld video%@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videozapisa"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld videozapisa"
+                }
+              }
+            }
           }
         },
         "id": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              }
+            }
           }
         },
         "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              }
+            }
           }
         },
         "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 本の動画"
+                }
+              }
+            }
           }
         },
         "ko": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld개 동영상"
+                }
+              }
+            }
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeo"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vídeos"
+                }
+              }
+            }
           }
         },
         "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видео"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видео"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видео"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видео"
+                }
+              }
+            }
           }
         },
         "sr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld видео%@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видео"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видеа"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld видеа"
+                }
+              }
+            }
           }
         },
         "tr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld video"
+                }
+              }
+            }
           }
         },
         "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%1$lld video%2$@"
+          "variations": {
+            "plural": {
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld 个视频"
+                }
+              }
+            }
           }
         }
       }
@@ -1415,7 +1648,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "От 4 до 20 минут"
+            "value": "4–20 минут"
           }
         },
         "sr": {
@@ -2014,80 +2247,80 @@
         }
       }
     },
-    "Activate SmartTube": {
+    "Activate iPocketTube": {
       "comment": "Sign-in activation screen heading (iOS)",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تفعيل SmartTube"
+            "value": "تفعيل iPocketTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube aktivieren"
+            "value": "iPocketTube aktivieren"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Activar SmartTube"
+            "value": "Activar iPocketTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Activer SmartTube"
+            "value": "Activer iPocketTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube सक्रिय करें"
+            "value": "iPocketTube सक्रिय करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktivirajte SmartTube"
+            "value": "Aktivirajte iPocketTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktifkan SmartTube"
+            "value": "Aktifkan iPocketTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Attiva SmartTube"
+            "value": "Attiva iPocketTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTubeを有効化"
+            "value": "iPocketTubeを有効化"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube 활성화"
+            "value": "iPocketTube 활성화"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ativar SmartTube"
+            "value": "Ativar iPocketTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Активировать SmartTube"
+            "value": "Активировать iPocketTube"
           }
         },
         "sr": {
@@ -2099,13 +2332,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube'yu Etkinleştir"
+            "value": "iPocketTube'yu Etkinleştir"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "激活 SmartTube"
+            "value": "激活 iPocketTube"
           }
         }
       }
@@ -2275,7 +2508,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Добавьте RSS-ленту YouTube-канала, чтобы видеть здесь видео."
+            "value": "Добавьте RSS-ленту канала YouTube, чтобы видеть здесь новые видео."
           }
         },
         "sr": {
@@ -3225,7 +3458,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Только аудио — миниатюра"
+            "value": "Обложка в режиме «Только звук»"
           }
         },
         "sr": {
@@ -3415,7 +3648,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Только аудио"
+            "value": "Только звук"
           }
         },
         "sr": {
@@ -3509,7 +3742,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Только аудио (вкл.)"
+            "value": "Только звук (вкл.)"
           }
         },
         "sr": {
@@ -3603,7 +3836,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Режим только аудио"
+            "value": "Режим «Только звук»"
           }
         },
         "sr": {
@@ -3699,7 +3932,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Авто"
+            "value": "Автоматически"
           }
         },
         "sr": {
@@ -3795,7 +4028,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Автоматически сгенерированные"
+            "value": "Создано автоматически"
           }
         },
         "sr": {
@@ -3891,7 +4124,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Автовоспроизведение"
+            "value": "Автовоспроизведение следующего видео"
           }
         },
         "sr": {
@@ -4749,7 +4982,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Код истёк"
+            "value": "Срок действия кода истёк"
           }
         },
         "sr": {
@@ -5037,7 +5270,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Компактные превью"
+            "value": "Компактные обложки"
           }
         },
         "sr": {
@@ -5985,7 +6218,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Диагностический отчёт отправляет последние журналы приложения разработчику для анализа проблем."
+            "value": "Диагностический отчёт отправляет разработчику недавние журналы работы приложения для анализа проблем."
           }
         },
         "sr": {
@@ -6081,7 +6314,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Выключено"
+            "value": "Отключено"
           }
         },
         "sr": {
@@ -6269,7 +6502,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Уже не понравилось"
+            "value": "Отметка «Не нравится» поставлена"
           }
         },
         "sr": {
@@ -6741,7 +6974,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Загрузите видео с плеера, чтобы просмотреть его офлайн."
+            "value": "Загрузите видео в плеере, чтобы смотреть его офлайн."
           }
         },
         "sr": {
@@ -6837,7 +7070,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ошибка загрузки"
+            "value": "Не удалось загрузить"
           }
         },
         "sr": {
@@ -6933,7 +7166,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сохранить в Галерею"
+            "value": "Сохранить в «Фото»"
           }
         },
         "sr": {
@@ -7601,7 +7834,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Конечная заставка: %@"
+            "value": "Конечная карточка: %@"
           }
         },
         "sr": {
@@ -7981,7 +8214,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Исключить из SponsorBlock"
+            "value": "Не применять SponsorBlock"
           }
         },
         "sr": {
@@ -8077,7 +8310,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Исключённые каналы"
+            "value": "Каналы-исключения"
           }
         },
         "sr": {
@@ -8267,7 +8500,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Экспериментально"
+            "value": "Экспериментальная функция"
           }
         },
         "sr": {
@@ -8361,7 +8594,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Подробности ленты"
+            "value": "Сведения о ленте"
           }
         },
         "sr": {
@@ -8455,7 +8688,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Название ленты (напр. Обзоры техники)"
+            "value": "Название ленты (например, «Обзоры техники»)"
           }
         },
         "sr": {
@@ -8551,7 +8784,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Заполнить (обрезка)"
+            "value": "Заполнить (с обрезкой)"
           }
         },
         "sr": {
@@ -8647,7 +8880,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Отступление"
+            "value": "Несодержательное отступление"
           }
         },
         "sr": {
@@ -8839,7 +9072,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вписать (почтовый ящик)"
+            "value": "Вписать (с полями)"
           }
         },
         "sr": {
@@ -9122,7 +9355,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Принудительно IPv4 (пользователи VPN)"
+            "value": "Только IPv4 (для пользователей VPN)"
           }
         },
         "sr": {
@@ -9502,7 +9735,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Перейдите:"
+            "value": "Перейдите по адресу:"
           }
         },
         "sr": {
@@ -9598,7 +9831,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Скрывать управление через"
+            "value": "Скрывать элементы управления через"
           }
         },
         "sr": {
@@ -9692,7 +9925,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Скрыть прямые Shorts"
+            "value": "Скрывать прямые эфиры Shorts"
           }
         },
         "sr": {
@@ -9882,7 +10115,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Скрыть премьеры видео"
+            "value": "Скрывать премьеры видео"
           }
         },
         "sr": {
@@ -9978,7 +10211,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ключевой момент"
+            "value": "Важный момент"
           }
         },
         "sr": {
@@ -10264,7 +10497,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "IFrame-плеер (соответствует Условиям, показывает рекламу)"
+            "value": "IFrame-плеер (соответствует условиям YouTube, показывает рекламу)"
           }
         },
         "sr": {
@@ -10359,7 +10592,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Мини-плеер в приложении"
+            "value": "Мини-плеер внутри приложения"
           }
         },
         "sr": {
@@ -10455,7 +10688,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Напоминание о взаимодействии"
+            "value": "Призыв к действию"
           }
         },
         "sr": {
@@ -10647,7 +10880,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вступление/Recap"
+            "value": "Вступление/краткое содержание"
           }
         },
         "sr": {
@@ -10930,7 +11163,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Всегда воспроизводить горизонтально"
+            "value": "Всегда воспроизводить в альбомной ориентации"
           }
         },
         "sr": {
@@ -11406,7 +11639,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Уже понравилось"
+            "value": "Отметка «Нравится» поставлена"
           }
         },
         "sr": {
@@ -11788,7 +12021,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Повторять видео"
+            "value": "Зациклить видео"
           }
         },
         "sr": {
@@ -12074,7 +12307,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Мин. длина сегмента"
+            "value": "Мин. длительность сегмента"
           }
         },
         "sr": {
@@ -12360,7 +12593,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Музыка (не по теме)"
+            "value": "Музыка (не по теме видео)"
           }
         },
         "sr": {
@@ -13408,7 +13641,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ничего"
+            "value": "Не пропускать"
           }
         },
         "sr": {
@@ -13984,7 +14217,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Откройте канал и нажмите «Исключить из SponsorBlock», чтобы добавить его сюда."
+            "value": "Откройте канал и нажмите «Не применять SponsorBlock», чтобы добавить его сюда."
           }
         },
         "sr": {
@@ -14078,7 +14311,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Откройте канал и нажмите «Исключить из SponsorBlock», чтобы добавить его сюда."
+            "value": "Откройте канал и нажмите «Не применять SponsorBlock», чтобы добавить его сюда."
           }
         },
         "sr": {
@@ -14364,7 +14597,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Или отсканируйте с другого устройства"
+            "value": "Или отсканируйте на другом устройстве"
           }
         },
         "sr": {
@@ -14554,7 +14787,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Только оригинальная дорожка"
+            "value": "Только оригинальная аудиодорожка"
           }
         },
         "sr": {
@@ -14650,7 +14883,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Концовка/Credits"
+            "value": "Концовка/титры"
           }
         },
         "sr": {
@@ -14934,7 +15167,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Рекомендации по устройствам"
+            "value": "Отдельные рекомендации на каждом устройстве"
           }
         },
         "sr": {
@@ -15883,7 +16116,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Предпочитаю кодек H.264"
+            "value": "Предпочитать кодек H.264"
           }
         },
         "sr": {
@@ -15977,7 +16210,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Предпочтительный язык аудио"
+            "value": "Предпочитаемый язык аудиодорожки"
           }
         },
         "sr": {
@@ -16073,7 +16306,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Превью/Hook"
+            "value": "Предпросмотр/затравка"
           }
         },
         "sr": {
@@ -16741,7 +16974,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Удалить %@ из истории"
+            "value": "Удалить «%@» из истории"
           }
         },
         "sr": {
@@ -16835,7 +17068,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Удалить из просмотра позже"
+            "value": "Удалить из плейлиста «Смотреть позже»"
           }
         },
         "sr": {
@@ -16931,7 +17164,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Убрать из исключений SponsorBlock"
+            "value": "Убрать канал из исключений SponsorBlock"
           }
         },
         "sr": {
@@ -17025,7 +17258,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Удален из просмотра позже"
+            "value": "Удалено из плейлиста «Смотреть позже»"
           }
         },
         "sr": {
@@ -17599,7 +17832,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "URL RSS-ленты"
+            "value": "Адрес RSS-ленты"
           }
         },
         "sr": {
@@ -17883,7 +18116,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сохранено в Галерею"
+            "value": "Сохранено в «Фото»"
           }
         },
         "sr": {
@@ -18265,7 +18498,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Сканируйте для открытия страницы активации"
+            "value": "Отсканируйте код, чтобы открыть страницу активации"
           }
         },
         "sr": {
@@ -19131,7 +19364,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Искать назад"
+            "value": "Перемотка назад"
           }
         },
         "sr": {
@@ -19321,7 +19554,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ищите вперед"
+            "value": "Перемотка вперёд"
           }
         },
         "sr": {
@@ -20087,7 +20320,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показать кнопку"
+            "value": "Показывать кнопку"
           }
         },
         "sr": {
@@ -20183,7 +20416,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Показываем популярные видео"
+            "value": "Популярные видео"
           }
         },
         "sr": {
@@ -20467,7 +20700,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Перемешать очередь (вкл.)"
+            "value": "Перемешивание очереди (вкл.)"
           }
         },
         "sr": {
@@ -20849,7 +21082,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Войдите, чтобы увидеть ваши %@"
+            "value": "Войдите, чтобы открыть раздел «%@»"
           }
         },
         "sr": {
@@ -21064,80 +21297,80 @@
         }
       }
     },
-    "Sign in to SmartTube": {
+    "Sign in to iPocketTube": {
       "comment": "tvOS activation screen heading",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تسجيل الدخول إلى SmartTube"
+            "value": "تسجيل الدخول إلى iPocketTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bei SmartTube anmelden"
+            "value": "Bei iPocketTube anmelden"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Iniciar sesión en SmartTube"
+            "value": "Iniciar sesión en iPocketTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se connecter à SmartTube"
+            "value": "Se connecter à iPocketTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube में साइन इन करें"
+            "value": "iPocketTube में साइन इन करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prijavite se na SmartTube"
+            "value": "Prijavite se na iPocketTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Masuk ke SmartTube"
+            "value": "Masuk ke iPocketTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Accedi a SmartTube"
+            "value": "Accedi a iPocketTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTubeにサインイン"
+            "value": "iPocketTubeにサインイン"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube에 로그인"
+            "value": "iPocketTube에 로그인"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Entrar no SmartTube"
+            "value": "Entrar no iPocketTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вход в SmartTube"
+            "value": "Вход в iPocketTube"
           }
         },
         "sr": {
@@ -21149,13 +21382,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube'ya Oturum Aç"
+            "value": "iPocketTube'ya Oturum Aç"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "登录 SmartTube"
+            "value": "登录 iPocketTube"
           }
         }
       }
@@ -21521,7 +21754,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Пропустить"
+            "value": "Пропускать"
           }
         },
         "sr": {
@@ -21617,7 +21850,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Пропустить — автоматический пропуск. Показать кнопку — отображает кнопку пропуска. Ничего — воспроизводить."
+            "value": "«Пропускать» — пропускать автоматически. «Показывать кнопку» — показывать кнопку пропуска. «Не пропускать» — воспроизводить без пропуска."
           }
         },
         "sr": {
@@ -21832,80 +22065,80 @@
         }
       }
     },
-    "SmartTube": {
+    "iPocketTube": {
       "comment": "App name shown in macOS sidebar navigation title — do not translate",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "sr": {
@@ -21917,91 +22150,91 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube"
+            "value": "iPocketTube"
           }
         }
       }
     },
-    "SmartTube on GitHub": {
+    "iPocketTube on GitHub": {
       "comment": "tvOS GitHub QR sheet title",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube على GitHub"
+            "value": "iPocketTube على GitHub"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube auf GitHub"
+            "value": "iPocketTube auf GitHub"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube en GitHub"
+            "value": "iPocketTube en GitHub"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube sur GitHub"
+            "value": "iPocketTube sur GitHub"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub पर SmartTube"
+            "value": "GitHub पर iPocketTube"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube na GitHubu"
+            "value": "iPocketTube na GitHubu"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube di GitHub"
+            "value": "iPocketTube di GitHub"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube su GitHub"
+            "value": "iPocketTube su GitHub"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHubのSmartTube"
+            "value": "GitHubのiPocketTube"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub의 SmartTube"
+            "value": "GitHub의 iPocketTube"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube no GitHub"
+            "value": "iPocketTube no GitHub"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube на GitHub"
+            "value": "iPocketTube на GitHub"
           }
         },
         "sr": {
@@ -22013,13 +22246,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub'da SmartTube"
+            "value": "GitHub'da iPocketTube"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube on GitHub"
+            "value": "iPocketTube on GitHub"
           }
         }
       }
@@ -22571,7 +22804,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Статистика для ботаников"
+            "value": "Статистика для сисадминов"
           }
         },
         "sr": {
@@ -22859,7 +23092,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Предложения"
+            "value": "Рекомендации"
           }
         },
         "sr": {
@@ -22978,80 +23211,80 @@
         }
       }
     },
-    "Support SmartTube on Ko-fi": {
+    "Support iPocketTube on Ko-fi": {
       "comment": "tvOS Ko-fi QR sheet title",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "دعم SmartTube على Ko-fi"
+            "value": "دعم iPocketTube على Ko-fi"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "SmartTube auf Ko-fi unterstützen"
+            "value": "iPocketTube auf Ko-fi unterstützen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoyar SmartTube en Ko-fi"
+            "value": "Apoyar iPocketTube en Ko-fi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Soutenir SmartTube sur Ko-fi"
+            "value": "Soutenir iPocketTube sur Ko-fi"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi पर SmartTube का समर्थन करें"
+            "value": "Ko-fi पर iPocketTube का समर्थन करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Podržite SmartTube na Ko-fi"
+            "value": "Podržite iPocketTube na Ko-fi"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dukung SmartTube di Ko-fi"
+            "value": "Dukung iPocketTube di Ko-fi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Supporta SmartTube su Ko-fi"
+            "value": "Supporta iPocketTube su Ko-fi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fiでSmartTubeをサポート"
+            "value": "Ko-fiでiPocketTubeをサポート"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi에서 SmartTube 후원"
+            "value": "Ko-fi에서 iPocketTube 후원"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoiar SmartTube no Ko-fi"
+            "value": "Apoiar iPocketTube no Ko-fi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Поддержите SmartTube на Ko-fi"
+            "value": "Поддержите iPocketTube на Ko-fi"
           }
         },
         "sr": {
@@ -23063,13 +23296,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi'de SmartTube'yu Destekle"
+            "value": "Ko-fi'de iPocketTube'yu Destekle"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Ko-fi 上支持 SmartTube"
+            "value": "在 Ko-fi 上支持 iPocketTube"
           }
         }
       }
@@ -23333,7 +23566,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Системный язык"
+            "value": "Как в системе"
           }
         },
         "sr": {
@@ -23619,7 +23852,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Это видео будет удалено с вашего устройства. Вы можете повторно скачать его с плеера."
+            "value": "Видео будет удалено с устройства. Его можно снова загрузить в плеере."
           }
         },
         "sr": {
@@ -24193,7 +24426,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Коснитесь двумя пальцами, чтобы закрыть · Цитировать идентификатор отчета при отправке диагностики"
+            "value": "Коснитесь двумя пальцами, чтобы закрыть · При отправке диагностики укажите ID отчёта"
           }
         },
         "sr": {
@@ -24289,7 +24522,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "До 4 минут"
+            "value": "Короче 4 минут"
           }
         },
         "sr": {
@@ -24765,7 +24998,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Дата загрузки"
+            "value": "Дата публикации"
           }
         },
         "sr": {
@@ -24955,7 +25188,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Использует официальный встроенный плеер YouTube вместо прямого потокового пайплайна. Выбор качества и загрузки недоступны. Будет воспроизводиться реклама. Полезно для видео, которые отказываются воспроизводиться стандартным способом."
+            "value": "Используется официальный встроенный плеер YouTube вместо прямого воспроизведения потока. Выбор качества и загрузка недоступны. Воспроизводится реклама. Этот режим помогает с видео, которые не запускаются обычным способом."
           }
         },
         "sr": {
@@ -25337,7 +25570,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Видео сохранено в Фотографиях."
+            "value": "Видео сохранено в медиатеке приложения «Фото»."
           }
         },
         "sr": {
@@ -25623,7 +25856,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Смотреть на GitHub"
+            "value": "Открыть на GitHub"
           }
         },
         "sr": {
@@ -26007,7 +26240,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Требуется аккаунт Google."
+            "value": "Нужен аккаунт Google."
           }
         },
         "sr": {
@@ -26103,7 +26336,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Домашняя лента, подписки и история\nтребуют аккаунт Google."
+            "value": "Для главной ленты, подписок и истории\nнужен аккаунт Google."
           }
         },
         "sr": {
@@ -26197,7 +26430,7 @@
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "URL RSS-лент YouTube выглядят так:\n**youtube.com/feeds/videos.xml?channel_id=…**\n\nВы также можете найти RSS-ленту канала через URL страницы канала."
+            "value": "Адреса RSS-лент YouTube имеют вид:\n**youtube.com/feeds/videos.xml?channel_id=…**\n\nRSS-ленту канала можно также найти по адресу его страницы."
           }
         },
         "sr": {
@@ -26216,6 +26449,504 @@
           "stringUnit": {
             "state": "translated",
             "value": "YouTube RSS 订阅 URL 格式如下：\n**youtube.com/feeds/videos.xml?channel_id=…**\n\n您也可以通过频道页面 URL 找到频道的 RSS 订阅。"
+          }
+        }
+      }
+    },
+    "Add to RSS Feeds": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в RSS-ленты"
+          }
+        }
+      }
+    },
+    "Add to Watch Later": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавить в «Смотреть позже»"
+          }
+        }
+      }
+    },
+    "Added to Queue": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в очередь"
+          }
+        }
+      }
+    },
+    "Added to RSS Feeds": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в RSS-ленты"
+          }
+        }
+      }
+    },
+    "Added to Watch Later": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Добавлено в «Смотреть позже»"
+          }
+        }
+      }
+    },
+    "Cannot find a YouTube video URL.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось найти ссылку на видео YouTube."
+          }
+        }
+      }
+    },
+    "Download failed": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось загрузить"
+          }
+        }
+      }
+    },
+    "Looking for video…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск видео…"
+          }
+        }
+      }
+    },
+    "Open in iPocketTube": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть в iPocketTube"
+          }
+        }
+      }
+    },
+    "Preparing download…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подготовка загрузки…"
+          }
+        }
+      }
+    },
+    "Saved to Photos": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранено в «Фото»"
+          }
+        }
+      }
+    },
+    "Saving to Photos…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранение в «Фото»…"
+          }
+        }
+      }
+    },
+    "Shows download progress in the Dynamic Island.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Показывает ход загрузки в Dynamic Island."
+          }
+        }
+      }
+    },
+    "iPocketTube Download": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Загрузка iPocketTube"
+          }
+        }
+      }
+    },
+    "Channels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каналы"
+          }
+        }
+      }
+    },
+    "Dark": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Тёмная"
+          }
+        }
+      }
+    },
+    "Gaming": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Игры"
+          }
+        }
+      }
+    },
+    "Light": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Светлая"
+          }
+        }
+      }
+    },
+    "Live": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Прямые эфиры"
+          }
+        }
+      }
+    },
+    "Music": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Музыка"
+          }
+        }
+      }
+    },
+    "News": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Новости"
+          }
+        }
+      }
+    },
+    "Sports": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Спорт"
+          }
+        }
+      }
+    },
+    "Subs": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Подписки"
+          }
+        }
+      }
+    },
+    "Save Offline": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сохранить офлайн" } } }
+    },
+    "Video — iPocketTube + Photos": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео — iPocketTube и «Фото»" } } }
+    },
+    "Audio — iPocketTube": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио — iPocketTube" } } }
+    },
+    "Choose what to save in the offline collection.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Выберите, что сохранить в офлайн-коллекции." } } }
+    },
+    "Offline Collection": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Офлайн-коллекция" } } }
+    },
+    "Automatic Save": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Автоматическое сохранение" } } }
+    },
+    "Storage Limit": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Лимит хранилища" } } }
+    },
+    "Collection Size": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Размер коллекции" } } }
+    },
+    "Clear Offline Collection": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Очистить офлайн-коллекцию" } } }
+    },
+    "Clear All": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Удалить всё" } } }
+    },
+    "Clear": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Очистить" } } }
+    },
+    "Delete Offline Item": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Удалить офлайн-копию" } } }
+    },
+    "The local copy will be removed from this device.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Локальная копия будет удалена с этого устройства." } } }
+    },
+    "All downloaded video and audio files will be removed from iPocketTube.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Все скачанные видео и аудиофайлы будут удалены из iPocketTube." } } }
+    },
+    "No Offline Media": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Нет офлайн-медиа" } } }
+    },
+    "Open a video, tap Download, then choose Video or Audio.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Откройте ролик, нажмите «Загрузить» и выберите «Видео» или «Аудио»." } } }
+    },
+    "Download cancelled.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загрузка отменена." } } }
+    },
+    "Download was interrupted. Tap Retry.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загрузка прервалась. Нажмите «Повторить»." } } }
+    },
+    "Download failed.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не удалось загрузить." } } }
+    },
+    "Audio Saved": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио сохранено" } } }
+    },
+    "Video Saved": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео сохранено" } } }
+    },
+    "The video is in Photos and iPocketTube's offline collection.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео сохранено в приложении «Фото» и офлайн-коллекции iPocketTube." } } }
+    },
+    "The item is available in iPocketTube's offline collection.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Материал доступен в офлайн-коллекции iPocketTube." } } }
+    },
+    "Offline collection storage limit reached. Delete items or raise the limit in Settings.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Достигнут лимит офлайн-коллекции. Удалите материалы или увеличьте лимит в настройках." } } }
+    },
+    "No compatible M4A audio stream was found.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не найдена совместимая аудиодорожка M4A." } } }
+    },
+    "Audio formats were returned, but YouTube did not provide a downloadable URL.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "YouTube сообщил об аудиоформатах, но не предоставил ссылку для загрузки." } } }
+    },
+    "Only WebM/Opus audio is downloadable, and iOS cannot export that container with AVFoundation.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Для загрузки доступно только аудио WebM/Opus, которое iOS не может экспортировать средствами AVFoundation." } } }
+    },
+    "The available audio format cannot be decoded by iOS.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "iOS не может декодировать доступный аудиоформат." } } }
+    },
+    "No downloadable audio or compatible MP4 video stream was returned.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не найдено доступного аудио или совместимого видеопотока MP4." } } }
+    },
+    "YouTube did not provide a downloadable URL for the selected audio format.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "YouTube не предоставил ссылку для загрузки выбранного аудиоформата." } } }
+    },
+    "The compatible MP4 video does not contain an audio track.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Совместимое видео MP4 не содержит аудиодорожки." } } }
+    },
+    "iOS could not create an audio export session for this format.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "iOS не удалось подготовить экспорт аудио для этого формата." } } }
+    },
+    "The available audio format cannot be exported to M4A by iOS.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "iOS не может экспортировать доступный аудиоформат в M4A." } } }
+    },
+    "Downloaded audio could not be opened.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не удалось открыть загруженное аудио." } } }
+    },
+    "Automatic saving is off by default. Duplicate items are skipped and the storage limit prevents the collection from filling the device.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Автоматическое сохранение по умолчанию выключено. Дубликаты пропускаются, а лимит хранилища не позволяет коллекции заполнить устройство." } } }
+    },
+    "EDR Press Glow": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "EDR-свечение нажатий" } } }
+    },
+    "Uses true local EDR headroom on supported displays. Simulator, Low Power Mode, and SDR displays use a restrained fallback.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "На поддерживаемых дисплеях используется настоящий локальный запас яркости EDR. В симуляторе, режиме энергосбережения и на SDR-дисплеях применяется сдержанный запасной эффект." } } }
+    },
+    "EDR press glow targets supported displays. The IFrame player uses YouTube's official embedded player; quality selection and downloads are unavailable.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "EDR-свечение рассчитано на поддерживаемые дисплеи. IFrame-плеер использует официальный встроенный плеер YouTube; выбор качества и загрузки недоступны." } } }
+    },
+    "Open YouTube Video in iPocketTube": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открыть видео YouTube в iPocketTube" } } }
+    },
+    "Opens a YouTube video or Short URL directly in iPocketTube.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открывает видео YouTube или ссылку на Shorts непосредственно в iPocketTube." } } }
+    },
+    "Could not build an iPocketTube deep link.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не удалось создать внутреннюю ссылку iPocketTube." } } }
+    },
+    "Audio Quality": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Качество аудио" } } }
+    },
+    "Wi-Fi Only Downloads": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загружать только по Wi-Fi" } } }
+    },
+    "No ads, background playback, and pausing for external audio are always on.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Без рекламы, фон и пауза на внешнее аудио — всегда включены." } } }
+    },
+    "Every tapped video is saved as audio. Duplicate items are reused and the storage limit protects the device.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Каждый выбранный ролик сохраняется как аудио. Дубликаты переиспользуются, а лимит защищает память устройства." } } }
+    },
+    "Tap any video to save and play its audio. To save video, press and hold a card and choose Save Video.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Нажмите любой ролик, чтобы сохранить и включить аудио. Чтобы сохранить видео, удерживайте карточку и выберите «Сохранить видео»." } } }
+    },
+    "Save Video": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сохранить видео" } } }
+    },
+    "Licenses": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Лицензии" } } }
+    },
+    "Preparing audio": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Подготовка аудио" } } }
+    },
+    "Buffering audio": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Буферизация аудио" } } }
+    },
+    "Playing while downloading": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Воспроизведение во время загрузки" } } }
+    },
+    "Preparing audio from MP4": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Подготовка аудио из MP4" } } }
+    },
+    "Playback is available. Offline saving needs retry.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио доступно. Повторите сохранение офлайн." } } }
+    },
+    "Retry Offline Saving": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Повторить сохранение" } } }
+    },
+    "Saved offline": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сохранено офлайн" } } }
+    },
+    "Media Library": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Медиатека" } } }
+    },
+    "Always On": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Всегда включено" } } }
+    },
+    "Diagnostics & About": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Диагностика и о приложении" } } }
+    },
+    "No ads • background • pause for external audio": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Без рекламы • фон • пауза на внешнее аудио" } } }
+    },
+    "Now Playing": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сейчас играет" } } }
+    },
+    "Reconnecting…": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Переподключение…" } } }
+    },
+    "Waiting for Wi-Fi": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Ожидание Wi-Fi" } } }
+    },
+    "Download paused. Tap to continue.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загрузка приостановлена. Нажмите, чтобы продолжить." } } }
+    },
+    "Download paused by you.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загрузка приостановлена вами." } } }
+    },
+    "Resuming automatically…": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Автоматическое возобновление…" } } }
+    },
+    "Offline file is missing. Tap Retry.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Офлайн-файл отсутствует. Нажмите «Повторить»." } } }
+    },
+    "Continue": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Продолжить" } } }
+    },
+    "Export Playback Journal": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Экспорт журнала воспроизведения" } } }
+    },
+    "Downloaded %d%%": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загружено %d%%" } } }
+    },
+    "Downloaded today, %@": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загружено сегодня, %@" } } }
+    },
+    "Downloaded yesterday, %@": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загружено вчера, %@" } } }
+    },
+    "Downloaded %@": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Загружено %@" } } }
+    },
+    "Download time unknown": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Время загрузки неизвестно" } } }
+    },
+    "Playback position": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Позиция воспроизведения" } } }
+    },
+    "Duration unavailable": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Длительность недоступна" } } }
+    },
+    "%@ of %@": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "%@ из %@" } } }
+    },
+    "Swipe up or down to seek": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Смахните вверх или вниз для перемотки" } } }
+    },
+    "Content": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Контент" } } }
+    },
+    "Compact Search Cards": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Компактные карточки поиска" } } }
+    },
+    "Compact Media Library Cards": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Компактные карточки медиатеки" } } }
+    },
+    "Half the vertical height": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Вдвое ниже по вертикали" } } }
+    },
+    "Recent Searches": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Недавние запросы" } } }
+    },
+    "No Recent Searches": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Недавних запросов нет" } } }
+    },
+    "Show Shorts": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Показывать Shorts" } } }
+    },
+    "Shorts appear in video feeds": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Shorts будут показываться в лентах видео" } } }
+    },
+    "Publication date: %@": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Дата публикации: %@" } } }
+    },
+    "System": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Как в системе"
           }
         }
       }

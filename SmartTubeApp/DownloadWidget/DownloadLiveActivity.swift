@@ -116,11 +116,11 @@ private struct LockScreenView: View {
 private extension DownloadActivityAttributes.DownloadContentState.Phase {
     var displayLabel: String {
         switch self {
-        case .fetching:    return "Preparing download…"
-        case .downloading: return "Downloading…"
-        case .saving:      return "Saving to Photos…"
-        case .done:        return "Saved to Photos"
-        case .failed:      return "Download failed"
+        case .fetching:    return String(localized: "Preparing download…")
+        case .downloading: return String(localized: "Downloading…")
+        case .saving:      return String(localized: "Saving to Photos…")
+        case .done:        return String(localized: "Saved to Photos")
+        case .failed:      return String(localized: "Download failed")
         }
     }
 }
@@ -141,8 +141,8 @@ private struct DownloadPlaceholderWidget: Widget {
             EmptyView()
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName("SmartTube Download")
-        .description("Shows download progress in the Dynamic Island.")
+        .configurationDisplayName(String(localized: "iPocketTube Download"))
+        .description(String(localized: "Shows download progress in the Dynamic Island."))
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }
 }

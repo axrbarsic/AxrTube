@@ -9,6 +9,7 @@ import SmartTubeIOSCore
 public struct PlaylistView: View {
     public let playlistId: String
     public let playlistTitle: String
+    public let catalogContext: VideoCardCatalogContext
 
     @Environment(AuthService.self) private var auth
     @Environment(SettingsStore.self) private var store
@@ -21,9 +22,15 @@ public struct PlaylistView: View {
     @Environment(PlayerRouter.self) private var playerRouter
     #endif
 
-    public init(playlistId: String, playlistTitle: String, api: InnerTubeAPI) {
+    public init(
+        playlistId: String,
+        playlistTitle: String,
+        api: InnerTubeAPI,
+        catalogContext: VideoCardCatalogContext
+    ) {
         self.playlistId = playlistId
         self.playlistTitle = playlistTitle
+        self.catalogContext = catalogContext
         _vm = State(initialValue: PlaylistViewModel(api: api))
     }
 
@@ -75,7 +82,7 @@ public struct PlaylistView: View {
         }
         #endif
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: catalogContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
@@ -91,7 +98,7 @@ public struct PlaylistView: View {
 
     private var content: some View {
         ScrollView {
-            if store.settings.compactThumbnails {
+            if usesCompactCards {
 
                 LazyVStack(spacing: 0) {
                     ForEach(displayVideos) { video in
@@ -207,6 +214,18 @@ public struct PlaylistView: View {
 
     private var displayVideos: [Video] {
         vm.videos.filter { !store.settings.hideShorts || !$0.isShort }
+    }
+
+    private var usesCompactCards: Bool {
+        #if os(iOS)
+        VideoCardLayoutPolicy.variant(
+            for: catalogContext,
+            compactSearchCards: store.settings.compactSearchCards,
+            compactMediaLibraryCards: store.settings.compactMediaLibraryCards
+        ) == .compact
+        #else
+        store.settings.compactThumbnails
+        #endif
     }
 
     private var emptyState: some View {

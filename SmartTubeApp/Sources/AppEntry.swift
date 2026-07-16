@@ -42,6 +42,12 @@ struct AppEntry: App {
     private static let pendingRSSFeedKey    = "pendingRSSFeedURL"
 
     init() {
+        #if os(iOS)
+        PlaybackMetricsMonitor.start()
+        #endif
+        #if DEBUG && os(iOS)
+        AudioRecoverySimulatorProbe.runIfRequested()
+        #endif
         let settingsStore = SettingsStore()
         let poTokenProvider: (any PoTokenProvider)? = {
             if let url = settingsStore.settings.poTokenServiceURL {
@@ -62,7 +68,8 @@ struct AppEntry: App {
         _playerRouter = State(initialValue: PlayerRouter(
             playerState: playerStateStore,
             tosState: tosPlayerStateStore,
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            api: api
         ))
         #endif
         _cardDownloadService = State(initialValue: VideoDownloadService(api: api))
@@ -118,6 +125,7 @@ struct AppEntry: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
+                .environment(DownloadStore.shared)
                 .onChange(of: authService.accessToken, initial: true) { _, newToken in
                     Task {
                         await api.setAuthToken(newToken)
@@ -160,6 +168,7 @@ struct AppEntry: App {
                 .environment(authService)
                 .environment(browseViewModel)
                 .environment(settingsStore)
+                .environment(DownloadStore.shared)
                 .frame(minWidth: 480)
         }
         #elseif os(tvOS)
@@ -172,6 +181,7 @@ struct AppEntry: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
+                .environment(DownloadStore.shared)
                 .onChange(of: authService.accessToken, initial: true) { _, newToken in
                     Task {
                         await api.setAuthToken(newToken)
@@ -210,6 +220,7 @@ struct AppEntry: App {
                     .environment(settingsStore)
                     .environment(\.innerTubeAPI, api)
                     .environment(cardDownloadService)
+                    .environment(DownloadStore.shared)
                     #if os(iOS)
                     .environment(playerStateStore)
                     .environment(tosPlayerStateStore)
@@ -260,12 +271,20 @@ struct AppEntry: App {
                             if playerStateStore.presentation == .miniPlayer {
                                 playerStateStore.vm.handleForeground()
                             }
+                            playerRouter.audioFirst.setApplicationActive(true)
+                            #endif
+                        } else if phase == .inactive {
+                            #if os(iOS)
+                            if playerStateStore.presentation == .miniPlayer {
+                                playerStateStore.vm.handleSceneInactive()
+                            }
                             #endif
                         } else if phase == .background {
                             #if os(iOS)
                             if playerStateStore.presentation == .miniPlayer {
                                 playerStateStore.vm.handleBackground()
                             }
+                            playerRouter.audioFirst.setApplicationActive(false)
                             #endif
                         }
                     }

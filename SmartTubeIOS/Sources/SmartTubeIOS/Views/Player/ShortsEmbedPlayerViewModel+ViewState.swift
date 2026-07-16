@@ -78,6 +78,11 @@ extension ShortsEmbedPlayerViewModel {
     }
 
     func handleBackground() {
+        #if os(iOS)
+        audioRecovery.enteredBackground(
+            playbackAllowed: settings.backgroundPlaybackEnabled
+        )
+        #endif
         guard !settings.backgroundPlaybackEnabled else { return }
         guard isPlaying else { return }
         wasPlayingBeforeSuspend = true
@@ -85,6 +90,9 @@ extension ShortsEmbedPlayerViewModel {
     }
 
     func handleForeground() {
+        #if os(iOS)
+        audioRecovery.enteredForeground()
+        #endif
         guard wasPlayingBeforeSuspend else { return }
         wasPlayingBeforeSuspend = false
         play()
@@ -105,4 +113,12 @@ extension ShortsEmbedPlayerViewModel {
         saveProgress()
     }
 }
+
+#if os(iOS)
+extension ShortsEmbedPlayerViewModel: WebPlaybackAudioRecoveryDelegate {
+    var webAudioPlaybackIsActive: Bool { isPlaying }
+    var webAudioPlaybackCanOwnSession: Bool { !isStandby }
+    func resumeWebPlaybackAfterSystemAudioEvent() { play() }
+}
+#endif
 #endif // !os(tvOS)

@@ -15,16 +15,28 @@ extension PlaybackViewModel {
         if videoEnded {
             videoEnded = false
             seek(to: 0)
+            #if canImport(UIKit)
+            performUserPlay(reason: "Player Controls Replay")
+            #else
             player.rate = Float(settings.playbackSpeed)
             isPlaying = true
+            #endif
             showControls()
             #if canImport(UIKit)
             updateNowPlayingPlayback()
             #endif
             return
         }
+        #if canImport(UIKit)
+        if isPlaying {
+            performUserPause(reason: "Player Controls Pause")
+        } else {
+            performUserPlay(reason: "Player Controls Play")
+        }
+        #else
         if isPlaying { player.pause() } else { player.rate = Float(settings.playbackSpeed) }
         isPlaying.toggle()
+        #endif
         showControls()
         #if canImport(UIKit)
         updateNowPlayingPlayback()
@@ -72,6 +84,70 @@ extension PlaybackViewModel {
         seek(to: target)
         showControls()
         playerLog.debug("[scrub] commitScrub done — isScrubbing=\(self.isScrubbing) controlsVisible=\(self.controlsVisible)")
+    }
+
+    /// Downloads-card scrub path. It pauses without recording a user pause in
+    /// the interruption state machine, then resumes only if playback was active
+    /// before the drag began.
+    @discardableResult
+    func beginAudioFirstScrubbing() -> Bool {
+        let wasPlaying = isPlaying && player.rate > 0
+        beginScrubbing()
+        guard isScrubbing else { return false }
+        if wasPlaying {
+            isPlaying = false
+            player.pause()
+            #if canImport(UIKit)
+            updateNowPlayingPlayback()
+            AudioDiagnostics.shared.record(
+                event: "seek.drag.begin",
+                decision: "pauseUntilCommit",
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id
+            )
+            #endif
+        }
+        return wasPlaying
+    }
+
+    func commitAudioFirstScrub(resumeAfterSeek: Bool) {
+        guard isScrubbing else { return }
+        seekDebounceTask?.cancel()
+        let target = max(0, scrubTime)
+        lastCommitScrubTime = .now
+        isScrubbing = false
+        player.seek(
+            to: CMTime(seconds: target, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        ) { [weak self] finished in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.currentTime = target
+                if resumeAfterSeek, finished {
+                    #if canImport(UIKit)
+                    guard Self.activatePlaybackAudioSession(reason: "downloads scrub commit") else {
+                        self.updateNowPlayingPlayback()
+                        return
+                    }
+                    #endif
+                    self.player.playImmediately(atRate: Float(self.settings.playbackSpeed))
+                    self.isPlaying = true
+                }
+                #if canImport(UIKit)
+                self.updateNowPlayingInfo()
+                self.updateNowPlayingPlayback()
+                AudioDiagnostics.shared.record(
+                    event: "seek.drag.commit",
+                    decision: resumeAfterSeek ? "resume" : "stayPaused",
+                    player: self.player,
+                    recoveryGeneration: self.audioInterruptionGeneration,
+                    itemID: self.currentVideo?.id
+                )
+                #endif
+            }
+        }
     }
 
     /// Issues a seek to the given time. Does NOT show controls — callers that

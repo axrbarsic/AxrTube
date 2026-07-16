@@ -21,14 +21,9 @@ public final class SearchViewModel {
     private let historyStore: SearchHistoryStore
     private var nextPageToken: String?
     private var searchTask: Task<Void, Never>?
+    private var publicationTask: Task<Void, Never>?
     private var suggestTask: Task<Void, Never>?
     private var hideObserverTasks: [Task<Void, Never>] = []
-
-    private static let recommendedTerms: [String] = [
-        "trending videos", "music 2025", "cooking recipes", "travel vlog",
-        "programming tutorial", "workout", "movie trailer", "lofi hip hop",
-        "documentary", "gaming highlights"
-    ]
 
     /// History entries that match the current query (case-insensitive). Returns
     /// the full history when the query is empty.
@@ -40,18 +35,17 @@ public final class SearchViewModel {
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI(), historyStore: SearchHistoryStore = .shared) {
         self.api = api
         self.historyStore = historyStore
-        suggestions = Self.recommendedTerms
         Task { await loadHistory() }
         observeFeedHideNotifications()
     }
 
     /// Call from `.task(id: query)` in the view to debounce live suggestions.
-    /// When `q` is empty, restores the recommended terms immediately.
+    /// An empty query shows real local history and the discovery feed. We never
+    /// manufacture static English recommendations.
     public func updateSuggestions(for q: String) async {
         print("[Suggestions] updateSuggestions called, q='\(q)'")
         if q.isEmpty {
-            print("[Suggestions] Empty query — restoring recommendedTerms")
-            suggestions = Self.recommendedTerms
+            suggestions = []
             return
         }
         try? await Task.sleep(for: .milliseconds(300))
@@ -68,6 +62,7 @@ public final class SearchViewModel {
         results = []
         nextPageToken = nil
         searchTask?.cancel()
+        publicationTask?.cancel()
         searchTask = Task { await performSearch(query: trimmed, filter: filter) }
         Task { await recordSearch(trimmed) }
     }
@@ -108,6 +103,7 @@ public final class SearchViewModel {
         results = []
         nextPageToken = nil
         searchTask?.cancel()
+        publicationTask?.cancel()
         searchTask = Task { await performSearch(query: query, filter: filter) }
     }
 
@@ -124,13 +120,31 @@ public final class SearchViewModel {
                 try await api.search(query: query, continuationToken: continuationToken, filter: filter)
             }
             if continuationToken == nil {
-                results = group.videos
+                results = VideoPublicationSortPolicy.sorted(group.videos, for: .search)
             } else {
-                results.append(contentsOf: group.videos)
+                results = VideoPublicationSortPolicy.merging(
+                    existing: results,
+                    page: group.videos,
+                    for: .search
+                )
             }
             nextPageToken = group.nextPageToken
+            schedulePublicationEnrichment()
         } catch {
             if !Task.isCancelled { self.error = error }
+        }
+    }
+
+    private func schedulePublicationEnrichment() {
+        publicationTask?.cancel()
+        let snapshot = results
+        let expectedIDs = snapshot.map(\.id)
+        publicationTask = Task { [weak self, api] in
+            let enriched = await VideoPublicationDateEnricher.shared.enrich(snapshot) { id in
+                try? await api.fetchExactPublicationDate(videoId: id)
+            }
+            guard let self, !Task.isCancelled, self.results.map(\.id) == expectedIDs else { return }
+            self.results = VideoPublicationSortPolicy.sorted(enriched, for: .search)
         }
     }
 
@@ -144,12 +158,12 @@ public final class SearchViewModel {
                     print("[Suggestions] Task cancelled after fetch")
                     return
                 }
-                let result = s.isEmpty ? Self.recommendedTerms : s
+                let result = s
                 print("[Suggestions] Setting \(result.count) suggestions")
                 suggestions = result
             } catch {
                 print("[Suggestions] fetchSearchSuggestions threw: \(error)")
-                if !Task.isCancelled { suggestions = Self.recommendedTerms }
+                if !Task.isCancelled { suggestions = [] }
             }
         }
     }
@@ -185,6 +199,7 @@ public final class ChannelViewModel {
 
     private let api: any InnerTubeAPIProtocol
     private var nextPageToken: String?
+    private var publicationTask: Task<Void, Never>?
     private var hideObserverTasks: [Task<Void, Never>] = []
 
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI()) {
@@ -202,8 +217,9 @@ public final class ChannelViewModel {
         do {
             let (ch, group) = try await api.fetchChannel(channelId: channelId)
             channel = ch
-            videos  = group.videos
+            videos = VideoPublicationSortPolicy.sorted(group.videos, for: .channel)
             nextPageToken = group.nextPageToken
+            schedulePublicationEnrichment()
         } catch {
             self.error = error
         }
@@ -218,11 +234,29 @@ public final class ChannelViewModel {
                 let group = try await retryWithBackoff(label: "ChannelVM") {
                     try await api.fetchChannelVideos(channelId: id, continuationToken: token)
                 }
-                videos.append(contentsOf: group.videos)
+                videos = VideoPublicationSortPolicy.merging(
+                    existing: videos,
+                    page: group.videos,
+                    for: .channel
+                )
                 nextPageToken = group.nextPageToken
+                schedulePublicationEnrichment()
             } catch {
                 self.error = error
             }
+        }
+    }
+
+    private func schedulePublicationEnrichment() {
+        publicationTask?.cancel()
+        let snapshot = videos
+        let expectedIDs = snapshot.map(\.id)
+        publicationTask = Task { [weak self, api] in
+            let enriched = await VideoPublicationDateEnricher.shared.enrich(snapshot) { id in
+                try? await api.fetchExactPublicationDate(videoId: id)
+            }
+            guard let self, !Task.isCancelled, self.videos.map(\.id) == expectedIDs else { return }
+            self.videos = VideoPublicationSortPolicy.sorted(enriched, for: .channel)
         }
     }
 

@@ -77,6 +77,10 @@ public final class PlaybackViewModel {
     public internal(set) var videoEnded: Bool = false
     public internal(set) var currentTime: TimeInterval = 0
     public internal(set) var duration: TimeInterval = 0
+    /// Scene transitions are tracked independently from AVAudioSession events.
+    /// A device lock may move the scene inactive/background without delivering
+    /// an interruption and must never be treated as a broken playback graph.
+    public internal(set) var playbackSceneState: PlaybackSceneState = .active
 
     // MARK: - Forwarding computed properties (views unchanged)
 
@@ -252,6 +256,17 @@ public final class PlaybackViewModel {
     @ObservationIgnored nonisolated(unsafe) var audioRouteChangeObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var mediaServicesLostObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var mediaServicesResetObserver: Any?
+    @ObservationIgnored nonisolated(unsafe) var secondaryAudioHintObserver: Any?
+    #if canImport(UIKit)
+    @ObservationIgnored nonisolated(unsafe) var remotePlayTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remotePauseTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remoteToggleTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remoteSkipForwardTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remoteSkipBackwardTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remotePositionTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remoteNextTarget: Any?
+    @ObservationIgnored nonisolated(unsafe) var remotePreviousTarget: Any?
+    #endif
     @ObservationIgnored nonisolated(unsafe) var rateObserver: NSKeyValueObservation?
     /// True while the video is being routed to an external display via AirPlay.
     public internal(set) var isAirPlaying: Bool = false
@@ -320,7 +335,15 @@ public final class PlaybackViewModel {
     /// internal so regression tests can prove duplicate ended notifications do not
     /// trigger a second resume.
     var audioInterruptionResumeCount: UInt = 0
-    var wasPlayingBeforeMediaServicesLoss: Bool = false
+    var wasPlayingBeforeMediaServicesLoss: Bool {
+        audioInterruptionState.wasPlayingBeforeMediaServicesLoss
+    }
+    /// Owns the single post-recovery health check. A newer interruption or manual
+    /// pause cancels it so stale completions cannot restart playback.
+    @ObservationIgnored nonisolated(unsafe) var audioRecoveryVerificationTask: Task<Void, Never>?
+    /// At most one fresh-item repair is allowed per recovery generation. This
+    /// prevents verification from becoming an endless play/rebuild loop.
+    var lastAudioGraphRepairGeneration: UInt?
     #if canImport(WebKit)
     /// Set to true when BotGuardWebViewRunner successfully produces a minted (non-websafe-fallback)
     /// PO token for the current video. Allows the inner rqh=1 guard in attemptComposition to
@@ -426,6 +449,7 @@ public final class PlaybackViewModel {
     // read-modify-write while MediaPlayer is processing on its accessQueue
     // causes EXC_BREAKPOINT. Mirror the dict locally instead.
     @ObservationIgnored var nowPlayingInfoCache: [String: Any] = [:]
+    @ObservationIgnored var nowPlayingSourceState = NowPlayingSourceState()
     // Cached thumbnail for MPMediaItemArtwork. Written from a background URLSession task;
     // read from MediaPlayer's internal artwork-closure thread. nonisolated(unsafe) is
     // intentional: UIImage is immutable after creation and the worst-case race is that
@@ -505,16 +529,18 @@ public final class PlaybackViewModel {
         if let obs = audioRouteChangeObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = mediaServicesLostObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
+        if let obs = secondaryAudioHintObserver { NotificationCenter.default.removeObserver(obs) }
+        audioRecoveryVerificationTask?.cancel()
         #if canImport(UIKit)
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
+        if let target = remotePlayTarget { center.playCommand.removeTarget(target) }
+        if let target = remotePauseTarget { center.pauseCommand.removeTarget(target) }
+        if let target = remoteToggleTarget { center.togglePlayPauseCommand.removeTarget(target) }
+        if let target = remoteSkipForwardTarget { center.skipForwardCommand.removeTarget(target) }
+        if let target = remoteSkipBackwardTarget { center.skipBackwardCommand.removeTarget(target) }
+        if let target = remotePositionTarget { center.changePlaybackPositionCommand.removeTarget(target) }
+        if let target = remoteNextTarget { center.nextTrackCommand.removeTarget(target) }
+        if let target = remotePreviousTarget { center.previousTrackCommand.removeTarget(target) }
         #endif
     }
 

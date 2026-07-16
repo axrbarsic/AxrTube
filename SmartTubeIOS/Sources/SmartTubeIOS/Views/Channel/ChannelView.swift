@@ -15,6 +15,7 @@ private enum ChannelFilter: String, CaseIterable {
 
 public struct ChannelView: View {
     public let channelId: String
+    public let catalogContext: VideoCardCatalogContext
     @State private var vm = ChannelViewModel()
     @State private var selectedVideo: Video?
     @State private var shortsPresentation: ShortsPresentation?
@@ -28,8 +29,9 @@ public struct ChannelView: View {
     @Environment(PlayerRouter.self) private var playerRouter
     #endif
 
-    public init(channelId: String) {
+    public init(channelId: String, catalogContext: VideoCardCatalogContext) {
         self.channelId = channelId
+        self.catalogContext = catalogContext
     }
 
     public var body: some View {
@@ -59,7 +61,7 @@ public struct ChannelView: View {
         }
         #endif
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: catalogContext)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
@@ -119,7 +121,7 @@ public struct ChannelView: View {
                 // All / Shorts filter
                 Picker("Filter", selection: $filter) {
                     ForEach(ChannelFilter.allCases, id: \.self) { tab in
-                        Text(tab.rawValue).tag(tab)
+                        Text(LocalizedStringKey(tab.rawValue), bundle: .module).tag(tab)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -155,7 +157,7 @@ public struct ChannelView: View {
     // MARK: - Grid layouts
 
     private func videosGrid(_ videos: [Video]) -> some View {
-        let compact = store.settings.compactThumbnails
+        let compact = usesCompactCards
         return Group {
             if compact {
                 LazyVStack(spacing: 0) {
@@ -225,6 +227,18 @@ public struct ChannelView: View {
         }
     }
 
+    private var usesCompactCards: Bool {
+        #if os(iOS)
+        VideoCardLayoutPolicy.variant(
+            for: catalogContext,
+            compactSearchCards: store.settings.compactSearchCards,
+            compactMediaLibraryCards: store.settings.compactMediaLibraryCards
+        ) == .compact
+        #else
+        store.settings.compactThumbnails
+        #endif
+    }
+
     private func shortsGrid(_ videos: [Video]) -> some View {
         let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {
@@ -242,8 +256,12 @@ public struct ChannelView: View {
     }
 
     private func selectShort(_ video: Video, from videos: [Video]) {
+        #if os(iOS)
+        playerRouter.open(video: video, api: api)
+        #else
         let idx = videos.firstIndex(where: { $0.id == video.id }) ?? 0
         shortsPresentation = ShortsPresentation(videos: videos, startIndex: idx)
+        #endif
     }
 
     private func toggleSponsorBlockExclusion(for channel: Channel) {

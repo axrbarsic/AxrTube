@@ -25,7 +25,7 @@ struct HideShortsFilterTests {
         videos.filter { !hideShorts || !$0.isShort }
     }
 
-    // MARK: - hideShorts == false (default)
+    // MARK: - hideShorts == false
 
     @Test("When hideShorts is false, all videos are returned including Shorts")
     func hideShortsDisabledPassesAll() {
@@ -83,10 +83,11 @@ struct HideShortsFilterTests {
 
     // MARK: - AppSettings default
 
-    @Test("AppSettings default has hideShorts == false")
-    func appSettingsDefaultHideShortsFalse() {
+    @Test("AppSettings default keeps Shorts hidden")
+    func appSettingsDefaultHidesShorts() {
         let settings = AppSettings()
-        #expect(settings.hideShorts == false)
+        #expect(settings.hideShorts)
+        #expect(!settings.showShorts)
     }
 
     // MARK: - PlaylistView (task #46)
@@ -212,21 +213,14 @@ struct HideShortsFilterTests {
 
 extension HideShortsFilterTests {
 
-    /// Mirrors the `applyHideShorts = hideShorts && selectedSection != .history` guard
-    /// added to LibraryView and HomeView.feedContent.
-    private func applyWithHistoryGuard(hideShorts: Bool, isHistory: Bool, to videos: [Video]) -> [Video] {
-        let applyHideShorts = hideShorts && !isHistory
-        return videos.filter { !applyHideShorts || !$0.isShort }
-    }
-
-    @Test("History section: Shorts are NOT filtered even when hideShorts is enabled")
-    func historyShortNotFilteredWhenHideShortsEnabled() {
+    @Test("History section follows the global Shorts setting")
+    func historyShortFilteredWhenHideShortsEnabled() {
         let videos = [
             makeVideo(id: "regular1", isShort: false),
             makeVideo(id: "short1",   isShort: true),
         ]
-        let result = applyWithHistoryGuard(hideShorts: true, isHistory: true, to: videos)
-        #expect(result.count == 2, "History should include Shorts regardless of hideShorts setting")
+        let result = FeedCatalogPolicy.visibleVideos(videos, showShorts: false)
+        #expect(result.map(\.id) == ["regular1"])
     }
 
     @Test("Subscriptions section: Shorts ARE filtered when hideShorts is enabled")
@@ -235,7 +229,7 @@ extension HideShortsFilterTests {
             makeVideo(id: "regular1", isShort: false),
             makeVideo(id: "short1",   isShort: true),
         ]
-        let result = applyWithHistoryGuard(hideShorts: true, isHistory: false, to: videos)
+        let result = FeedCatalogPolicy.visibleVideos(videos, showShorts: false)
         #expect(result.count == 1)
         #expect(result.first?.id == "regular1")
     }
@@ -311,9 +305,8 @@ extension HideShortsFilterTests {
         #expect(visible.first?.id == "VIDEO_PV_2", "Only regular video should survive the filter")
     }
 
-    @Test("playlistVideoRenderer with reelWatchEndpoint but long duration is NOT a Short")
-    func playlistVideoRendererReelEndpointLongDuration_isShortFalse() async throws {
-        // Duration guard: 3 min 01 sec > 180 s → should NOT be classified as Short
+    @Test("playlistVideoRenderer reel endpoint stays a Short regardless of duration")
+    func playlistVideoRendererReelEndpointLongDuration_isShortTrue() async throws {
         let json: [String: Any] = [
             "items": [
                 playlistVideoRendererJSON(videoId: "LONG_PV_1", extras: [
@@ -325,6 +318,6 @@ extension HideShortsFilterTests {
         let api = InnerTubeAPI()
         let group = try await api.parseVideoGroupForTesting(json, title: nil)
         #expect(group.videos.count == 1)
-        #expect(group.videos.first?.isShort == false, "Video > 180s with reelWatchEndpoint must not be classified as Short")
+        #expect(group.videos.first?.isShort == true, "Explicit reelWatchEndpoint is authoritative; duration is not a classifier")
     }
 }

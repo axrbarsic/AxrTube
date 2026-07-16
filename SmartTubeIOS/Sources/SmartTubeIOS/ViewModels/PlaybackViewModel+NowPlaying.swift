@@ -29,13 +29,26 @@ extension PlaybackViewModel {
     @discardableResult
     nonisolated static func configurePlaybackAudioSession(reason: String) -> Bool {
         let session = AVAudioSession.sharedInstance()
+        AudioDiagnostics.shared.record(
+            event: "session.configure.request",
+            decision: reason
+        )
         do {
             // Ask iOS to interrupt this continuous-content session for short spoken
             // prompts (for example AirPods announcements) instead of ducking it.
             try session.setCategory(.playback, mode: .spokenAudio)
+            AudioDiagnostics.shared.record(
+                event: "session.configure.success",
+                decision: reason
+            )
             playerLog.notice("[audioSession] configured for \(reason)")
             return true
         } catch {
+            AudioDiagnostics.shared.record(
+                event: "session.configure.failure",
+                decision: reason,
+                error: error
+            )
             playerLog.error("[audioSession] configuration failed for \(reason): \(error.localizedDescription)")
             return false
         }
@@ -50,11 +63,24 @@ extension PlaybackViewModel {
     nonisolated static func activatePlaybackAudioSession(reason: String) -> Bool {
         let session = AVAudioSession.sharedInstance()
         guard configurePlaybackAudioSession(reason: reason) else { return false }
+        AudioDiagnostics.shared.record(
+            event: "session.activate.request",
+            decision: reason
+        )
         do {
             try session.setActive(true)
+            AudioDiagnostics.shared.record(
+                event: "session.activate.success",
+                decision: reason
+            )
             playerLog.notice("[audioSession] active for \(reason)")
             return true
         } catch {
+            AudioDiagnostics.shared.record(
+                event: "session.activate.failure",
+                decision: reason,
+                error: error
+            )
             playerLog.error("[audioSession] activation failed for \(reason): \(error.localizedDescription)")
             return false
         }
@@ -64,23 +90,46 @@ extension PlaybackViewModel {
     /// repeatedly reacquiring audio in the background.
     @discardableResult
     nonisolated static func deactivatePlaybackAudioSession(reason: String) -> Bool {
+        AudioDiagnostics.shared.record(
+            event: "session.deactivate.request",
+            decision: reason
+        )
         do {
             try AVAudioSession.sharedInstance().setActive(
                 false,
                 options: .notifyOthersOnDeactivation
             )
+            AudioDiagnostics.shared.record(
+                event: "session.deactivate.success",
+                decision: reason
+            )
             playerLog.notice("[audioSession] yielded route for \(reason)")
             return true
         } catch {
+            AudioDiagnostics.shared.record(
+                event: "session.deactivate.failure",
+                decision: reason,
+                error: error
+            )
             playerLog.error("[audioSession] deactivation failed for \(reason): \(error.localizedDescription)")
             return false
         }
     }
 
     @discardableResult
-    private func resumeAudiblePlayback(reason: String) -> Bool {
-        guard player.currentItem != nil else {
-            playerLog.error("[audioSession] resume ignored for \(reason): AVPlayer has no current item")
+    func resumeAudiblePlayback(
+        reason: String,
+        countAutomaticResume: Bool = false
+    ) -> Bool {
+        guard player.currentItem != nil,
+              !isHandlingAudioInterruption,
+              !audioInterruptionState.mediaServicesAreLost else {
+            AudioDiagnostics.shared.record(
+                event: "recovery.resume.rejected",
+                decision: reason,
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration
+            )
             return false
         }
         if videoEnded {
@@ -89,15 +138,244 @@ extension PlaybackViewModel {
         }
         player.playImmediately(atRate: Float(settings.playbackSpeed))
         isPlaying = true
+        if countAutomaticResume { audioInterruptionResumeCount &+= 1 }
         updateNowPlayingPlayback()
-        playerLog.notice("[audioSession] audible playback resumed for \(reason)")
+        AudioDiagnostics.shared.record(
+            event: "recovery.resume.commanded",
+            decision: reason,
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
+        scheduleAudioRecoveryVerification(reason: reason)
         return true
+    }
+
+    /// Detaches and reattaches the current item after an interruption so AVPlayer
+    /// creates a fresh presentation/audio renderer. A media-services reset uses a
+    /// new AVPlayerItem backed by the same asset, per Apple's reinitialisation rule.
+    @discardableResult
+    private func rebuildPlaybackGraph(
+        reason: String,
+        useFreshItem: Bool,
+        resumeAfterRebuild: Bool,
+        countAutomaticResume: Bool = false
+    ) -> Bool {
+        guard let oldItem = player.currentItem else {
+            AudioDiagnostics.shared.record(
+                event: "recovery.graph.missingItem",
+                decision: reason,
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration
+            )
+            return false
+        }
+
+        let token = audioInterruptionGeneration
+        let position = max(0, currentTime)
+        let replacement: AVPlayerItem
+        if useFreshItem {
+            replacement = AVPlayerItem(asset: oldItem.asset)
+            replacement.preferredForwardBufferDuration = oldItem.preferredForwardBufferDuration
+            replacement.canUseNetworkResourcesForLiveStreamingWhilePaused =
+                oldItem.canUseNetworkResourcesForLiveStreamingWhilePaused
+            replacement.audioMix = oldItem.audioMix
+            replacement.videoComposition = oldItem.videoComposition
+        } else {
+            replacement = oldItem
+        }
+
+        audioRecoveryVerificationTask?.cancel()
+        player.pause()
+        isPlaying = false
+        isSwappingItem = true
+        player.replaceCurrentItem(with: nil)
+        player.replaceCurrentItem(with: replacement)
+        AudioDiagnostics.shared.record(
+            event: "recovery.graph.rebuilt",
+            decision: reason,
+            player: player,
+            recoveryGeneration: token
+        )
+
+        let finish: @Sendable () -> Void = { [weak self] in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.isSwappingItem = false
+                guard self.audioInterruptionGeneration == token else {
+                    AudioDiagnostics.shared.record(
+                        event: "recovery.graph.staleCompletion",
+                        decision: "ignored",
+                        player: self.player,
+                        recoveryGeneration: token,
+                        itemID: self.currentVideo?.id
+                    )
+                    return
+                }
+                guard !self.audioInterruptionState.mediaServicesAreLost,
+                      (!resumeAfterRebuild || !self.isHandlingAudioInterruption) else {
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.updateNowPlayingPlayback()
+                    AudioDiagnostics.shared.record(
+                        event: "recovery.graph.completionDiscarded",
+                        decision: reason,
+                        player: self.player,
+                        recoveryGeneration: token
+                    )
+                    return
+                }
+                if resumeAfterRebuild {
+                    _ = self.resumeAudiblePlayback(
+                        reason: reason,
+                        countAutomaticResume: countAutomaticResume
+                    )
+                } else {
+                    self.player.pause()
+                    self.isPlaying = false
+                    self.updateNowPlayingPlayback()
+                    AudioDiagnostics.shared.record(
+                        event: "recovery.graph.readyPaused",
+                        decision: reason,
+                        player: self.player,
+                        recoveryGeneration: token
+                    )
+                }
+            }
+        }
+
+        if position > 0 {
+            player.seek(
+                to: CMTime(seconds: position, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            ) { _ in finish() }
+        } else {
+            finish()
+        }
+        return true
+    }
+
+    private func scheduleAudioRecoveryVerification(reason: String) {
+        audioRecoveryVerificationTask?.cancel()
+        let token = audioInterruptionGeneration
+        audioRecoveryVerificationTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .milliseconds(800))
+            guard let self, !Task.isCancelled,
+                  self.audioInterruptionGeneration == token,
+                  self.isPlaying,
+                  !self.isHandlingAudioInterruption else { return }
+
+            let routeIsAvailable = !AVAudioSession.sharedInstance().currentRoute.outputs.isEmpty
+            let playerIsAdvancing = self.player.rate > 0
+                && self.player.timeControlStatus != .paused
+                && self.player.status != .failed
+                && self.player.currentItem?.status != .failed
+            guard routeIsAvailable && playerIsAdvancing else {
+                self.player.pause()
+                self.isPlaying = false
+                self.updateNowPlayingPlayback()
+                if routeIsAvailable,
+                   self.player.currentItem != nil,
+                   self.lastAudioGraphRepairGeneration != token {
+                    self.lastAudioGraphRepairGeneration = token
+                    AudioDiagnostics.shared.record(
+                        event: "recovery.verify.repairGraph",
+                        decision: reason,
+                        player: self.player,
+                        recoveryGeneration: token,
+                        itemID: self.currentVideo?.id
+                    )
+                    _ = self.rebuildPlaybackGraph(
+                        reason: "\(reason) graph repair",
+                        useFreshItem: true,
+                        resumeAfterRebuild: true
+                    )
+                    return
+                }
+                self.audioInterruptionState.invalidatePendingRecovery()
+                AudioDiagnostics.shared.record(
+                    event: "recovery.verify.failed",
+                    decision: "stayPaused",
+                    player: self.player,
+                    recoveryGeneration: token
+                )
+                return
+            }
+            AudioDiagnostics.shared.record(
+                event: "recovery.verify.transportHealthy",
+                decision: reason,
+                player: self.player,
+                recoveryGeneration: token
+            )
+        }
+    }
+
+    func performUserPause(reason: String) {
+        audioRecoveryVerificationTask?.cancel()
+        audioInterruptionState.userPaused()
+        player.pause()
+        isPlaying = false
+        updateNowPlayingPlayback()
+        AudioDiagnostics.shared.record(
+            event: "user.pause",
+            decision: reason,
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
+    }
+
+    func performUserPlay(reason: String) {
+        guard player.currentItem != nil,
+              nowPlayingSourceState.itemKey != nil,
+              !audioInterruptionState.mediaServicesAreLost else {
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlayback()
+            AudioDiagnostics.shared.record(
+                event: "user.play.rejected",
+                decision: "\(reason) missingItemOrMediaServicesLost",
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id
+            )
+            return
+        }
+        let wasRecoveringMissingEnded = isHandlingAudioInterruption
+        let action = audioInterruptionState.userRequestedPlay()
+        if wasRecoveringMissingEnded {
+            AudioDiagnostics.shared.record(
+                event: "interruption.manualRecovery",
+                decision: "\(reason) \(action)",
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id
+            )
+        }
+        guard Self.activatePlaybackAudioSession(reason: reason) else {
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlayback()
+            return
+        }
+        _ = resumeAudiblePlayback(reason: reason)
     }
 
     func handleAudioInterruption(
         type: AVAudioSession.InterruptionType,
-        options: AVAudioSession.InterruptionOptions = []
+        options: AVAudioSession.InterruptionOptions = [],
+        reason: UInt? = nil,
+        wasSuspended: Bool = false
     ) {
+        AudioDiagnostics.shared.record(
+            event: "interruption.notification",
+            decision: type == .began ? "began" : "ended",
+            player: player,
+            interruptionType: type.rawValue,
+            interruptionOptions: options.rawValue,
+            interruptionReason: reason,
+            interruptionWasSuspended: wasSuspended,
+            recoveryGeneration: audioInterruptionGeneration
+        )
         switch type {
         case .began:
             // Duplicate began notifications are possible while voice input negotiates
@@ -117,7 +395,9 @@ extension PlaybackViewModel {
             player.pause()
             isPlaying = false
             updateNowPlayingPlayback()
-            _ = Self.deactivatePlaybackAudioSession(reason: "interruption began")
+            // The system has already made the session inactive. Apple explicitly
+            // recommends updating playback state here, not competing with another
+            // setActive transition while the microphone/prompt owns the route.
             playerLog.notice("[interruption] began — player paused and route yielded; wasPlaying=\(self.wasPlayingBeforeInterruption)")
 
         case .ended:
@@ -128,17 +408,21 @@ extension PlaybackViewModel {
                 playerLog.notice("[interruption] ended without active interruption — ignored")
                 return
             }
-            let shouldResume = action == .activateAndResume
+            let shouldResume = action == .rebuildGraphAndResume
             playerLog.notice("[interruption] ended — shouldResume=\(shouldResume)")
 
             if shouldResume,
                Self.activatePlaybackAudioSession(reason: "interruption ended") {
-                if resumeAudiblePlayback(reason: "interruption ended") {
-                    audioInterruptionResumeCount &+= 1
-                } else {
+                // Preserve the current saved-file item and exact position first.
+                // A fresh graph is created only if the post-resume health check
+                // proves that the renderer did not recover.
+                if !resumeAudiblePlayback(
+                    reason: "interruption ended",
+                    countAutomaticResume: true
+                ) {
                     player.pause()
                     isPlaying = false
-                    _ = Self.deactivatePlaybackAudioSession(reason: "interruption resume unavailable")
+                    updateNowPlayingPlayback()
                 }
             } else {
                 // Keep AVPlayer and the public state honestly paused. A later remote
@@ -154,55 +438,86 @@ extension PlaybackViewModel {
     }
 
     func handleAudioRouteChange(reason: AVAudioSession.RouteChangeReason) {
+        AudioDiagnostics.shared.record(
+            event: "route.change",
+            decision: String(reason.rawValue),
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
+        if reason == .newDeviceAvailable || reason == .wakeFromSleep
+            || reason == .routeConfigurationChange {
+            _ = audioInterruptionState.routeBecameAvailable()
+            setupRemoteCommandCenter()
+            if player.currentItem != nil { updateNowPlayingInfo() }
+            AudioDiagnostics.shared.record(
+                event: "route.ownerReasserted",
+                decision: String(reason.rawValue),
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id,
+                commandGeneration: nowPlayingSourceState.generation
+            )
+            return
+        }
         guard (reason == .oldDeviceUnavailable || reason == .noSuitableRouteForCategory),
               !isHandlingAudioInterruption else { return }
-        audioInterruptionState.invalidatePendingRecovery()
+        _ = audioInterruptionState.routeBecameUnavailable()
+        audioRecoveryVerificationTask?.cancel()
         player.pause()
         isPlaying = false
         updateNowPlayingPlayback()
-        _ = Self.deactivatePlaybackAudioSession(reason: "old route unavailable")
+        // Keep the session active on an unplug route change; this is Apple's media
+        // playback guidance and avoids a redundant activation race on the new route.
         playerLog.notice("[audioSession] old output route unavailable — staying paused")
     }
 
     func handleMediaServicesLost() {
-        guard !isHandlingAudioInterruption else { return }
-        audioInterruptionState.invalidatePendingRecovery()
-        wasPlayingBeforeMediaServicesLoss = isPlaying || player.rate > 0
+        _ = audioInterruptionState.mediaServicesLost(
+            wasPlaying: isPlaying || player.rate > 0
+        )
+        audioRecoveryVerificationTask?.cancel()
         player.pause()
         isPlaying = false
         updateNowPlayingPlayback()
+        AudioDiagnostics.shared.record(
+            event: "mediaServices.lost",
+            decision: "pause",
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
         playerLog.notice("[audioSession] media services lost — paused; wasPlaying=\(self.wasPlayingBeforeMediaServicesLoss)")
     }
 
     func handleMediaServicesReset() {
-        audioInterruptionState.invalidatePendingRecovery()
-        let shouldResume = !isHandlingAudioInterruption
-            && (wasPlayingBeforeMediaServicesLoss || isPlaying || player.rate > 0)
-        wasPlayingBeforeMediaServicesLoss = false
+        let action = audioInterruptionState.mediaServicesReset()
+        audioRecoveryVerificationTask?.cancel()
         player.pause()
         isPlaying = false
         updateNowPlayingPlayback()
-
-        // During an interruption only restore the category. Activating here would
-        // steal the microphone route; the matching .ended notification owns resume.
-        guard !isHandlingAudioInterruption else {
-            _ = Self.configurePlaybackAudioSession(reason: "media services reset during interruption")
-            return
-        }
-
-        if shouldResume,
-           Self.activatePlaybackAudioSession(reason: "media services reset"),
-           resumeAudiblePlayback(reason: "media services reset") {
-            return
-        }
-
-        _ = Self.configurePlaybackAudioSession(reason: "media services reset while paused")
-        if shouldResume {
-            _ = Self.deactivatePlaybackAudioSession(reason: "media services reset resume failed")
+        _ = Self.configurePlaybackAudioSession(reason: "media services reset")
+        AudioDiagnostics.shared.record(
+            event: "mediaServices.reset",
+            decision: action == .rebuildGraphAndStayPaused ? "rebuildStayPaused" : "stayPaused",
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
+        if action == .rebuildGraphAndStayPaused {
+            _ = rebuildPlaybackGraph(
+                reason: "media services reset",
+                useFreshItem: true,
+                resumeAfterRebuild: false
+            )
         }
     }
 
     func setupAudioSessionObserver() {
+        if audioSessionObserver != nil,
+           audioRouteChangeObserver != nil,
+           mediaServicesLostObserver != nil,
+           mediaServicesResetObserver != nil,
+           secondaryAudioHintObserver != nil {
+            return
+        }
         if let observer = audioSessionObserver {
             NotificationCenter.default.removeObserver(observer)
         }
@@ -215,6 +530,9 @@ extension PlaybackViewModel {
         if let observer = mediaServicesResetObserver {
             NotificationCenter.default.removeObserver(observer)
         }
+        if let observer = secondaryAudioHintObserver {
+            NotificationCenter.default.removeObserver(observer)
+        }
 
         audioSessionObserver = NotificationCenter.default.addObserver(
             forName: AVAudioSession.interruptionNotification,
@@ -225,8 +543,15 @@ extension PlaybackViewModel {
                   let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
             let optionsValue = notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
             let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+            let reasonValue = notification.userInfo?[AVAudioSessionInterruptionReasonKey] as? UInt
+            let wasSuspended = (notification.userInfo?[AVAudioSessionInterruptionWasSuspendedKey] as? NSNumber)?.boolValue ?? false
             Task { @MainActor [weak self] in
-                self?.handleAudioInterruption(type: type, options: options)
+                self?.handleAudioInterruption(
+                    type: type,
+                    options: options,
+                    reason: reasonValue,
+                    wasSuspended: wasSuspended
+                )
             }
         }
 
@@ -261,98 +586,145 @@ extension PlaybackViewModel {
                 self?.handleMediaServicesReset()
             }
         }
+
+        secondaryAudioHintObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.silenceSecondaryAudioHintNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let raw = notification.userInfo?[AVAudioSessionSilenceSecondaryAudioHintTypeKey] as? UInt,
+                  let type = AVAudioSession.SilenceSecondaryAudioHintType(rawValue: raw) else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch type {
+                case .begin:
+                    self.handleAudioInterruption(type: .began, options: [], reason: nil, wasSuspended: false)
+                case .end:
+                    self.handleAudioInterruption(type: .ended, options: [.shouldResume], reason: nil, wasSuspended: false)
+                @unknown default:
+                    break
+                }
+            }
+        }
     }
 
     func setupRemoteCommandCenter() {
-        // stop() removes audio observers. Re-registering here keeps every new load
-        // covered while setupAudioSessionObserver() remains idempotent.
+        // The app-lifetime PlaybackViewModel owns remote commands. Repeated loads,
+        // ordinary pause, scene background and device lock must not tear down the
+        // process-wide MediaPlayer handlers.
         setupAudioSessionObserver()
         let center = MPRemoteCommandCenter.shared()
-        // Remove any existing targets first so this function is safe to call
-        // multiple times (e.g. early in loadAsync AND at readyToPlay) without
-        // accumulating duplicate handlers.
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
+        guard remotePlayTarget == nil else {
+            AudioDiagnostics.shared.record(
+                event: "remote.handlers.preserved",
+                decision: "already installed",
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id,
+                commandGeneration: nowPlayingSourceState.generation
+            )
+            return
+        }
 
-        center.playCommand.addTarget { [weak self] _ in
-            guard Self.activatePlaybackAudioSession(reason: "Lock Screen Play") else {
-                return .commandFailed
-            }
-            Task { @MainActor [weak self] in
-                self?.resumeAudiblePlayback(reason: "Lock Screen Play")
-            }
-            return .success
-        }
-        center.pauseCommand.addTarget { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.player.pause()
-                self?.isPlaying = false
-                self?.updateNowPlayingPlayback()
-            }
-            return .success
-        }
-        center.togglePlayPauseCommand.addTarget { [weak self] _ in
-            // Activation is harmless for the pause half of Toggle and necessary for
-            // the play half; doing it synchronously prevents a silent fake-resume.
-            guard Self.activatePlaybackAudioSession(reason: "Lock Screen Toggle") else {
-                return .commandFailed
-            }
+        remotePlayTarget = center.playCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                AudioDiagnostics.shared.record(
+                    event: "remote.play",
+                    decision: "received",
+                    player: self.player,
+                    recoveryGeneration: self.audioInterruptionGeneration,
+                    itemID: self.currentVideo?.id,
+                    commandGeneration: self.nowPlayingSourceState.generation
+                )
+                self.performUserPlay(reason: "Lock Screen Play")
+            }
+            return .success
+        }
+        remotePauseTarget = center.pauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                AudioDiagnostics.shared.record(
+                    event: "remote.pause",
+                    decision: "received",
+                    player: self.player,
+                    recoveryGeneration: self.audioInterruptionGeneration,
+                    itemID: self.currentVideo?.id,
+                    commandGeneration: self.nowPlayingSourceState.generation
+                )
+                self.performUserPause(reason: "Lock Screen Pause")
+            }
+            return .success
+        }
+        remoteToggleTarget = center.togglePlayPauseCommand.addTarget { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                AudioDiagnostics.shared.record(
+                    event: "remote.toggle",
+                    decision: self.isPlaying ? "pause" : "play",
+                    player: self.player,
+                    recoveryGeneration: self.audioInterruptionGeneration,
+                    itemID: self.currentVideo?.id,
+                    commandGeneration: self.nowPlayingSourceState.generation
+                )
                 if self.isPlaying {
-                    self.player.pause()
-                    self.isPlaying = false
-                    self.updateNowPlayingPlayback()
+                    self.performUserPause(reason: "Lock Screen Toggle Pause")
                 } else {
-                    self.resumeAudiblePlayback(reason: "Lock Screen Toggle")
+                    self.performUserPlay(reason: "Lock Screen Toggle Play")
                 }
             }
             return .success
         }
         center.skipForwardCommand.preferredIntervals = [10]
-        center.skipForwardCommand.addTarget { [weak self] event in
+        remoteSkipForwardTarget = center.skipForwardCommand.addTarget { [weak self] event in
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
             Task { @MainActor [weak self] in self?.seekRelative(seconds: interval) }
             return .success
         }
         center.skipBackwardCommand.preferredIntervals = [10]
-        center.skipBackwardCommand.addTarget { [weak self] event in
+        remoteSkipBackwardTarget = center.skipBackwardCommand.addTarget { [weak self] event in
             let interval = (event as? MPSkipIntervalCommandEvent)?.interval ?? 10
             Task { @MainActor [weak self] in self?.seekRelative(seconds: -interval) }
             return .success
         }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+        remotePositionTarget = center.changePlaybackPositionCommand.addTarget { [weak self] event in
             let position = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime ?? 0
             Task { @MainActor [weak self] in self?.seek(to: position) }
             return .success
         }
-        center.nextTrackCommand.addTarget { [weak self] _ in
+        remoteNextTarget = center.nextTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in self?.playNext() }
             return .success
         }
-        center.previousTrackCommand.addTarget { [weak self] _ in
+        remotePreviousTarget = center.previousTrackCommand.addTarget { [weak self] _ in
             Task { @MainActor [weak self] in self?.playPrevious() }
             return .success
         }
+        AudioDiagnostics.shared.record(
+            event: "remote.handlers.installed",
+            decision: "app lifetime owner",
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration,
+            itemID: currentVideo?.id,
+            commandGeneration: nowPlayingSourceState.generation
+        )
     }
 
     func updateNowPlayingInfo() {
         let video = playerInfo?.video ?? currentVideo
         guard let video else {
-            nowPlayingInfoCache = [:]
-            setNowPlayingInfo(nil)
+            clearNowPlayingInfo()
             return
         }
+        let sourceGeneration = nowPlayingSourceState.activate(itemKey: video.id)
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: video.title,
             MPMediaItemPropertyArtist: video.channelTitle,
-            MPNowPlayingInfoPropertyMediaType: NSNumber(value: MPNowPlayingInfoMediaType.video.rawValue),
+            MPNowPlayingInfoPropertyMediaType: NSNumber(
+                value: (audioOnlyItemActive || video.localMediaKind == .audio
+                    ? MPNowPlayingInfoMediaType.audio
+                    : MPNowPlayingInfoMediaType.video).rawValue
+            ),
             MPNowPlayingInfoPropertyIsLiveStream: NSNumber(value: video.isLive),
             MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
             MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? Double(player.rate) : 0.0),
@@ -376,11 +748,25 @@ extension PlaybackViewModel {
             if cachedArtworkVideoID != video.id {
                 cachedArtworkVideoID = video.id
                 cachedArtwork = nil
-                Task { [weak self, url = thumbURL, videoID = video.id] in
+                Task { [weak self, url = thumbURL, videoID = video.id, sourceGeneration] in
                     guard let (data, _) = try? await URLSession.shared.data(from: url),
                           let image = UIImage(data: data) else { return }
                     await MainActor.run { [weak self] in
-                        guard let self, self.cachedArtworkVideoID == videoID else { return }
+                        guard let self,
+                              self.cachedArtworkVideoID == videoID,
+                              self.nowPlayingSourceState.accepts(
+                                generation: sourceGeneration,
+                                itemKey: videoID
+                              ) else {
+                            AudioDiagnostics.shared.record(
+                                event: "nowPlaying.artwork.stale",
+                                decision: "discarded",
+                                player: self?.player,
+                                itemID: videoID,
+                                commandGeneration: sourceGeneration
+                            )
+                            return
+                        }
                         self.cachedArtwork = image
                         // Update the artwork key in the cache with the real image. Use the
                         // nonisolated factory so MediaPlayer can call the closure from its
@@ -404,12 +790,33 @@ extension PlaybackViewModel {
     }
 
     func updateNowPlayingPlayback() {
+        guard !nowPlayingInfoCache.isEmpty else {
+            // Never publish a title-less dictionary: iOS renders it as the ghost
+            // Lock Screen card "No Audio". Rehydrate metadata when an item still
+            // exists; explicit stop remains the only path that writes nil.
+            if currentVideo != nil, player.currentItem != nil {
+                updateNowPlayingInfo()
+            }
+            return
+        }
         nowPlayingInfoCache[MPNowPlayingInfoPropertyElapsedPlaybackTime] = NSNumber(value: currentTime)
         nowPlayingInfoCache[MPNowPlayingInfoPropertyPlaybackRate] = NSNumber(value: isPlaying ? Double(player.rate) : 0.0)
         setNowPlayingInfo(nowPlayingInfoCache)
     }
 
-    func clearNowPlayingInfo() {
+    func clearNowPlayingInfo(expectedGeneration: UInt64? = nil) {
+        let generation = expectedGeneration ?? nowPlayingSourceState.generation
+        guard nowPlayingSourceState.clear(generation: generation) else {
+            AudioDiagnostics.shared.record(
+                event: "nowPlaying.clear.stale",
+                decision: "discarded",
+                player: player,
+                recoveryGeneration: audioInterruptionGeneration,
+                itemID: currentVideo?.id,
+                commandGeneration: generation
+            )
+            return
+        }
         cachedArtwork = nil
         cachedArtworkVideoID = nil
         nowPlayingInfoCache = [:]
@@ -424,6 +831,14 @@ extension PlaybackViewModel {
     /// synchronous on the main thread.
     private func setNowPlayingInfo(_ info: [String: Any]?) {
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        AudioDiagnostics.shared.record(
+            event: info == nil ? "nowPlaying.clear" : "nowPlaying.publish",
+            decision: info == nil ? "explicit stop" : (isPlaying ? "playing" : "paused recoverable"),
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration,
+            itemID: currentVideo?.id,
+            commandGeneration: nowPlayingSourceState.generation
+        )
     }
 }
 #endif

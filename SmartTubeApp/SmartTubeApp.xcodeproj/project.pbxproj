@@ -80,6 +80,11 @@
 		C4D5E6F7A8B9C0D1E2F3A4B5 /* HomeShortsCountUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52716A7F61A547A0959DAF30 /* HomeShortsCountUITests.swift */; };
 		CC4400000000000000004402 /* VideoCacheUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = CC4400000000000000004401 /* VideoCacheUITests.swift */; };
 		CD550C82FB83F1B06A867F3F /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 161D597B9340722805A04592 /* Foundation.framework */; };
+		CC2480000000000000000001 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000002 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000003 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000004 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
+		CC2480000000000000000005 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = CC2480000000000000000010 /* Localizable.xcstrings */; };
 		CF3A820B5D1E4A9F8E2C71BD /* TVMoreMenuNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4D9C6E73B2F4180960E52FA /* TVMoreMenuNavigationUITests.swift */; };
 		D222FD43501FE20610A249CC /* PlaylistsNavigationUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43AC502830145DD05002B5A2 /* PlaylistsNavigationUITests.swift */; };
 		D4F5A6B7C8D9E0F1A2B3C4D5 /* SubscriptionsPlaybackUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */; };
@@ -245,6 +250,7 @@
 		C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedAndSettingsUITests.swift; sourceTree = "<group>"; };
 		CA34C2AD8A70726C11C5F851 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CA34C2AD8A70726C11C5F852 /* Info-macOS.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Info-macOS.plist"; sourceTree = "<group>"; };
+		CC2480000000000000000010 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = Localizable.xcstrings; path = ../SmartTubeIOS/Sources/SmartTubeIOS/Localizable.xcstrings; sourceTree = SOURCE_ROOT; };
 		CC4400000000000000004401 /* VideoCacheUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheUITests.swift; sourceTree = "<group>"; };
 		D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsScrollRestorationUITests.swift; sourceTree = "<group>"; };
 		DA3810E40296738F4C5E0B95 /* SmartTubeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = SmartTubeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -340,6 +346,7 @@
 		10B1F40F599FC1A0781AF6D9 = {
 			isa = PBXGroup;
 			children = (
+				CC2480000000000000000010 /* Localizable.xcstrings */,
 				D1E07E1C2FBB3A95D6BDC0EF /* Packages */,
 				32582044D5D706C4EC49DA00 /* SmartTubeApp */,
 				9084B7F6DD70E282DD4342A7 /* Sources */,
@@ -737,6 +744,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC2480000000000000000001 /* Localizable.xcstrings in Resources */,
 				673C1D012F7F20340021583B /* Launch Screen.storyboard in Resources */,
 				494A17316084B602873D7C05 /* Assets.xcassets in Resources */,
 				AA01000000000000000000D2 /* PrivacyInfo.xcprivacy in Resources */,
@@ -747,6 +755,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC2480000000000000000003 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -754,6 +763,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC2480000000000000000005 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -761,6 +771,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC2480000000000000000002 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -768,6 +779,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CC2480000000000000000004 /* Localizable.xcstrings in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -954,12 +966,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = SmartTubeApp/Info.plist;
 				"INFOPLIST_FILE[sdk=macosx*]" = "SmartTubeApp/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Smart Tube";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";
@@ -1099,7 +1111,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1130,7 +1142,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GCC_PREPROCESSOR_DEFINITIONS = (
@@ -1138,7 +1150,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = SafariExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SafariExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1175,11 +1187,11 @@
 				CODE_SIGN_ENTITLEMENTS = SafariExtension/SmartTubeSafariExtension.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				INFOPLIST_FILE = SafariExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = SafariExtension;
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1219,7 +1231,7 @@
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=appletvos*]" = 5A4JA438MW;
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = "";
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
@@ -1228,7 +1240,7 @@
 					"$(inherited)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Smart Tube";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -1264,12 +1276,12 @@
 				"CODE_SIGN_IDENTITY[sdk=appletvos*]" = "iPhone Distribution";
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = "";
-				"DEVELOPMENT_TEAM[sdk=appletvos*]" = 5A4JA438MW;
+				"DEVELOPMENT_TEAM[sdk=appletvos*]" = "";
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = "Smart Tube";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -1301,7 +1313,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = DownloadWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1326,7 +1338,7 @@
 				CLANG_ENABLE_OBJC_WEAK = NO;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = DownloadWidget/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1352,7 +1364,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				GENERATE_INFOPLIST_FILE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1381,7 +1393,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/SmartTubeShareExtension.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1406,7 +1418,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/SmartTubeShareExtension.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = ShareExtension/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1436,12 +1448,12 @@
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				DEAD_CODE_STRIPPING = YES;
-				DEVELOPMENT_TEAM = 5A4JA438MW;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = SmartTubeApp/Info.plist;
 				"INFOPLIST_FILE[sdk=macosx*]" = "SmartTubeApp/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Smart Tube";
+				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";

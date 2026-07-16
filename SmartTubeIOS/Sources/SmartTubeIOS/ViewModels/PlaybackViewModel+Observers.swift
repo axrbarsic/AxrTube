@@ -60,7 +60,71 @@ extension PlaybackViewModel {
                 let nearEnd = self.duration > 0 && self.currentTime >= self.duration - 1.0
                 let playerWentSilent = newRate == 0 && self.isPlaying && !self.isSwappingItem && !self.isHandlingAudioInterruption && !nearEnd
                 if playerWentSilent {
+                    // AVPlayer is allowed to publish rate=0 before iOS delivers the
+                    // matching interruption notification. Classifying synchronously
+                    // erased the original play intent and scheduled a stall retry that
+                    // later fought the microphone session. Give the notification one
+                    // short main-run-loop window; a began/reset/route event increments
+                    // generation and cancels this classification causally.
+                    let classificationGeneration = self.audioInterruptionGeneration
+                    #if canImport(UIKit)
+                    AudioDiagnostics.shared.record(
+                        event: "rate.zero.pendingClassification",
+                        decision: "waitForSystemAudioEvent",
+                        player: self.player,
+                        recoveryGeneration: classificationGeneration
+                    )
+                    #endif
+                    try? await Task.sleep(for: .milliseconds(150))
+                    guard self.audioInterruptionGeneration == classificationGeneration,
+                          self.isPlaying,
+                          self.player.rate == 0,
+                          !self.isSwappingItem,
+                          !self.isHandlingAudioInterruption else {
+                        #if canImport(UIKit)
+                        AudioDiagnostics.shared.record(
+                            event: "rate.zero.classificationCancelled",
+                            decision: "systemAudioEventWon",
+                            player: self.player,
+                            recoveryGeneration: self.audioInterruptionGeneration
+                        )
+                        #endif
+                        return
+                    }
+                    if !PlaybackLifecyclePolicy.shouldRunStallRecovery(
+                        scene: self.playbackSceneState,
+                        hasTrueAudioInterruption: self.isHandlingAudioInterruption,
+                        isReplacingItem: self.isSwappingItem
+                    ) {
+                        // Side-button lock is a scene transition, not proof that the
+                        // AVPlayerItem or output graph is corrupt. Keep the same item,
+                        // session and play intent; only reassert the rate if iOS briefly
+                        // published zero without an interruption. Never seek/rebuild.
+                        #if canImport(UIKit)
+                        AudioDiagnostics.shared.record(
+                            event: "rate.zero.sceneTransition",
+                            decision: "preserveItemSessionNowPlaying",
+                            player: self.player,
+                            recoveryGeneration: classificationGeneration,
+                            itemID: self.currentVideo?.id
+                        )
+                        #endif
+                        self.player.playImmediately(atRate: Float(self.settings.playbackSpeed))
+                        #if canImport(UIKit)
+                        self.updateNowPlayingInfo()
+                        self.updateNowPlayingPlayback()
+                        #endif
+                        return
+                    }
                     self.isPlaying = false
+                    #if canImport(UIKit)
+                    AudioDiagnostics.shared.record(
+                        event: "rate.zero.confirmedStall",
+                        decision: "stallRecovery",
+                        player: self.player,
+                        recoveryGeneration: classificationGeneration
+                    )
+                    #endif
                     playerLog.notice("[rateObserver] player.rate→0 while isPlaying=true — syncing isPlaying=false")
                     self.stallCount += 1
                     if self.firstRapidStallTime == nil { self.firstRapidStallTime = Date() }

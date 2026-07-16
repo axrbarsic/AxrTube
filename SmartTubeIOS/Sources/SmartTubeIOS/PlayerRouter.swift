@@ -25,23 +25,36 @@ import SmartTubeIOSCore
 public final class PlayerRouter {
     private let playerState: PlayerStateStore
     private let tosState: TOSPlayerStateStore
-    private let settingsStore: SettingsStore
+    public let audioFirst: AudioFirstPlaybackCoordinator
 
-    public init(playerState: PlayerStateStore, tosState: TOSPlayerStateStore, settingsStore: SettingsStore) {
+    public init(
+        playerState: PlayerStateStore,
+        tosState: TOSPlayerStateStore,
+        settingsStore: SettingsStore,
+        api: InnerTubeAPI
+    ) {
         self.playerState = playerState
         self.tosState = tosState
-        self.settingsStore = settingsStore
+        self.audioFirst = AudioFirstPlaybackCoordinator(
+            api: api,
+            playerState: playerState,
+            settingsStore: settingsStore
+        )
     }
 
-    /// Open `video` in whichever player pipeline is currently preferred.
+    /// The production tap contract is permanently audio-first. It never enters
+    /// the fullscreen video/TOS route and therefore never executes YouTube's
+    /// pre/mid/post-roll or end-card playback paths.
     public func open(video: Video, api: InnerTubeAPI) {
-        if settingsStore.useTOSPlayerOnIOS && tosState.fallbackVideoId != video.id {
-            if playerState.presentation != .hidden { playerState.stop() }
-            tosState.play(video: video, api: api)
-            return
-        }
         if tosState.presentation != .hidden { tosState.stop() }
-        playerState.play(video: video)
+        switch AudioFirstPresentationPolicy.destination(for: video) {
+        case .miniPlayer:
+            audioFirst.open(video: video)
+        }
+    }
+
+    public func closeAudioFirst() {
+        audioFirst.close()
     }
 }
 #endif // os(iOS)

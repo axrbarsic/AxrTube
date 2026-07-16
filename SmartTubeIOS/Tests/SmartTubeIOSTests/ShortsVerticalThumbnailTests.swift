@@ -8,8 +8,8 @@ import Testing
 // were incorrectly classified as Shorts because the vertical-thumbnail detection
 // signal in parseVideoRenderer and parseTileRenderer had no duration guard.
 //
-// Fix: added `&& (duration.map { $0 <= 180 } ?? true)` to the vertical-thumbnail
-// signal in both parsers, matching the guard already applied to the other three signals.
+// Fix: thumbnail aspect ratio and duration are no longer Shorts classifiers.
+// Only explicit InnerTube endpoint/style markers can set `isShort`.
 
 // MARK: - Helpers (same shape as QPBPhase3RegressionTests.swift)
 
@@ -84,9 +84,9 @@ struct ShortsVerticalThumbnailTests {
         )
     }
 
-    /// A genuine Short (≤60s) with a portrait thumbnail must still be classified as Short.
-    @Test("videoRenderer: portrait thumbnail + short duration → isShort = true")
-    func videoRendererPortraitThumbnailShortDuration() async throws {
+    /// A short portrait upload without an explicit Shorts marker remains a regular video.
+    @Test("videoRenderer: portrait thumbnail + short duration alone → isShort = false")
+    func videoRendererPortraitThumbnailShortDurationIsNotEnough() async throws {
         let renderer: [String: Any] = [
             "videoId": "genuineShort",
             "title": ["runs": [["text": "A Genuine Short"]]],
@@ -107,15 +107,14 @@ struct ShortsVerticalThumbnailTests {
         )
         let video = try #require(group.videos.first)
         #expect(
-            video.isShort == true,
-            "A 45-second video with a portrait thumbnail should be classified as Short"
+            video.isShort == false,
+            "Duration and portrait aspect alone must not hide an ordinary short upload"
         )
     }
 
-    /// When duration is unknown (no lengthText), a portrait thumbnail should conservatively
-    /// still trigger the Short classification (mirrors all other signal guards' default).
-    @Test("videoRenderer: portrait thumbnail + unknown duration → isShort = true (conservative)")
-    func videoRendererPortraitThumbnailNoDuration() async throws {
+    /// Unknown duration plus portrait artwork is also insufficient.
+    @Test("videoRenderer: portrait thumbnail + unknown duration → isShort = false")
+    func videoRendererPortraitThumbnailNoDurationIsNotEnough() async throws {
         let renderer: [String: Any] = [
             "videoId": "unknownDuration",
             "title": ["runs": [["text": "Upcoming Live"]]],
@@ -136,8 +135,8 @@ struct ShortsVerticalThumbnailTests {
         )
         let video = try #require(group.videos.first)
         #expect(
-            video.isShort == true,
-            "With unknown duration a portrait thumbnail conservatively triggers Short classification"
+            video.isShort == false,
+            "Unknown duration and portrait aspect must not invent a Shorts classification"
         )
     }
 

@@ -25,7 +25,7 @@ import XCTest
 // Skips gracefully when network is unavailable or Safari UI cannot be navigated.
 
 private let kTestVideoURL  = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-private let kExtensionName = "SmartTube"   // CFBundleDisplayName in ShareExtension/Info.plist
+private let kExtensionName = "iPocketTube"   // CFBundleDisplayName in ShareExtension/Info.plist
 
 final class ShareExtensionE2EUITests: XCTestCase {
 

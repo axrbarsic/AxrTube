@@ -38,11 +38,15 @@ struct ShortsCardView: View {
                 endPoint: .bottom
             )
             .overlay(alignment: .bottomLeading) {
-                Text(video.title)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.white)
-                    .lineLimit(2)
-                    .padding(8)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(video.title)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.white)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VideoPublicationLabel(video: video)
+                        .foregroundStyle(.white.opacity(0.82))
+                }
+                .padding(8)
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 8))
@@ -61,6 +65,7 @@ struct ShortsCardView: View {
         }
         .contentShape(Rectangle())
         .onTapGesture(perform: onTap)
+        .smartTubeCardSurface(cornerRadius: 10, contentPadding: 3)
         .contextMenu {
             #if !os(tvOS)
             if let shareURL = URL(string: "https://www.youtube.com/watch?v=\(video.id)") {
@@ -168,13 +173,14 @@ struct ShortsCardView: View {
             }
             #if !os(tvOS)
             Button {
-                downloadService.download(video: video)
+                downloadService.download(
+                    video: video,
+                    kind: .video,
+                    saveVideoToPhotos: true,
+                    storageLimitMB: store.settings.offlineStorageLimitMB
+                )
             } label: {
-                if downloadService.state.isActive {
-                    Label("Downloading…", systemImage: AppSymbol.download)
-                } else {
-                    Label("Download to Gallery", systemImage: AppSymbol.download)
-                }
+                Label("Save Video", systemImage: AppSymbol.download)
             }
             .disabled(downloadService.state.isActive)
             #endif
@@ -184,4 +190,3 @@ struct ShortsCardView: View {
         }
     }
 }
-

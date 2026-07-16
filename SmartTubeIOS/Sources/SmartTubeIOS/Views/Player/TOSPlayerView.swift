@@ -354,8 +354,14 @@ public struct TOSPlayerView: View {
             OrientationManager.shared.playerIsActive = isLocked || store.settings.landscapeAlwaysPlay
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            vm.handleForeground()
+            switch phase {
+            case .active:
+                vm.handleForeground()
+            case .background:
+                vm.handleBackground()
+            default:
+                break
+            }
         }
         #endif
         )

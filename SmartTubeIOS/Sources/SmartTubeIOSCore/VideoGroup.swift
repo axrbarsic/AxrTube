@@ -183,6 +183,7 @@ public struct PlaylistInfo: Identifiable, Codable, Sendable {
 
 public struct VideoFormat: Identifiable, Hashable, Sendable {
     public let id: UUID
+    public var itag: Int?
     public var label: String
     public var width: Int
     public var height: Int
@@ -191,8 +192,9 @@ public struct VideoFormat: Identifiable, Hashable, Sendable {
     public var url: URL?
     public var bitrate: Int?
 
-    public init(id: UUID = UUID(), label: String, width: Int, height: Int, fps: Int, mimeType: String, url: URL? = nil, bitrate: Int? = nil) {
+    public init(id: UUID = UUID(), itag: Int? = nil, label: String, width: Int, height: Int, fps: Int, mimeType: String, url: URL? = nil, bitrate: Int? = nil) {
         self.id = id
+        self.itag = itag
         self.label = label
         self.width = width
         self.height = height

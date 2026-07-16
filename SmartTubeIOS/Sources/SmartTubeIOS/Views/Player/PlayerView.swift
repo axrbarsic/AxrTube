@@ -42,8 +42,8 @@ public struct PlayerView: View {
     @State var isTransitioning = false
     @State var channelDestination: ChannelDestination?
     #if !os(tvOS)
-    @State var downloadService: VideoDownloadService
-    @State var downloadAlertItem: DownloadAlertItem?
+    @Environment(VideoDownloadService.self) var downloadService
+    @State var showDownloadFormatPicker = false
     #endif
     #if os(iOS)
     @State var pipController: AVPictureInPictureController?
@@ -112,9 +112,6 @@ public struct PlayerView: View {
         self.video = video
         #if !os(iOS)
         _vm = State(initialValue: PlaybackViewModel(api: api))
-        #endif
-        #if !os(tvOS)
-        _downloadService = State(initialValue: VideoDownloadService(api: api))
         #endif
     }
 

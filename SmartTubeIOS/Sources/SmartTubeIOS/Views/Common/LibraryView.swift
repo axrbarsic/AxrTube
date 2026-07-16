@@ -32,24 +32,22 @@ public struct LibraryView: View {
         case history       = "History"
         case playlists     = "Playlists"
         case rss           = "RSS Feeds"
-        case downloads     = "Downloads"
-
-        #if os(tvOS)
-        // Downloads saves to Photos library — not supported on tvOS.
-        // Exclude the chip by hiding it from allCases on tvOS.
-        static var allCases: [LibrarySection] {
-            [.subscriptions, .history, .playlists, .rss]
-        }
-        #endif
 
         var id: String { rawValue }
+        var localizedTitle: String {
+            switch self {
+            case .subscriptions: return String(localized: "Subs", bundle: .module)
+            case .history:       return String(localized: "History", bundle: .module)
+            case .playlists:     return String(localized: "Playlists", bundle: .module)
+            case .rss:           return String(localized: "RSS Feeds", bundle: .module)
+            }
+        }
         var browseSectionType: BrowseSection.SectionType {
             switch self {
             case .subscriptions: return .subscriptions
             case .history:       return .history
             case .playlists:     return .playlists
             case .rss:           return .history  // not used — RSS renders its own view
-            case .downloads:     return .history  // not used — DownloadsView renders its own content
             }
         }
     }
@@ -60,6 +58,7 @@ public struct LibraryView: View {
         Group {
             libraryContent
         }
+        .smartTubeScreenSurface()
         #if os(iOS) || os(tvOS)
         .toolbar(.hidden, for: .navigationBar)
         #endif
@@ -69,10 +68,10 @@ public struct LibraryView: View {
         }
         #endif
         .navigationDestination(item: $selectedPlaylist) { stub in
-            PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api)
+            PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api, catalogContext: .mediaLibrary)
         }
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: .mediaLibrary)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
@@ -82,6 +81,7 @@ public struct LibraryView: View {
 
     private var libraryContent: some View {
         VStack(spacing: 0) {
+            SmartTubeMatrixHeader(title: "Media Library")
             #if os(tvOS)
             HStack(spacing: 8) {
                 ForEach(LibrarySection.allCases) { sec in
@@ -90,7 +90,7 @@ public struct LibraryView: View {
                         guard selectedSection != sec else { return }
                         selectedSection = sec
                     } label: {
-                        Text(sec.rawValue)
+                        Text(verbatim: sec.localizedTitle)
                             .font(.headline)
                             .padding(.horizontal, 24)
                             .padding(.vertical, 12)
@@ -119,23 +119,36 @@ public struct LibraryView: View {
             .accessibilityElement(children: .contain)
             .accessibilityIdentifier("library.chipBar")
             #else
-            Picker("Library Section", selection: $selectedSection) {
+            HStack(spacing: 6) {
                 ForEach(LibrarySection.allCases) { sec in
-                    Text(sec.rawValue).tag(sec)
-                        .accessibilityIdentifier("library.picker.\(sec.rawValue.lowercased())")
+                    let selected = selectedSection == sec
+                    Button {
+                        selectedSection = sec
+                    } label: {
+                        Text(verbatim: sec.localizedTitle)
+                            .font(.caption.weight(.semibold))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .foregroundStyle(selected ? Color.black : SmartTubeVisualTokens.secondaryText)
+                            .background(selected ? SmartTubeVisualTokens.mint : SmartTubeVisualTokens.panelElevated, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(selected ? .isSelected : [])
+                    .accessibilityIdentifier("library.picker.\(sec.rawValue.lowercased())")
                 }
             }
-            .pickerStyle(.segmented)
+            .smartTubeEDRPressEffect(
+                enabled: store.settings.experimentalEDRPressGlowEnabled,
+                cornerRadius: 12
+            )
             .accessibilityIdentifier("library.sectionPicker")
-            .padding()
+            .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
+            .padding(.bottom, 10)
             #endif
 
             Group {
                 if selectedSection == .rss {
                     RSSFeedsView()
-                } else if selectedSection == .downloads {
-                    DownloadsView()
-                        .environment(DownloadStore.shared)
                 } else if !auth.isSignedIn && selectedSection != .subscriptions {
                     segmentSignInPrompt
                 } else if browseVM.isLoading && browseVM.videoGroups.flatMap({ $0.videos }).isEmpty {
@@ -143,9 +156,10 @@ public struct LibraryView: View {
                 } else if browseVM.videoGroups.flatMap({ $0.videos }).isEmpty && !browseVM.isLoading {
                     emptyLibraryView
                 } else {
-                    let applyHideShorts = store.settings.hideShorts && selectedSection != .history
-                    let videos = browseVM.videoGroups.flatMap { $0.videos }
-                        .filter { !applyHideShorts || !$0.isShort }
+                    let videos = FeedCatalogPolicy.visibleVideos(
+                        browseVM.videoGroups.flatMap { $0.videos },
+                        showShorts: store.settings.showShorts
+                    )
                     ScrollView {
                         // KVO reader — always present; writes to ScrollOffsetStore
                         // without triggering SwiftUI re-renders on every scroll tick.
@@ -177,7 +191,8 @@ public struct LibraryView: View {
                                 if let last = videos.last {
                                     browseVM.loadMoreIfNeeded(lastVideo: last)
                                 }
-                            }
+                            },
+                            catalogContext: .mediaLibrary
                         )
                         // Offset restorer — always present; no-op when restoreOffset is nil.
                         #if os(iOS) || os(tvOS)
@@ -205,7 +220,7 @@ public struct LibraryView: View {
             }
         }
         .onChange(of: selectedSection) { _, section in
-            guard section != .rss && section != .downloads else { return }
+            guard section != .rss else { return }
             browseVM.select(section: BrowseSection(
                 id: section.id,
                 title: section.rawValue,
@@ -235,7 +250,7 @@ public struct LibraryView: View {
             #endif
         }
         .onAppear {
-            guard selectedSection != .rss && selectedSection != .downloads else { return }
+            guard selectedSection != .rss else { return }
             browseVM.select(section: BrowseSection(
                 id: selectedSection.id,
                 title: selectedSection.rawValue,
@@ -267,7 +282,7 @@ public struct LibraryView: View {
                     .font(.subheadline)
                     .fontWeight(.medium)
                     .foregroundStyle(.primary)
-                Text("\(queueVideosCount) video\(queueVideosCount == 1 ? "" : "s")")
+                Text("\(queueVideosCount) videos")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -282,7 +297,7 @@ public struct LibraryView: View {
         .onTapGesture {
             selectedPlaylist = Video(
                 id: CurrentQueueStore.playlistID,
-                title: "Current Queue",
+                title: String(localized: "Current Queue", bundle: .module),
                 channelTitle: ""
             )
         }
@@ -324,7 +339,7 @@ public struct LibraryView: View {
             Image(systemName: AppSymbol.personCircleQuestion)
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            Text("Sign in to see your \(selectedSection.rawValue.lowercased())")
+            Text("Sign in to see your \(selectedSection.localizedTitle.lowercased())")
                 .font(.headline)
                 .foregroundStyle(.secondary)
             NavigationLink("Sign In") {

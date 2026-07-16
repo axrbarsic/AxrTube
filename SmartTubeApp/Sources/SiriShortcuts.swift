@@ -5,20 +5,20 @@ import SmartTubeIOSCore
 
 // MARK: - OpenYouTubeVideoIntent
 
-/// Opens a YouTube video directly in SmartTube from Siri or the Shortcuts app.
+/// Opens a YouTube video directly in iPocketTube from Siri or the Shortcuts app.
 ///
 /// Siri phrases (registered via ``SmartTubeShortcuts``):
-///   - "Watch on SmartTube"
-///   - "Open YouTube video in SmartTube"
-///   - "Play in SmartTube"
+///   - "Watch on iPocketTube"
+///   - "Open YouTube video in iPocketTube"
+///   - "Play in iPocketTube"
 ///
 /// The intent extracts the video ID using ``YouTubeLinkHandler`` and fires the
 /// existing `smarttube://video/<id>` deep link, which ``AppEntry.handleOpenURL``
 /// already handles — no new playback wiring required.
 struct OpenYouTubeVideoIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open YouTube Video in SmartTube"
+    static let title: LocalizedStringResource = "Open YouTube Video in iPocketTube"
     static let description = IntentDescription(
-        "Opens a YouTube video or Short URL directly in SmartTube."
+        "Opens a YouTube video or Short URL directly in iPocketTube."
     )
     static let openAppWhenRun: Bool = true
 
@@ -51,7 +51,7 @@ struct SmartTubeShortcuts: AppShortcutsProvider {
                 "Watch on \(.applicationName)",
                 "Play in \(.applicationName)"
             ],
-            shortTitle: "Open in SmartTube",
+            shortTitle: "Open in iPocketTube",
             systemImageName: "play.rectangle"
         )
     }
@@ -65,7 +65,7 @@ enum SmartTubeIntentError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: "Could not build a SmartTube deep link."
+        case .invalidURL: "Could not build an iPocketTube deep link."
         case .notYouTubeURL: "The URL doesn't appear to be a YouTube video link."
         }
     }

@@ -28,7 +28,7 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.wasPlaying)
         #expect(state.generation == 1)
 
-        #expect(state.ended(shouldResume: true) == .activateAndResume)
+        #expect(state.ended(shouldResume: true) == .rebuildGraphAndResume)
         #expect(!state.isHandling)
         #expect(!state.wasPlaying)
         #expect(state.ended(shouldResume: true) == .ignore)
@@ -42,6 +42,45 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.ended(shouldResume: false) == .stayPaused)
         #expect(!state.isHandling)
         #expect(!state.wasPlaying)
+    }
+
+    @Test("A deliberate Play recovers when interruption ended is never delivered")
+    func manualPlayRecoversMissingEndedNotification() {
+        var state = AudioInterruptionStateMachine()
+
+        #expect(state.began(wasPlaying: true) == .pauseAndYield)
+        let interruptionGeneration = state.generation
+        #expect(state.userRequestedPlay() == .rebuildGraphAndResume)
+        #expect(!state.isHandling)
+        #expect(!state.wasPlaying)
+        #expect(state.generation == interruptionGeneration + 1)
+    }
+
+    @Test("Lock and foreground do not invalidate an allowed background recovery")
+    func lockLifecyclePreservesGeneration() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.began(wasPlaying: true) == .pauseAndYield)
+        let generation = state.generation
+
+        #expect(state.enteredBackground(playbackAllowed: true, wasPlaying: false) == .ignore)
+        #expect(state.enteredForeground() == .ignore)
+        #expect(state.generation == generation)
+        #expect(state.isHandling)
+    }
+
+    @Test("Now Playing generation rejects stale callbacks from an old saved item")
+    func nowPlayingSourceGenerationRejectsStaleOwner() {
+        var source = NowPlayingSourceState()
+        let first = source.activate(itemKey: "saved-a")
+        let second = source.activate(itemKey: "saved-b")
+
+        #expect(!source.accepts(generation: first, itemKey: "saved-a"))
+        let staleClearAccepted = source.clear(generation: first)
+        #expect(!staleClearAccepted)
+        #expect(source.accepts(generation: second, itemKey: "saved-b"))
+        let currentClearAccepted = source.clear(generation: second)
+        #expect(currentClearAccepted)
+        #expect(source.itemKey == nil)
     }
 
     @Test("State machine does not auto-resume media that was already paused")
@@ -61,6 +100,39 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.began(wasPlaying: false) == .ignore)
         #expect(state.wasPlaying)
         #expect(state.generation == generation)
+    }
+
+    @Test("Twenty repeated audio cycles keep one-shot recovery and pause intent")
+    func stateMachineSurvivesTwentyMixedCycles() {
+        var state = AudioInterruptionStateMachine()
+
+        for cycle in 0..<20 {
+            #expect(state.began(wasPlaying: true) == .pauseAndYield)
+            #expect(state.began(wasPlaying: false) == .ignore)
+            if cycle.isMultiple(of: 2) {
+                #expect(state.ended(shouldResume: true) == .rebuildGraphAndResume)
+            } else {
+                #expect(state.ended(shouldResume: false) == .stayPaused)
+            }
+            #expect(state.ended(shouldResume: true) == .ignore)
+
+            #expect(state.routeBecameUnavailable() == .pauseAndYield)
+            #expect(state.routeBecameAvailable() == .stayPaused)
+            #expect(state.mediaServicesLost(wasPlaying: true) == .pauseAndYield)
+            #expect(state.mediaServicesReset() == .rebuildGraphAndStayPaused)
+            #expect(state.enteredBackground(playbackAllowed: true, wasPlaying: true) == .ignore)
+            #expect(state.enteredForeground() == .ignore)
+            #expect(!state.isHandling)
+            #expect(!state.mediaServicesAreLost)
+        }
+    }
+
+    @Test("Manual pause during interruption cancels automatic resume")
+    func manualPauseWinsDuringInterruption() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.began(wasPlaying: true) == .pauseAndYield)
+        state.userPaused()
+        #expect(state.ended(shouldResume: true) == .stayPaused)
     }
 
     @Test("Interruption flags default to false")
@@ -218,6 +290,24 @@ struct PhoneCallInterruptionNotificationTests {
         #expect(vm.audioInterruptionResumeCount == 0)
     }
 
+    @Test("Remote Play restores the same item when interruption ended is missing")
+    func remotePlayRecoversMissingEndedNotification() {
+        let vm = makeVMWithCurrentItem()
+        let originalItem = vm.player.currentItem
+        vm.currentVideo = Video(id: "saved-test", title: "Saved", channelTitle: "Channel")
+        vm.updateNowPlayingInfo()
+        vm.isPlaying = true
+        vm.handleAudioInterruption(type: .began)
+
+        #expect(vm.isHandlingAudioInterruption)
+        vm.performUserPlay(reason: "test AirPods Play")
+
+        #expect(!vm.isHandlingAudioInterruption)
+        #expect(vm.player.currentItem === originalItem)
+        #expect(vm.isPlaying)
+        #expect(!vm.nowPlayingInfoCache.isEmpty)
+    }
+
     @Test("Duplicate began preserves the original was-playing snapshot")
     func duplicateBeganDoesNotLoseResumeIntent() {
         let vm = makeVMWithCurrentItem()
@@ -262,9 +352,10 @@ struct PhoneCallInterruptionNotificationTests {
         #expect(AVAudioSession.sharedInstance().mode == .spokenAudio)
     }
 
-    @Test("Media-services lost stops progress and reset resumes once")
-    func mediaServicesLostThenResetRestoresPlayback() {
+    @Test("Media-services reset rebuilds the item and stays paused until one user Play")
+    func mediaServicesLostThenResetRebuildsPaused() async {
         let vm = makeVMWithCurrentItem()
+        let originalItem = vm.player.currentItem
         vm.isPlaying = true
 
         vm.handleMediaServicesLost()
@@ -273,10 +364,16 @@ struct PhoneCallInterruptionNotificationTests {
         #expect(vm.player.rate == 0)
 
         vm.handleMediaServicesReset()
+        try? await Task.sleep(for: .milliseconds(50))
         #expect(!vm.wasPlayingBeforeMediaServicesLoss)
-        #expect(vm.isPlaying)
+        #expect(!vm.isPlaying)
+        #expect(vm.player.rate == 0)
+        #expect(vm.player.currentItem !== originalItem)
         #expect(AVAudioSession.sharedInstance().category == .playback)
         #expect(AVAudioSession.sharedInstance().mode == .spokenAudio)
+
+        vm.performUserPlay(reason: "test user Play after media reset")
+        #expect(vm.isPlaying)
     }
 }
 #endif

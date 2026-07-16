@@ -1,177 +1,573 @@
 import SwiftUI
 import SmartTubeIOSCore
 
-// MARK: - DownloadsView
-
-/// Shows videos that have been downloaded to the device via VideoDownloadService.
-/// Each row displays the thumbnail, title, channel, duration, file size, and
-/// download date. Tapping a row plays the video from the local file (no network
-/// required). Swipe-to-delete removes both the MP4 and the DownloadStore record.
-
+/// The only owner of AxrTube offline media and storage controls.
 struct DownloadsView: View {
     @Environment(DownloadStore.self) private var downloadStore
+    @Environment(VideoDownloadService.self) private var downloadService
+    @Environment(SettingsStore.self) private var settingsStore
+    @Environment(\.innerTubeAPI) private var api
 
     #if os(iOS)
+    @Environment(PlayerRouter.self) private var playerRouter
     @Environment(PlayerStateStore.self) private var playerState
-    #else
-    @State private var selectedVideo: Video?
     #endif
 
-    @State private var deleteConfirmationVideoId: String?
+    @State private var deleteConfirmationEntry: DownloadedVideo?
+    @State private var showClearConfirmation = false
 
     var body: some View {
         #if os(iOS)
         iOSBody
         #else
-        tvOSBody
+        emptyState
         #endif
     }
 
     #if os(iOS)
     private var iOSBody: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Downloads")
-                    .font(.headline)
-                Spacer()
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 12)
-
+            collectionHeader
             if downloadStore.entries.isEmpty {
                 emptyState
             } else {
                 List {
-                    ForEach(downloadStore.entries.sorted { $0.downloadedAt > $1.downloadedAt }) { entry in
-                        DownloadedVideoRow(entry: entry)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                playerState.play(video: entry.video)
+                    ForEach(sortedEntries) { entry in
+                        Group {
+                            if entry.videoId == playerRouter.audioFirst.currentVideo?.id,
+                               entry.kind == (playerRouter.audioFirst.currentVideo?.localMediaKind ?? .audio) {
+                                DownloadedNowPlayingCard(
+                                    entry: entry,
+                                    statusText: playerRouter.audioFirst.statusText,
+                                    downloadProgress: playerRouter.audioFirst.downloadProgress,
+                                    playbackTime: playerState.vm.isScrubbing ? playerState.vm.scrubTime : playerRouter.audioFirst.displayedPlaybackTime,
+                                    playbackDuration: playerState.vm.duration,
+                                    bufferedProgress: playerRouter.audioFirst.playbackBufferedProgress,
+                                    isScrubbing: playerState.vm.isScrubbing,
+                                    isPlaying: playerState.vm.isPlaying,
+                                    onPlayPause: { playerRouter.audioFirst.togglePlayPauseByUser() },
+                                    onScrubBegan: { playerRouter.audioFirst.beginScrubbing() },
+                                    onScrubChanged: { playerRouter.audioFirst.updateScrubbing(to: $0) },
+                                    onScrubEnded: { playerRouter.audioFirst.commitScrubbing() },
+                                    onRetry: { retry(entry) }
+                                )
+                            } else {
+                                DownloadedMediaRow(
+                                    entry: entry,
+                                    edrEnabled: settingsStore.settings.experimentalEDRPressGlowEnabled,
+                                    onRetry: { retry(entry) },
+                                    onCancel: { playerRouter.audioFirst.pauseDownload(entry) },
+                                    onPlay: { playerRouter.open(video: entry.video, api: api) }
+                                )
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard entry.status == .completed else { return }
+                                    playerRouter.open(video: entry.video, api: api)
+                                }
                             }
-                            .accessibilityIdentifier("downloads.videoRow.\(entry.videoId)")
-                    }
-                    .onDelete { indexSet in
-                        let sorted = downloadStore.entries.sorted { $0.downloadedAt > $1.downloadedAt }
-                        for idx in indexSet {
-                            deleteConfirmationVideoId = sorted[idx].videoId
                         }
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+                        .listRowSeparator(.hidden)
+                        .listRowBackground(Color.clear)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) { deleteConfirmationEntry = entry } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .contextMenu {
+                            Button(role: .destructive) { deleteConfirmationEntry = entry } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                        .accessibilityIdentifier("downloads.mediaRow.\(entry.id)")
                     }
                 }
                 .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .animation(.easeInOut(duration: 0.28), value: sortedEntries.map(\.id))
             }
         }
+        .smartTubeScreenSurface()
+        .toolbar(.hidden, for: .navigationBar)
+        .onAppear {
+            playerRouter.audioFirst.reconcileDownloads(trigger: "downloads-screen")
+        }
         .alert(
-            "Delete Download",
+            "Delete Offline Item",
             isPresented: Binding(
-                get: { deleteConfirmationVideoId != nil },
-                set: { if !$0 { deleteConfirmationVideoId = nil } }
+                get: { deleteConfirmationEntry != nil },
+                set: { if !$0 { deleteConfirmationEntry = nil } }
             )
         ) {
             Button("Delete", role: .destructive) {
-                if let vid = deleteConfirmationVideoId {
-                    downloadStore.remove(videoId: vid)
+                if let entry = deleteConfirmationEntry {
+                    downloadStore.remove(videoId: entry.videoId, kind: entry.kind)
                 }
-                deleteConfirmationVideoId = nil
+                deleteConfirmationEntry = nil
             }
-            Button("Cancel", role: .cancel) {
-                deleteConfirmationVideoId = nil
-            }
+            Button("Cancel", role: .cancel) { deleteConfirmationEntry = nil }
         } message: {
-            Text("This video will be removed from your device. You can re-download it from the player.")
+            Text("The local copy will be removed from this device.")
+        }
+        .alert("Clear Offline Collection", isPresented: $showClearConfirmation) {
+            Button("Clear All", role: .destructive) { downloadStore.clearAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All downloaded video and audio files will be removed from iPocketTube.")
         }
     }
-    #else
-    private var tvOSBody: some View {
-        emptyState
+
+    private var collectionHeader: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline) {
+                SmartTubeMatrixHeader(title: "Downloads")
+                    .padding(.horizontal, -SmartTubeVisualTokens.horizontalPadding)
+                    .padding(.vertical, -6)
+                Spacer(minLength: 8)
+                Menu {
+                    Picker("Storage Limit", selection: Binding(
+                        get: { settingsStore.settings.offlineStorageLimitMB },
+                        set: { settingsStore.settings.offlineStorageLimitMB = $0 }
+                    )) {
+                        Text("1 GB").tag(1024)
+                        Text("2 GB").tag(2048)
+                        Text("4 GB").tag(4096)
+                        Text("8 GB").tag(8192)
+                        Text("16 GB").tag(16384)
+                    }
+                    if !downloadStore.entries.isEmpty {
+                        Divider()
+                        Button("Clear Offline Collection", role: .destructive) {
+                            showClearConfirmation = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.headline)
+                        .frame(width: 44, height: 44)
+                        .background(SmartTubeVisualTokens.panelElevated, in: Circle())
+                }
+                .accessibilityIdentifier("downloads.storageMenu")
+            }
+
+            HStack {
+                Label(formattedBytes(downloadStore.totalSizeBytes), systemImage: "internaldrive")
+                Spacer()
+                Text(verbatim: "\(settingsStore.settings.offlineStorageLimitMB / 1024) GB")
+            }
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+
+            ProgressView(
+                value: min(1, Double(downloadStore.totalSizeBytes) / Double(max(1, settingsStore.settings.offlineStorageLimitMB) * 1024 * 1024))
+            )
+            .tint(SmartTubeVisualTokens.mint)
+        }
+        .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
+        .padding(.bottom, 10)
+    }
+
+    private func retry(_ entry: DownloadedVideo) {
+        if entry.kind == .audio {
+            playerRouter.open(video: entry.video, api: api)
+            return
+        }
+        downloadService.retry(
+            entry: entry,
+            storageLimitMB: settingsStore.settings.offlineStorageLimitMB
+        )
+    }
+
+    private var sortedEntries: [DownloadedVideo] {
+        DownloadHistorySortPolicy.sorted(
+            downloadStore.entries,
+            currentItemID: currentItemID
+        )
+    }
+
+    private var currentItemID: String? {
+        guard let video = playerRouter.audioFirst.currentVideo ?? playerState.vm.currentVideo else { return nil }
+        return "\(video.id)::\((video.localMediaKind ?? .audio).rawValue)"
     }
     #endif
 
     private var emptyState: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "arrow.down.to.line.circle")
-                .font(.system(size: 52))
-                .foregroundStyle(.secondary)
-            Text("No Downloaded Videos")
-                .font(.title3)
-                .foregroundStyle(.secondary)
-            Text("Download a video from the player to watch it offline.")
+        VStack(spacing: 14) {
+            Image(systemName: "arrow.down.to.line.compact")
+                .font(.system(size: 44, weight: .medium))
+                .foregroundStyle(SmartTubeVisualTokens.mint)
+            Text("No Offline Media")
+                .font(.title3.bold())
+            Text("Tap any video to save and play its audio. To save video, press and hold a card and choose Save Video.")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SmartTubeVisualTokens.secondaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding()
+        .padding(28)
+        .smartTubeCardSurface(cornerRadius: 20, contentPadding: 18)
+        .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("downloads.emptyState")
     }
 }
 
-// MARK: - DownloadedVideoRow
-
-private struct DownloadedVideoRow: View {
+#if os(iOS)
+private struct DownloadedNowPlayingCard: View {
     let entry: DownloadedVideo
-
-    private static let dateFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .medium
-        f.timeStyle = .none
-        return f
-    }()
-
-    private var fileSizeDescription: String {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: entry.fileURL.path),
-              let bytes = attrs[.size] as? Int64 else { return "" }
-        let gb = Double(bytes) / 1_000_000_000
-        if gb >= 1 { return String(format: "%.1f GB", gb) }
-        let mb = Double(bytes) / 1_000_000
-        return String(format: "%.0f MB", mb)
-    }
-
-    private var durationDescription: String {
-        guard entry.duration > 0 else { return "" }
-        let mins = Int(entry.duration) / 60
-        let secs = Int(entry.duration) % 60
-        return String(format: "%d:%02d", mins, secs)
-    }
+    let statusText: String
+    let downloadProgress: Double
+    let playbackTime: TimeInterval
+    let playbackDuration: TimeInterval
+    let bufferedProgress: Double
+    let isScrubbing: Bool
+    let isPlaying: Bool
+    let onPlayPause: () -> Void
+    let onScrubBegan: () -> Void
+    let onScrubChanged: (TimeInterval) -> Void
+    let onScrubEnded: () -> Void
+    let onRetry: () -> Void
 
     var body: some View {
-        HStack(spacing: 12) {
-            AsyncImage(url: entry.thumbnailURL) { phase in
-                switch phase {
-                case .success(let image):
-                    image.resizable().aspectRatio(contentMode: .fill)
-                default:
-                    Rectangle().foregroundStyle(.secondary.opacity(0.3))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .top, spacing: 12) {
+                mediaThumbnail(entry: entry, width: 112, height: 63)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(entry.title)
+                        .font(.headline)
+                        .lineLimit(2)
+                    Text(entry.channelTitle)
+                        .font(.caption)
+                        .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                    Label(entry.kind == .audio ? "Audio" : "Video", systemImage: entry.kind == .audio ? "waveform" : "film")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(SmartTubeVisualTokens.mintSoft)
+                    if entry.status == .completed {
+                        DownloadTimestampLabel(date: entry.downloadedAt)
+                    }
+                }
+                Spacer(minLength: 0)
+                Button(action: onPlayPause) {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.headline)
+                        .foregroundStyle(.black)
+                        .frame(width: 44, height: 44)
+                        .background(SmartTubeVisualTokens.mint, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isPlaying ? "Pause" : "Play")
+            }
+
+            if entry.status == .failed || entry.status == .cancelled {
+                Text(failureDescription(entry))
+                    .font(.caption)
+                    .foregroundStyle(SmartTubeVisualTokens.warning)
+                    .lineLimit(2)
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderedProminent)
+                    .tint(SmartTubeVisualTokens.mint)
+                    .foregroundStyle(.black)
+                    .frame(minHeight: 44)
+            } else {
+                playbackTimeline
+
+                HStack {
+                    Text(String(
+                        format: String(localized: "Downloaded %d%%", bundle: .module),
+                        Int(downloadProgress * 100)
+                    ))
+                        .font(.caption)
+                        .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                    Spacer()
+                    Text(statusText)
+                        .font(.caption.monospacedDigit().weight(.bold))
+                        .foregroundStyle(SmartTubeVisualTokens.mint)
+                }
+                ProgressView(value: downloadProgress)
+                    .tint(SmartTubeVisualTokens.mint)
+                    .scaleEffect(x: 1, y: 0.55, anchor: .center)
+                if entry.status == .finalizationPending {
+                    Button("Retry Offline Saving", action: onRetry)
+                        .buttonStyle(.borderedProminent)
+                        .tint(SmartTubeVisualTokens.mint)
+                        .foregroundStyle(.black)
+                        .frame(minHeight: 44)
                 }
             }
-            .frame(width: 100, height: 56)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .smartTubeCardSurface(cornerRadius: 18, contentPadding: 14)
+        .overlay(alignment: .topLeading) {
+            Text("Now Playing")
+                .font(.caption2.weight(.black))
+                .textCase(.uppercase)
+                .foregroundStyle(.black)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(SmartTubeVisualTokens.mint, in: Capsule())
+                .offset(x: 12, y: -8)
+        }
+        .accessibilityIdentifier("downloads.nowPlayingCard")
+    }
 
-            VStack(alignment: .leading, spacing: 4) {
+    private var hasFiniteDuration: Bool {
+        playbackDuration.isFinite && playbackDuration > 0
+    }
+
+    private var playbackTimeline: some View {
+        VStack(spacing: 2) {
+            ZStack {
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule().fill(SmartTubeVisualTokens.stroke)
+                        Capsule()
+                            .fill(SmartTubeVisualTokens.mintSoft.opacity(0.55))
+                            .frame(width: proxy.size.width * min(1, max(0, bufferedProgress)))
+                    }
+                    .frame(height: 4)
+                    .frame(maxHeight: .infinity)
+                }
+                .frame(height: 44)
+                .allowsHitTesting(false)
+
+                Slider(
+                    value: Binding(
+                        get: { hasFiniteDuration ? min(playbackDuration, max(0, playbackTime)) : 0 },
+                        set: { onScrubChanged($0) }
+                    ),
+                    in: 0...max(1, playbackDuration),
+                    onEditingChanged: { editing in
+                        if editing { onScrubBegan() } else { onScrubEnded() }
+                    }
+                )
+                .tint(SmartTubeVisualTokens.mint)
+                .disabled(!hasFiniteDuration)
+                .frame(minHeight: 44)
+                .accessibilityLabel("Playback position")
+                .accessibilityValue(hasFiniteDuration
+                    ? String(
+                        format: String(localized: "%@ of %@", bundle: .module),
+                        formatPlaybackTime(playbackTime),
+                        formatPlaybackTime(playbackDuration)
+                    )
+                    : String(localized: "Duration unavailable", bundle: .module))
+                .accessibilityHint("Swipe up or down to seek")
+            }
+
+            HStack {
+                Text(formatPlaybackTime(playbackTime))
+                Spacer()
+                Text(hasFiniteDuration ? "−\(formatPlaybackTime(max(0, playbackDuration - playbackTime)))" : "—:—")
+            }
+            .font(.caption2.monospacedDigit())
+            .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+        }
+        .accessibilityIdentifier("downloads.playbackScrubber")
+    }
+}
+
+private struct DownloadedMediaRow: View {
+    let entry: DownloadedVideo
+    let edrEnabled: Bool
+    let onRetry: () -> Void
+    let onCancel: () -> Void
+    let onPlay: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            mediaThumbnail(entry: entry, width: 100, height: 56)
+            VStack(alignment: .leading, spacing: 5) {
                 Text(entry.title)
-                    .font(.subheadline)
+                    .font(.subheadline.weight(.semibold))
                     .lineLimit(2)
                 Text(entry.channelTitle)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                    .lineLimit(1)
                 HStack(spacing: 8) {
-                    if !durationDescription.isEmpty {
-                        Text(durationDescription)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    if !fileSizeDescription.isEmpty {
-                        Text(fileSizeDescription)
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                    Text(Self.dateFormatter.string(from: entry.downloadedAt))
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    Label(entry.kind == .audio ? "Audio" : "Video", systemImage: entry.kind == .audio ? "waveform" : "film")
+                    if entry.fileSizeBytes > 0 { Text(formattedBytes(entry.fileSizeBytes)) }
+                }
+                .font(.caption2)
+                .foregroundStyle(SmartTubeVisualTokens.mintSoft)
+                if entry.status == .completed {
+                    DownloadTimestampLabel(date: entry.downloadedAt)
+                }
+                statusContent
+            }
+            Spacer(minLength: 4)
+            if entry.status == .completed {
+                Button(action: onPlay) {
+                    Image(systemName: "play.fill")
+                        .frame(width: 44, height: 44)
+                        .background(SmartTubeVisualTokens.panelElevated, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Play")
+            }
+        }
+        .smartTubeCardSurface(cornerRadius: 16, contentPadding: 12)
+    }
+
+    @ViewBuilder private var statusContent: some View {
+        switch entry.status {
+        case .completed:
+            EmptyView()
+        case .paused:
+            VStack(alignment: .leading, spacing: 6) {
+                Text(entry.resumePolicy == .manual ? "Download paused by you." : "Resuming automatically…")
+                    .font(.caption2)
+                    .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                if entry.resumePolicy == .manual {
+                    Button("Continue", action: onRetry)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(SmartTubeVisualTokens.mint)
+                        .foregroundStyle(.black)
                 }
             }
-            Spacer()
+        case .finalizationPending:
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Playback is available. Offline saving needs retry.")
+                    .font(.caption2)
+                    .foregroundStyle(SmartTubeVisualTokens.warning)
+                Button("Retry Offline Saving", action: onRetry)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(SmartTubeVisualTokens.mint)
+                    .foregroundStyle(.black)
+            }
+        case .waitingForWiFi:
+            Label("Waiting for Wi-Fi", systemImage: "wifi")
+                .font(.caption2)
+                .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+        case .reconnecting:
+            Label("Reconnecting…", systemImage: "arrow.triangle.2.circlepath")
+                .font(.caption2)
+                .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+        case .failed, .cancelled:
+            VStack(alignment: .leading, spacing: 6) {
+                Text(failureDescription(entry))
+                    .font(.caption2)
+                    .foregroundStyle(SmartTubeVisualTokens.warning)
+                    .lineLimit(2)
+                Button("Retry", action: onRetry)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    .tint(SmartTubeVisualTokens.mint)
+                    .foregroundStyle(.black)
+                    .smartTubeEDRPressEffect(enabled: edrEnabled, cornerRadius: 8)
+            }
+        default:
+            HStack(spacing: 8) {
+                ProgressView(value: entry.progress)
+                    .tint(SmartTubeVisualTokens.mint)
+                Button("Cancel", role: .destructive, action: onCancel)
+                    .buttonStyle(.borderless)
+                    .font(.caption)
+            }
         }
-        .padding(.vertical, 4)
     }
+}
+
+private struct DownloadTimestampLabel: View {
+    @Environment(\.locale) private var locale
+    let date: Date?
+
+    var body: some View {
+        Label(displayText, systemImage: "clock.arrow.down")
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(SmartTubeVisualTokens.mintSoft)
+            .lineLimit(1)
+            .minimumScaleFactor(0.82)
+            .accessibilityLabel(accessibilityText)
+    }
+
+    private var displayText: String {
+        guard let date else {
+            return String(localized: "Download time unknown", bundle: .module, locale: locale)
+        }
+        let time = formatted(date, dateStyle: .none, timeStyle: .short)
+        switch DownloadTimestampPolicy.bucket(for: date) {
+        case .today:
+            return String(
+                format: String(localized: "Downloaded today, %@", bundle: .module, locale: locale),
+                locale: locale,
+                time
+            )
+        case .yesterday:
+            return String(
+                format: String(localized: "Downloaded yesterday, %@", bundle: .module, locale: locale),
+                locale: locale,
+                time
+            )
+        case .earlier:
+            let dateAndTime = formatted(date, dateStyle: .short, timeStyle: .short)
+            return String(
+                format: String(localized: "Downloaded %@", bundle: .module, locale: locale),
+                locale: locale,
+                dateAndTime
+            )
+        case .unknown:
+            return String(localized: "Download time unknown", bundle: .module, locale: locale)
+        }
+    }
+
+    private var accessibilityText: String {
+        guard let date else { return displayText }
+        return String(
+            format: String(localized: "Downloaded %@", bundle: .module, locale: locale),
+            locale: locale,
+            formatted(date, dateStyle: .full, timeStyle: .short)
+        )
+    }
+
+    private func formatted(
+        _ date: Date,
+        dateStyle: DateFormatter.Style,
+        timeStyle: DateFormatter.Style
+    ) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateStyle = dateStyle
+        formatter.timeStyle = timeStyle
+        return formatter.string(from: date)
+    }
+}
+
+private func mediaThumbnail(entry: DownloadedVideo, width: CGFloat, height: CGFloat) -> some View {
+    AsyncImage(url: entry.thumbnailURL) { phase in
+        if case .success(let image) = phase {
+            image.resizable().aspectRatio(contentMode: .fill)
+        } else {
+            Rectangle().foregroundStyle(SmartTubeVisualTokens.panelElevated)
+                .overlay(Image(systemName: entry.kind == .audio ? "waveform" : "film").foregroundStyle(SmartTubeVisualTokens.mintSoft))
+        }
+    }
+    .frame(width: width, height: height)
+    .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+}
+
+private func failureDescription(_ entry: DownloadedVideo) -> String {
+    if entry.status == .cancelled {
+        return String(localized: "Download cancelled.", bundle: .module)
+    }
+    if entry.errorMessage == "Download was interrupted. Tap Retry." {
+        return String(localized: "Download was interrupted. Tap Retry.", bundle: .module)
+    }
+    return entry.errorMessage ?? String(localized: "Download failed.", bundle: .module)
+}
+#endif
+
+private func formattedBytes(_ bytes: Int64) -> String {
+    ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
+}
+
+private func formatPlaybackTime(_ seconds: TimeInterval) -> String {
+    guard seconds.isFinite, seconds >= 0 else { return "—:—" }
+    let total = Int(seconds.rounded(.down))
+    let hours = total / 3600
+    let minutes = (total % 3600) / 60
+    let remaining = total % 60
+    if hours > 0 { return String(format: "%d:%02d:%02d", hours, minutes, remaining) }
+    return String(format: "%d:%02d", minutes, remaining)
 }

@@ -82,6 +82,10 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
     @Environment(SettingsStore.self) private var store
     @Environment(AuthService.self) private var authService
     @Environment(PlayerStateStore.self) private var playerState
+    // PlayerView reads the shared download coordinator when its body is built.
+    // This presenter creates a fresh UIHostingController, so the coordinator must
+    // be forwarded explicitly just like the other observable environment values.
+    @Environment(VideoDownloadService.self) private var downloadService
     // TOSPlayerView (presented via the tosFullScreenBinding cover) reads this from
     // the environment — without it, UIHostingController's fresh view hierarchy has
     // no ancestor providing TOSPlayerStateStore and `tosState.vm!` force-unwrap path
@@ -108,6 +112,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
         let capturedAuth = authService
         let capturedPlayerState = playerState
         let capturedTosState = tosState
+        let capturedDownloadService = downloadService
         coordinator.contentBuilder = { [content] item in
             AnyView(
                 content(item)
@@ -115,6 +120,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
                     .environment(capturedAuth)
                     .environment(capturedPlayerState)
                     .environment(capturedTosState)
+                    .environment(capturedDownloadService)
             )
         }
         coordinator.latestBinding = _item

@@ -384,6 +384,10 @@ extension PlayerControlsOverlay {
                 #endif
         }
         .buttonStyle(.plain)
+        .smartTubeEDRPressEffect(
+            enabled: store.settings.experimentalEDRPressGlowEnabled,
+            cornerRadius: 32 * controlScale
+        )
         #if !os(tvOS)
         .contentShape(Rectangle())
         #endif

@@ -24,7 +24,10 @@ struct AppSettingsMigrationTests {
     func currentDefaultsEnableBackgroundPlayback() {
         let settings = AppSettings()
         #expect(settings.backgroundPlaybackEnabled)
-        #expect(settings.settingsVersion == 2)
+        #expect(settings.settingsVersion == 5)
+        #expect(!settings.showShorts)
+        #expect(settings.compactSearchCards)
+        #expect(settings.compactMediaLibraryCards)
     }
 
     @Test("Version 1 settings migrate background playback exactly once")
@@ -37,14 +40,34 @@ struct AppSettingsMigrationTests {
         let first = SettingsStore.migrateToCurrentSchema(stored)
         #expect(first.changed)
         #expect(first.settings.backgroundPlaybackEnabled)
-        #expect(first.settings.settingsVersion == 2)
+        #expect(first.settings.settingsVersion == 5)
+        #expect(!first.settings.showShorts)
 
-        var userDisabled = first.settings
-        userDisabled.backgroundPlaybackEnabled = false
-        let second = SettingsStore.migrateToCurrentSchema(userDisabled)
+        let second = SettingsStore.migrateToCurrentSchema(first.settings)
         #expect(!second.changed)
-        #expect(!second.settings.backgroundPlaybackEnabled,
-                "After migration, the user-facing toggle must remain authoritative")
+        #expect(second.settings.backgroundPlaybackEnabled)
+    }
+
+    @Test("Version 4 update enables both compact card defaults exactly once")
+    @MainActor
+    func versionFourEnablesCompactCards() {
+        var stored = AppSettings()
+        stored.settingsVersion = 4
+        stored.compactSearchCards = false
+        stored.compactMediaLibraryCards = false
+
+        let first = SettingsStore.migrateToCurrentSchema(stored)
+        #expect(first.changed)
+        #expect(first.settings.settingsVersion == 5)
+        #expect(first.settings.compactSearchCards)
+        #expect(first.settings.compactMediaLibraryCards)
+
+        var userChoice = first.settings
+        userChoice.compactSearchCards = false
+        let second = SettingsStore.migrateToCurrentSchema(userChoice)
+        #expect(!second.changed)
+        #expect(!second.settings.compactSearchCards)
+        #expect(second.settings.compactMediaLibraryCards)
     }
 
     // MARK: - Missing new field → default, other fields preserved
@@ -190,6 +213,8 @@ struct AppSettingsMigrationTests {
         original.sponsorBlockEnabled = false
         original.deArrowEnabled = true
         original.iCloudSyncEnabled = true
+        original.compactSearchCards = false
+        original.compactMediaLibraryCards = true
         original.settingsVersion = 1
 
         let encoded = try JSONEncoder().encode(original)
@@ -210,6 +235,8 @@ struct AppSettingsMigrationTests {
         #expect(decoded.sponsorBlockEnabled == original.sponsorBlockEnabled)
         #expect(decoded.deArrowEnabled == original.deArrowEnabled)
         #expect(decoded.iCloudSyncEnabled == original.iCloudSyncEnabled)
+        #expect(decoded.compactSearchCards == original.compactSearchCards)
+        #expect(decoded.compactMediaLibraryCards == original.compactMediaLibraryCards)
         #expect(decoded.settingsVersion == original.settingsVersion)
     }
 

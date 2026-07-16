@@ -10,6 +10,39 @@ private let tubeLog = Logger(subsystem: appSubsystem, category: "InnerTube")
 
 extension InnerTubeAPI {
 
+    /// Fetches only the exact publication calendar day from the existing
+    /// InnerTube player metadata path. Stream URLs are never logged or retained.
+    public func fetchExactPublicationDate(videoId: String) async throws -> Date? {
+        func body(client: [String: Any]) -> [String: Any] {
+            var value = makeBody(client: client)
+            value["videoId"] = videoId
+            value["racyCheckOk"] = true
+            value["contentCheckOk"] = true
+            return value
+        }
+
+        var lastError: Error?
+        do {
+            let json = try await postPlayer(body: body(client: iosClientContext))
+            if let date = exactPublicationDate(from: json) { return date }
+        } catch {
+            lastError = error
+        }
+
+        // The existing WEB player path is a bounded fallback for renderer/client
+        // variants that omit microformat on iOS. It uses the same legitimate
+        // InnerTube client contract already used by downloads.
+        do {
+            let json = try await post(endpoint: "player", body: body(client: webClientContext))
+            return exactPublicationDate(from: json)
+        } catch {
+            lastError = error
+        }
+
+        if let lastError { throw lastError }
+        return nil
+    }
+
     // MARK: - Player stream URLs
 
     public func fetchPlayerInfo(videoId: String) async throws -> PlayerInfo {
@@ -540,6 +573,7 @@ extension InnerTubeAPI {
         let viewCount = (videoDetails?["viewCount"] as? String).flatMap { Int($0) }
         let thumbURL = ((videoDetails?["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]])?
             .last.flatMap { $0["url"] as? String }.flatMap { URL(string: $0) }
+        let publishedAt = exactPublicationDate(from: json)
 
         // Stream formats
         let streamingData = json["streamingData"] as? [String: Any]
@@ -581,7 +615,7 @@ extension InnerTubeAPI {
 
         func parseFormats(_ raw: [[String: Any]]) -> [VideoFormat] {
             raw.compactMap { f -> VideoFormat? in
-                guard f["itag"] is Int else { return nil }
+                guard let itag = f["itag"] as? Int else { return nil }
                 let urlStr = f["url"] as? String
                 let url = urlStr.flatMap { URL(string: $0) }
                 let quality = f["qualityLabel"] as? String ?? f["quality"] as? String ?? "unknown"
@@ -597,7 +631,7 @@ extension InnerTubeAPI {
                 }
                 let fps = f["fps"] as? Int ?? 30
                 let bitrate = f["bitrate"] as? Int
-                return VideoFormat(label: quality, width: width, height: height, fps: fps, mimeType: mimeType, url: url, bitrate: bitrate)
+                return VideoFormat(itag: itag, label: quality, width: width, height: height, fps: fps, mimeType: mimeType, url: url, bitrate: bitrate)
             }
         }
 
@@ -694,6 +728,7 @@ extension InnerTubeAPI {
             thumbnailURL: thumbURL,
             duration: duration,
             viewCount: viewCount,
+            publishedAt: publishedAt,
             isLive: isLive
         )
 
@@ -712,6 +747,17 @@ extension InnerTubeAPI {
         let endCards = parseEndCards(from: json)
         tubeLog.notice("parsePlayerInfo: endCards=\(endCards.count, privacy: .public)")
         return PlayerInfo(video: video, formats: formats, hlsURL: hlsURL, dashURL: dashURL, captionTracks: captionTracks, trackingURLs: trackingURLs, endCards: endCards)
+    }
+
+    /// `publishDate`/`uploadDate` are calendar days, not localized labels.
+    /// Normalize them to midnight UTC so sorting is deterministic across locales.
+    private func exactPublicationDate(from json: [String: Any]) -> Date? {
+        let renderer = (json["microformat"] as? [String: Any])?["playerMicroformatRenderer"] as? [String: Any]
+        let raw = renderer?["publishDate"] as? String
+            ?? renderer?["uploadDate"] as? String
+            ?? (json["videoDetails"] as? [String: Any])?["publishDate"] as? String
+        guard let raw else { return nil }
+        return YouTubePublicationDateParser.parseUTCDate(raw)
     }
 
     // MARK: – End cards parser

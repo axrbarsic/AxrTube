@@ -55,6 +55,7 @@ public final class BrowseViewModel {
     private let api: any InnerTubeAPIProtocol
     private var fetchTask: Task<Void, Never>?
     private var enrichTask: Task<Void, Never>?
+    private var publicationTask: Task<Void, Never>?
     /// When `false`, the History section returns empty content rather than fetching from YouTube.
     private var historyEnabled: Bool = true
     /// Counts consecutive pages fetched for the Shorts chip that produced 0 new unique videos
@@ -160,6 +161,8 @@ public final class BrowseViewModel {
             consecutiveEmptyShortPages = 0
             enrichTask?.cancel()
             enrichTask = nil
+            publicationTask?.cancel()
+            publicationTask = nil
         }
         // UI-testing synchronous inject: when `--uitesting-inject-recommended-ids=<ids>`
         // is present and the target section is `.recommended`, populate videoGroups
@@ -380,16 +383,20 @@ public final class BrowseViewModel {
                     if !Task.isCancelled {
                         isAuthRequired = group.videos.isEmpty
                         var deduped = group
-                        deduped.videos = deduplicated(group.videos)
-                            .sorted { ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast) }
+                        deduped.videos = VideoPublicationSortPolicy.sorted(
+                            deduplicated(group.videos),
+                            for: .subscriptions
+                        )
                         videoGroups = deduped.videos.isEmpty ? [] : [deduped]
                     }
                 } else {
                     let videos = await LocalSubscriptionFeedService.shared.fetchFeed(api: api)
                     if !Task.isCancelled {
                         isAuthRequired = false
-                        let deduped = deduplicated(videos)
-                            .sorted { ($0.publishedAt ?? .distantPast) > ($1.publishedAt ?? .distantPast) }
+                        let deduped = VideoPublicationSortPolicy.sorted(
+                            deduplicated(videos),
+                            for: .subscriptions
+                        )
                         videoGroups = deduped.isEmpty ? [] : [VideoGroup(title: "Subscriptions", videos: deduped)]
                     }
                 }
@@ -472,7 +479,10 @@ public final class BrowseViewModel {
             case .settings:
                 break
             }
-            if !Task.isCancelled { loadedAt = Date() }
+            if !Task.isCancelled {
+                schedulePublicationPolicy(for: section.type)
+                loadedAt = Date()
+            }
     }
 
     private func fetchNextPage(for section: BrowseSection, autoChainDepth: Int = 0) async {
@@ -644,6 +654,9 @@ public final class BrowseViewModel {
             default:
                 break
             }
+            if !Task.isCancelled {
+                schedulePublicationPolicy(for: section.type)
+            }
         } catch {
             if !Task.isCancelled {
                 browseLog.error("fetchNextPage failed: section=\(section.title) error=\(String(describing: error))")
@@ -664,6 +677,58 @@ public final class BrowseViewModel {
             let newVideos = group.videos.filter { seenIds.insert($0.id).inserted }
             videoGroups[0].videos.append(contentsOf: newVideos)
             videoGroups[0].nextPageToken = group.nextPageToken
+        }
+    }
+
+    private func publicationRoute(for type: BrowseSection.SectionType) -> VideoListRoute? {
+        switch type {
+        case .home: .home
+        case .recommended: .recommended
+        case .subscriptions: .subscriptions
+        case .history: .history
+        case .playlists, .channels, .shorts, .music, .news, .gaming, .live, .sports, .settings: nil
+        }
+    }
+
+    /// Enrich missing exact dates with bounded requests and commit one batch,
+    /// then apply the same newest-first policy to every feed group.
+    private func applyPublicationPolicy(for type: BrowseSection.SectionType) async {
+        guard let route = publicationRoute(for: type), !videoGroups.isEmpty else { return }
+        let snapshot = videoGroups.flatMap(\.videos)
+        let expectedIDs = videoGroups.map { $0.videos.map(\.id) }
+        let enriched = await VideoPublicationDateEnricher.shared.enrich(snapshot) { [api] id in
+            try? await api.fetchExactPublicationDate(videoId: id)
+        }
+        guard !Task.isCancelled,
+              currentSection.type == type,
+              videoGroups.map({ $0.videos.map(\.id) }) == expectedIDs else { return }
+        let metadata = Dictionary(uniqueKeysWithValues: enriched.map { ($0.id, $0) })
+        videoGroups = videoGroups.map { group in
+            var copy = group
+            let patched = group.videos.map { video -> Video in
+                guard video.publishedAt == nil, let source = metadata[video.id] else { return video }
+                var updated = video
+                updated.publishedAt = source.publishedAt
+                updated.publicationDateStatus = source.publicationDateStatus
+                return updated
+            }
+            copy.videos = VideoPublicationSortPolicy.sorted(patched, for: route)
+            return copy
+        }
+        if type == .recommended {
+            let enrichedShorts = await VideoPublicationDateEnricher.shared.enrich(recommendedShortsVideos) { [api] id in
+                try? await api.fetchExactPublicationDate(videoId: id)
+            }
+            guard !Task.isCancelled, currentSection.type == type else { return }
+            recommendedShortsVideos = VideoPublicationSortPolicy.sorted(enrichedShorts, for: .recommended)
+        }
+    }
+
+    private func schedulePublicationPolicy(for type: BrowseSection.SectionType) {
+        guard publicationRoute(for: type) != nil else { return }
+        publicationTask?.cancel()
+        publicationTask = Task { [weak self] in
+            await self?.applyPublicationPolicy(for: type)
         }
     }
 

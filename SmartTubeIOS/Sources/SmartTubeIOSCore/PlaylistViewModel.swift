@@ -45,6 +45,7 @@ public final class PlaylistViewModel {
     private var playlistId: String = ""
     private var nextPageToken: String?
     private var fetchTask: Task<Void, Never>?
+    private var publicationTask: Task<Void, Never>?
     private let api: any InnerTubeAPIProtocol
     private let queueLoader: any QueuedPlaylistLoader
     private var hideObserverTasks: [Task<Void, Never>] = []
@@ -63,9 +64,11 @@ public final class PlaylistViewModel {
         // Delegates to `queueLoader` so this ViewModel is not coupled to
         // CurrentQueueStore's concrete type or magic playlist ID.
         fetchTask?.cancel()
+        publicationTask?.cancel()
         fetchTask = Task {
             if let queuedVideos = await self.queueLoader.loadQueuedVideos(for: playlistId) {
                 self.videos = queuedVideos
+                self.schedulePublicationEnrichment()
                 return
             }
             // ── Existing API path ──────────────────────────────────────────────────
@@ -110,6 +113,7 @@ public final class PlaylistViewModel {
                 }
                 videos.append(contentsOf: tagged)
                 nextPageToken = group.nextPageToken
+                schedulePublicationEnrichment()
                 playlistLog.notice("fetchPlaylistVideos → \(tagged.count) videos (total \(self.videos.count))")
             }
         } catch {
@@ -117,6 +121,20 @@ public final class PlaylistViewModel {
                 playlistLog.error("fetchPlaylistVideos error: \(String(describing: error))")
                 self.error = error
             }
+        }
+    }
+
+    private func schedulePublicationEnrichment() {
+        publicationTask?.cancel()
+        let snapshot = videos
+        let expectedIDs = snapshot.map(\.id)
+        publicationTask = Task { [weak self, api] in
+            let enriched = await VideoPublicationDateEnricher.shared.enrich(snapshot) { id in
+                try? await api.fetchExactPublicationDate(videoId: id)
+            }
+            guard let self, !Task.isCancelled, self.videos.map(\.id) == expectedIDs else { return }
+            // `.playlist` deliberately preserves server/user order.
+            self.videos = VideoPublicationSortPolicy.sorted(enriched, for: .playlist)
         }
     }
 

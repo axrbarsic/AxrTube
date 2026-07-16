@@ -195,6 +195,7 @@ final class TOSPlayerViewModel: NSObject {
 
     #if os(iOS)
     @ObservationIgnored var nowPlayingInfoCache: [String: Any] = [:]
+    @ObservationIgnored var audioRecovery = WebPlaybackAudioRecoveryController(source: "tos")
     /// `nonisolated(unsafe)` so MPMediaItemArtwork's requestHandler closure (invoked
     /// on MediaPlayer's private serial queue) can read it without a Swift 6
     /// actor-isolation assertion — mirrors PlaybackViewModel.cachedArtwork exactly.
@@ -316,6 +317,10 @@ final class TOSPlayerViewModel: NSObject {
         self.webView.navigationDelegate = navDel
         self.navigationDelegate = navDel
 
+        #if os(iOS)
+        audioRecovery.delegate = self
+        #endif
+
         // loadEmbed is NOT called here — SwiftUI calls View.init() many times during
         // layout (creating and discarding State(initialValue:) values). Only the instance
         // that actually appears calls startIfNeeded() from onAppear.
@@ -325,6 +330,9 @@ final class TOSPlayerViewModel: NSObject {
     func startIfNeeded() {
         guard !hasStartedLoading else { return }
         hasStartedLoading = true
+        #if os(iOS)
+        audioRecovery.start()
+        #endif
         loadEmbed(videoId: videoId, startTime: startTime)
     }
 
@@ -358,15 +366,27 @@ final class TOSPlayerViewModel: NSObject {
     /// to toggle mute. The stateDetectionJS `visibilitychange` + `_bgRemutePollRetries`
     /// loop handles the DOM-level `video.muted` reset from inside the iframe.
     #if os(iOS)
+    func handleBackground() {
+        audioRecovery.enteredBackground(
+            playbackAllowed: settings.backgroundPlaybackEnabled
+        )
+    }
+
     func handleForeground() {
-        Task { await webView.setAllMediaPlaybackSuspended(false) }
+        audioRecovery.enteredForeground()
     }
     #endif
 
     // MARK: - JS Commands (operating on YouTube embed page's <video> element)
 
-    func play() {
+    @discardableResult
+    func play() -> Bool {
+        #if os(iOS)
+        guard audioRecovery.userRequestedPlay(reason: "TOS play") else { return false }
+        Task { await webView.setAllMediaPlaybackSuspended(false) }
+        #endif
         eval("play", "(function(){var v=document.querySelector('video');var ifr=document.querySelectorAll('iframe').length;if(v){v.play();}return {found: !!v, iframes: ifr, paused: v ? v.paused : null};})();")
+        return true
     }
 
     /// Stops playback — including audio — regardless of which frame the `<video>`
@@ -399,6 +419,13 @@ final class TOSPlayerViewModel: NSObject {
     /// also report `found: true` once `embedFrameInfo` is captured (frame-targeted
     /// like every other command), confirming the fix from a second angle.
     func pause() {
+        #if os(iOS)
+        audioRecovery.userPaused(reason: "TOS pause")
+        #endif
+        pauseWebPlaybackForSystemAudioEvent()
+    }
+
+    func pauseWebPlaybackForSystemAudioEvent() {
         let stateBefore = playerState
         let timeBefore = currentTime
         tosLog.notice("[pause] requested — playerState=\(String(describing: stateBefore), privacy: .public) currentTime=\(timeBefore, format: .fixed(precision: 1))s")

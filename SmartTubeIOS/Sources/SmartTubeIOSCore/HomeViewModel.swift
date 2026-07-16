@@ -36,6 +36,7 @@ public final class HomeViewModel {
     /// Background cascade started after `load()` finishes; keeps paging Shorts
     /// content toward `preloadMoreShorts`'s threshold. Cancelled on the next `load()`.
     private var shortsPreloadTask: Task<Void, Never>? = nil
+    private var publicationEnrichmentTask: Task<Void, Never>? = nil
     public private(set) var isRefreshing: Bool = false
     /// Timestamp of the last successful load. Used for staleness checks.
     public private(set) var loadedAt: Date? = nil
@@ -50,10 +51,6 @@ public final class HomeViewModel {
         BrowseSection(id: BrowseSection.SectionType.home.rawValue,          title: "Recommended",   type: .home),
         BrowseSection(id: BrowseSection.SectionType.subscriptions.rawValue, title: "Subscriptions", type: .subscriptions),
     ]
-
-    /// Number of recommended videos inserted between each subscription video
-    /// in the interleaved home feed.
-    private static let interleaveRatio = 4
 
     /// `true` while either the recommended or subscriptions section is still on
     /// its initial load (no videos yet).  Used by the view to show a spinner.
@@ -70,52 +67,9 @@ public final class HomeViewModel {
         let subState  = sections.first { $0.section.type == .subscriptions }
         let recs  = recState?.videos  ?? []
         let subs  = subState?.videos  ?? []
-
-        guard !subs.isEmpty else {
-            var seen = Set<String>()
-            let deduped = recs.filter { seen.insert($0.id).inserted }
-            if deduped.count != recs.count {
-                homeLog.notice("rebuildMergedVideos: recs-only dedup removed \(recs.count - deduped.count) duplicate(s) (raw=\(recs.count))")
-            }
-            mergedVideos = deduped
-            return
-        }
-        guard !recs.isEmpty else {
-            var seen = Set<String>()
-            let deduped = subs.filter { seen.insert($0.id).inserted }
-            if deduped.count != subs.count {
-                homeLog.notice("rebuildMergedVideos: subs-only dedup removed \(subs.count - deduped.count) duplicate(s) (raw=\(subs.count))")
-            }
-            mergedVideos = deduped
-            return
-        }
-
-        let recIds = Set(recs.map(\.id))
-        let uniqueSubs = subs.filter { !recIds.contains($0.id) }
-
-        var result: [Video] = []
-        result.reserveCapacity(recs.count + uniqueSubs.count)
-
-        var subIndex = 0
-        for (i, rec) in recs.enumerated() {
-            result.append(rec)
-            let slot = i + 1
-            if slot % Self.interleaveRatio == 0, subIndex < uniqueSubs.count {
-                result.append(uniqueSubs[subIndex])
-                subIndex += 1
-            }
-        }
-        if subIndex < uniqueSubs.count {
-            result.append(contentsOf: uniqueSubs[subIndex...])
-        }
-        // Final safety-net dedup: prevents any remaining duplicate IDs from
-        // reaching ForEach, which would cause SwiftUI to render blank cells.
         var seen = Set<String>()
-        let deduped = result.filter { seen.insert($0.id).inserted }
-        if deduped.count != result.count {
-            homeLog.notice("rebuildMergedVideos: final dedup removed \(result.count - deduped.count) duplicate(s) (subs+recs raw=\(result.count))")
-        }
-        mergedVideos = deduped
+        let deduped = (recs + subs).filter { seen.insert($0.id).inserted }
+        mergedVideos = VideoPublicationSortPolicy.sorted(deduped, for: .home)
     }
 
     /// Non-Short videos from the interleaved home feed.
@@ -189,6 +143,7 @@ public final class HomeViewModel {
     public func cancel() {
         loadTask?.cancel()
         shortsPreloadTask?.cancel()
+        publicationEnrichmentTask?.cancel()
         hideObserverTasks.forEach { $0.cancel() }
     }
 
@@ -197,6 +152,7 @@ public final class HomeViewModel {
     public func load() {
         loadTask?.cancel()
         shortsPreloadTask?.cancel()
+        publicationEnrichmentTask?.cancel()
         loadedAt = nil
         isRefreshing = true
         shortsVideos = []
@@ -240,17 +196,18 @@ public final class HomeViewModel {
                     }
                 }
             }
-            // Both sections are now loaded. Rebuild the full interleaved list once,
-            // replacing the partial first-arrived list. This is a single atomic swap
-            // rather than incremental insertions, so existing card positions don't jump.
+            // Both sections are now loaded. Show the server snapshot immediately;
+            // exact-date enrichment commits later as one atomic batch.
             rebuildMergedVideos()
-            shortsVideos = await fetchedShortsResult.0
+            let fetchedShorts = await fetchedShortsResult.0
+            shortsVideos = VideoPublicationSortPolicy.sorted(fetchedShorts, for: .home)
             shortsNextPageToken = await fetchedShortsResult.1
             // Fill the initial threshold (6 iOS / 8 tvOS) quickly.
             // Further pages are loaded lazily as the user scrolls to the last card.
             await loadMoreShortsIfNeeded()
             isRefreshing = false
             loadedAt = Date()
+            schedulePublicationEnrichment()
             let merged = self.mergedVideos
             let mergedShorts = merged.filter { $0.isShort }.count
             homeLog.notice("load complete: merged=\(merged.count) regular=\(merged.count - mergedShorts) mergedShorts=\(mergedShorts) shortsSection=\(shortsVideos.count)")
@@ -302,23 +259,56 @@ public final class HomeViewModel {
                 // are also caught — not just duplicates against existing videos.
                 var seenIds = Set(sections[idx].videos.map(\.id))
                 let deduplicated = newVideos.filter { seenIds.insert($0.id).inserted }
-                sections[idx].videos.append(contentsOf: deduplicated)
-                // NOTE: Do NOT sort after appending. The YouTube subscription feed API
-                // returns pages in reverse-chronological order — page N+1 videos are
-                // always older than page N. Sorting the entire array after each append
-                // reorders existing items in SwiftUI's ForEach / mergedVideos interleave,
-                // which breaks the LazyVGrid scroll position (content shifts under the
-                // user's offset, making previously-seen cards reappear and the list
-                // appear to jump back).
-                //
-                // Stable-append to mergedVideos: only add videos not already present,
-                // preserving all existing card positions.
-                let existingMergedIds = Set(mergedVideos.map(\.id))
-                let newForMerged = deduplicated.filter { !existingMergedIds.contains($0.id) }
-                mergedVideos.append(contentsOf: newForMerged)
+                let route: VideoListRoute = type == .subscriptions ? .subscriptions : .home
+                sections[idx].videos = VideoPublicationSortPolicy.merging(
+                    existing: sections[idx].videos,
+                    page: deduplicated,
+                    for: route
+                )
+                rebuildMergedVideos()
+                schedulePublicationEnrichment()
                 sections[idx].nextPageToken = nextToken
                 sections[idx].isLoadingMore = false
             }
+        }
+    }
+
+    private func enrichedSectionSnapshots(_ snapshots: [[Video]]) async -> [[Video]] {
+        let all = snapshots.flatMap { $0 }
+        let enriched = await VideoPublicationDateEnricher.shared.enrich(all) { [api] id in
+            try? await api.fetchExactPublicationDate(videoId: id)
+        }
+        let metadata = Dictionary(uniqueKeysWithValues: enriched.map { ($0.id, $0) })
+        return snapshots.enumerated().map { index, videos in
+            let route: VideoListRoute = sections[index].section.type == .subscriptions ? .subscriptions : .home
+            let patched = videos.map { video -> Video in
+                guard video.publishedAt == nil, let source = metadata[video.id] else { return video }
+                var copy = video
+                copy.publishedAt = source.publishedAt
+                copy.publicationDateStatus = source.publicationDateStatus
+                return copy
+            }
+            return VideoPublicationSortPolicy.sorted(patched, for: route)
+        }
+    }
+
+    private func schedulePublicationEnrichment() {
+        publicationEnrichmentTask?.cancel()
+        let sectionSnapshots = sections.map(\.videos)
+        let sectionIDs = sectionSnapshots.map { $0.map(\.id) }
+        let shortsSnapshot = shortsVideos
+        publicationEnrichmentTask = Task { [weak self] in
+            guard let self else { return }
+            let enrichedSections = await self.enrichedSectionSnapshots(sectionSnapshots)
+            let enrichedShorts = await VideoPublicationDateEnricher.shared.enrich(shortsSnapshot) { [api] id in
+                try? await api.fetchExactPublicationDate(videoId: id)
+            }
+            guard !Task.isCancelled, self.sections.map({ $0.videos.map(\.id) }) == sectionIDs else { return }
+            for index in self.sections.indices where index < enrichedSections.count {
+                self.sections[index].videos = enrichedSections[index]
+            }
+            self.shortsVideos = VideoPublicationSortPolicy.sorted(enrichedShorts, for: .home)
+            self.rebuildMergedVideos()
         }
     }
 

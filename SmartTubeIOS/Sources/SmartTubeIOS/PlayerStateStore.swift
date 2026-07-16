@@ -4,6 +4,7 @@ import UIKit
 import Observation
 import SmartTubeIOSCore
 import OSLog
+import UniformTypeIdentifiers
 
 private let storeLog = Logger(subsystem: "com.void.smarttube.app", category: "PlayerStateStore")
 
@@ -129,6 +130,73 @@ public final class PlayerStateStore {
         currentVideo = video
         presentation = .fullScreen
         storeLog.notice("[PlayerStateStore] play — presentation set to .fullScreen")
+    }
+
+    /// Audio-first tap path: show the compact player immediately while the
+    /// coordinator resolves the single progressive/offline byte source.
+    func prepareAudioFirst(video: Video) {
+        currentVideo = video
+        presentation = .miniPlayer
+    }
+
+    /// Installs the sparse-cache item without waiting for a download threshold.
+    /// The coordinator starts playback immediately so AVPlayer can request the
+    /// header, tail index and first media ranges it actually needs.
+    func prepareProgressiveAudio(item: AVPlayerItem, video: Video) {
+        currentVideo = video
+        presentation = .miniPlayer
+        vm.loadPreparedAudio(item: item, video: video, startImmediately: false)
+    }
+
+    func startPreparedAudioPlayback() {
+        vm.startPreparedAudioPlayback()
+    }
+
+    /// Resolves and validates a local asset before touching the current player.
+    /// This path intentionally never enters the extractor/BotGuard pipeline.
+    func validatedLocalAudioItem(for video: Video) async throws -> AVPlayerItem {
+        guard let localURL = video.localFileURL else {
+            throw NSError(domain: "AxrTubeOffline", code: 20, userInfo: [
+                NSLocalizedDescriptionKey: "Offline item has no local file."
+            ])
+        }
+        let downloadsDirectory = FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SmartTubeDownloads", isDirectory: true)
+            .standardizedFileURL.path
+        let standardizedURL = localURL.standardizedFileURL
+        guard standardizedURL.path.hasPrefix(downloadsDirectory + "/"),
+              FileManager.default.isReadableFile(atPath: standardizedURL.path),
+              let values = try? standardizedURL.resourceValues(forKeys: [.fileSizeKey]),
+              (values.fileSize ?? 0) > 0 else {
+            throw NSError(domain: "AxrTubeOffline", code: 21, userInfo: [
+                NSLocalizedDescriptionKey: "Offline file is missing or unreadable."
+            ])
+        }
+        guard UTType(filenameExtension: standardizedURL.pathExtension)?.conforms(to: .audiovisualContent) == true
+                || ["m4a", "mp4", "mov"].contains(standardizedURL.pathExtension.lowercased()) else {
+            throw NSError(domain: "AxrTubeOffline", code: 22, userInfo: [
+                NSLocalizedDescriptionKey: "Offline file type is not supported by iOS."
+            ])
+        }
+
+        let asset = AVURLAsset(url: standardizedURL)
+        let isPlayable = try await asset.load(.isPlayable)
+        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
+        guard isPlayable, !audioTracks.isEmpty else {
+            throw NSError(domain: "AxrTubeOffline", code: 23, userInfo: [
+                NSLocalizedDescriptionKey: "Offline file does not contain playable audio."
+            ])
+        }
+        let item = AVPlayerItem(asset: asset)
+        item.audioTimePitchAlgorithm = .spectral
+        return item
+    }
+
+    func playAudioFirstLocal(video: Video, item: AVPlayerItem) {
+        currentVideo = video
+        presentation = .miniPlayer
+        vm.loadPreparedAudio(item: item, video: video, startImmediately: true)
     }
 
     /// Collapse the full-screen player to the mini-player bar. Playback continues.

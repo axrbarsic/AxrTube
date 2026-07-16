@@ -33,11 +33,30 @@ public final class SettingsStore {
     private static let key = "smarttube_app_settings"
 
     static func migrateToCurrentSchema(_ stored: AppSettings) -> (settings: AppSettings, changed: Bool) {
-        guard stored.settingsVersion < 2 else { return (stored, false) }
         var migrated = stored
-        migrated.backgroundPlaybackEnabled = true
-        migrated.settingsVersion = 2
-        return (migrated, true)
+        var changed = false
+        if migrated.settingsVersion < 3 {
+            migrated.backgroundPlaybackEnabled = true
+            migrated.audioOnlyMode = true
+            migrated.autoplayEnabled = false
+            migrated.offlineAutoSaveMode = .audio
+            changed = true
+        }
+        if migrated.settingsVersion < 4 {
+            // Product default from v4: Shorts are opt-in. This one-time
+            // migration also gives existing installs the new default.
+            migrated.hideShorts = true
+            changed = true
+        }
+        if migrated.settingsVersion < 5 {
+            // Compact cards are the new install/update default, while remaining
+            // independently reversible by the user after this one-time migration.
+            migrated.compactSearchCards = true
+            migrated.compactMediaLibraryCards = true
+            changed = true
+        }
+        if changed { migrated.settingsVersion = 5 }
+        return (migrated, changed)
     }
 
     public init() {
@@ -52,9 +71,9 @@ public final class SettingsStore {
                     UserDefaults.standard.set(migrated, forKey: Self.key)
                 }
             }
-            self.settings = migration.settings
+            self.settings = Self.enforcingAudioFirstContract(migration.settings)
         } else {
-            self.settings = AppSettings()
+            self.settings = Self.enforcingAudioFirstContract(AppSettings())
         }
         // Reset settings to defaults when launched for UI testing so each test
         // suite starts from a clean, known state and prior runs cannot bleed in.
@@ -87,6 +106,15 @@ public final class SettingsStore {
     }
 
     public func reset() {
-        settings = AppSettings()
+        settings = Self.enforcingAudioFirstContract(AppSettings())
+    }
+
+    private static func enforcingAudioFirstContract(_ input: AppSettings) -> AppSettings {
+        var result = input
+        result.backgroundPlaybackEnabled = true
+        result.audioOnlyMode = true
+        result.autoplayEnabled = false
+        result.offlineAutoSaveMode = .audio
+        return result
     }
 }

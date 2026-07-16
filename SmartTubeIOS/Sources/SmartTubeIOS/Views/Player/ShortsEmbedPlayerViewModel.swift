@@ -65,6 +65,9 @@ final class ShortsEmbedPlayerViewModel: NSObject {
     /// verification (see below) checks this hasn't changed before re-asserting
     /// playback, so it never overrides a more recent, deliberate pause.
     private var playPauseEpoch: Int = 0
+    #if os(iOS)
+    @ObservationIgnored var audioRecovery = WebPlaybackAudioRecoveryController(source: "shorts")
+    #endif
     /// Cancelled once "ready" arrives for the in-flight `loadShort` (see
     /// ShortsEmbedPlayerViewModel+WebBridge.swift's "ready" case); if it fires
     /// first, `playerError` is set to `.webViewLoadFailed` so the new `advanceAfterError()`
@@ -214,6 +217,9 @@ final class ShortsEmbedPlayerViewModel: NSObject {
         let navDel = ShortsNavigationDelegate()
         self.webView.navigationDelegate = navDel
         self.navigationDelegate = navDel
+        #if os(iOS)
+        audioRecovery.delegate = self
+        #endif
     }
 
     deinit {
@@ -313,6 +319,9 @@ final class ShortsEmbedPlayerViewModel: NSObject {
     func activate() {
         isStandby = false
         hasReceivedFirstTick = false
+        #if os(iOS)
+        audioRecovery.start()
+        #endif
         play()
         CFNotificationCenterPostNotification(
             CFNotificationCenterGetDarwinNotifyCenter(),
@@ -327,7 +336,10 @@ final class ShortsEmbedPlayerViewModel: NSObject {
     /// duplicating the URL/HTML construction.
     private func startEmbed(videoId: String) {
         #if os(iOS)
-        _ = PlaybackViewModel.activatePlaybackAudioSession(reason: "Shorts embed playback")
+        if !isStandby {
+            audioRecovery.start()
+            _ = PlaybackViewModel.activatePlaybackAudioSession(reason: "Shorts embed playback")
+        }
         #endif
         let url = ShortsEmbedURL.embedURL(videoId: videoId)
         let html = ShortsEmbedURL.htmlWrapper(embedURL: url)
@@ -367,6 +379,10 @@ final class ShortsEmbedPlayerViewModel: NSObject {
     // `embedFrameInfo`'s doc comment for why frame-targeting is required.
 
     func play() {
+        #if os(iOS)
+        guard audioRecovery.userRequestedPlay(reason: "Shorts play") else { return }
+        Task { await webView.setAllMediaPlaybackSuspended(false) }
+        #endif
         playPauseEpoch &+= 1
         let myEpoch = playPauseEpoch
         // Wait for any in-flight pauseAllMediaPlayback() (from a just-prior pause())
@@ -394,6 +410,13 @@ final class ShortsEmbedPlayerViewModel: NSObject {
     /// (TOSPlayerViewModel.swift:296-324) for the cross-origin-iframe root cause this
     /// works around.
     func pause() {
+        #if os(iOS)
+        audioRecovery.userPaused(reason: "Shorts pause")
+        #endif
+        pauseWebPlaybackForSystemAudioEvent()
+    }
+
+    func pauseWebPlaybackForSystemAudioEvent() {
         playPauseEpoch &+= 1
         pauseAllMediaTask = Task { [weak self] in
             guard let self else { return }

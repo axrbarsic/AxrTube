@@ -89,8 +89,11 @@ struct TOSMiniPlayerView: View {
             .accessibilityIdentifier("tosPlayer.miniPlayer.closeButton")
         }
         .padding(.leading, 4)
-        .frame(height: 62)
-        .background(.regularMaterial)
+        .frame(height: 66)
+        .background(SmartTubeVisualTokens.panel.opacity(0.97))
+        .smartTubeCardSurface(cornerRadius: 16, contentPadding: 0)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 4)
         // Without this, SwiftUI flattens this HStack's accessibility tree so each
         // child Button (play/pause, expand, close) inherits THIS container's
         // identifier ("tosPlayer.miniPlayerBar") instead of its own — e.g.

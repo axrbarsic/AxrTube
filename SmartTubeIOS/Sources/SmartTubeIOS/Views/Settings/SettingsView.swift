@@ -10,8 +10,10 @@ import SmartTubeIOSCore
 public struct SettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SettingsStore.self) private var store
+    @Environment(DownloadStore.self) private var downloadStore
     @State private var showSignIn = false
     @State private var reportSent = false
+    @State private var showClearOfflineConfirmation = false
     #if os(tvOS)
     @State private var showGithubQR = false
     #endif
@@ -19,21 +21,20 @@ public struct SettingsView: View {
     public init() {}
 
     public var body: some View {
+        #if os(iOS)
+        matrixBody
+        #else
         Form {
             accountSection
-            playerSection
-            generalSection
-            uiSection
-            sponsorBlockSection
-            deArrowSection
-            #if os(macOS)
-            experimentalSection
-            #endif
+            audioSection
+            offlineSection
             aboutSection
         }
         #if os(macOS)
         .formStyle(.grouped)
         #endif
+        .scrollContentBackground(.hidden)
+        .smartTubeScreenSurface()
         // Hide the blank navigation bar on iOS and tvOS — a visible nav bar on tvOS
         // conflicts with the TabView tab bar scroll-hide animation (issue #102 / gh-34).
         // .navigationBar placement is unavailable on macOS.
@@ -45,6 +46,217 @@ public struct SettingsView: View {
             GitHubQRView()
         }
         #endif
+        .alert("Clear Offline Collection", isPresented: $showClearOfflineConfirmation) {
+            Button("Clear All", role: .destructive) { downloadStore.clearAll() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("All downloaded video and audio files will be removed from iPocketTube.")
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private var matrixBody: some View {
+        ScrollView {
+            LazyVStack(spacing: 14) {
+                SmartTubeMatrixHeader(title: "Settings")
+                    .padding(.horizontal, -SmartTubeVisualTokens.horizontalPadding)
+
+                SmartTubeMatrixSection("Account", systemImage: "person.crop.circle") {
+                    matrixAccountContent
+                }
+
+                SmartTubeMatrixSection("Audio", systemImage: "waveform") {
+                    matrixAudioContent
+                }
+
+                SmartTubeMatrixSection("Content", systemImage: "rectangle.stack") {
+                    matrixContentContent
+                }
+
+                SmartTubeMatrixSection("Always On", systemImage: "checkmark.shield.fill") {
+                    Text("No ads • background • pause for external audio")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(SmartTubeVisualTokens.mintSoft)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                SmartTubeMatrixSection("Diagnostics & About", systemImage: "info.circle") {
+                    matrixAboutContent
+                }
+            }
+            .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
+            .padding(.bottom, 20)
+        }
+        .scrollContentBackground(.hidden)
+        .smartTubeScreenSurface()
+        .toolbar(.hidden, for: .navigationBar)
+    }
+
+    @ViewBuilder private var matrixAccountContent: some View {
+        if auth.isSignedIn {
+            HStack(spacing: 12) {
+                AsyncImage(url: auth.accountAvatarURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        Circle().fill(SmartTubeVisualTokens.panelElevated)
+                            .overlay(Image(systemName: "person.fill"))
+                    }
+                }
+                .frame(width: 44, height: 44)
+                .clipShape(Circle())
+                Text(auth.accountName ?? String(localized: "Unknown", bundle: .module))
+                    .font(.headline)
+                Spacer()
+            }
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+            Button(role: .destructive) { auth.signOut() } label: {
+                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button { showSignIn = true } label: {
+                Label("Sign in with Google", systemImage: "person.badge.key")
+                    .font(.headline)
+                    .foregroundStyle(.black)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(SmartTubeVisualTokens.mint, in: RoundedRectangle(cornerRadius: 14))
+            }
+            .buttonStyle(.plain)
+            .sheet(isPresented: $showSignIn) { SignInView() }
+        }
+    }
+
+    private var matrixAudioContent: some View {
+        @Bindable var store = store
+        return VStack(spacing: 0) {
+            HStack {
+                Label("Audio Quality", systemImage: "slider.horizontal.3")
+                Spacer()
+                Text("Auto")
+                    .foregroundStyle(SmartTubeVisualTokens.mintSoft)
+            }
+            .frame(minHeight: 44)
+            .accessibilityIdentifier("settings.audioQuality")
+
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+
+            Toggle(isOn: $store.settings.downloadsWiFiOnly) {
+                Label("Wi-Fi Only Downloads", systemImage: "wifi")
+            }
+            .tint(SmartTubeVisualTokens.mint)
+            .frame(minHeight: 48)
+            .accessibilityIdentifier("settings.downloadsWiFiOnly")
+        }
+    }
+
+    private var matrixContentContent: some View {
+        @Bindable var store = store
+        return VStack(spacing: 0) {
+            Toggle(isOn: $store.settings.compactSearchCards) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Compact Search Cards", systemImage: "rectangle.compress.vertical")
+                    Text("Half the vertical height")
+                        .font(.caption)
+                        .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                }
+            }
+            .tint(SmartTubeVisualTokens.mint)
+            .frame(minHeight: 56)
+            .accessibilityIdentifier("settings.compactSearchCardsToggle")
+
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+
+            Toggle(isOn: $store.settings.compactMediaLibraryCards) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Compact Media Library Cards", systemImage: "rectangle.stack")
+                    Text("Half the vertical height")
+                        .font(.caption)
+                        .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                }
+            }
+            .tint(SmartTubeVisualTokens.mint)
+            .frame(minHeight: 56)
+            .accessibilityIdentifier("settings.compactMediaLibraryCardsToggle")
+
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+
+            Toggle(isOn: Binding(
+                get: { store.settings.showShorts },
+                set: { store.settings.showShorts = $0 }
+            )) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Show Shorts", systemImage: "rectangle.portrait.on.rectangle.portrait")
+                    Text("Shorts appear in video feeds")
+                        .font(.caption)
+                        .foregroundStyle(SmartTubeVisualTokens.secondaryText)
+                }
+            }
+            .tint(SmartTubeVisualTokens.mint)
+            .frame(minHeight: 52)
+            .accessibilityIdentifier("settings.showShortsToggle")
+        }
+    }
+
+    private var matrixAboutContent: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Label("Version", systemImage: "app.badge")
+                Spacer()
+                Text(appVersion).foregroundStyle(SmartTubeVisualTokens.secondaryText)
+            }
+            .frame(minHeight: 44)
+
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+
+            Button {
+                CrashlyticsLogger.sendDiagnosticReport()
+                reportSent = true
+            } label: {
+                Label(reportSent ? "Report Sent" : "Send Diagnostic Report", systemImage: reportSent ? "checkmark.circle.fill" : "ladybug")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+            .disabled(reportSent)
+            .accessibilityIdentifier("settings.sendDiagnosticReportButton")
+
+            if let reportURL = AudioDiagnostics.shared.exportURL {
+                Divider().overlay(SmartTubeVisualTokens.stroke)
+
+                ShareLink(item: reportURL) {
+                    Label("Export Playback Journal", systemImage: "square.and.arrow.up")
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                }
+                .accessibilityIdentifier("settings.exportPlaybackJournal")
+            }
+
+            Divider().overlay(SmartTubeVisualTokens.stroke)
+
+            Link(destination: URL(string: "https://github.com/axrbarsic/iPocketTube/blob/alex-personal/LICENSE")!) {
+                Label("Licenses", systemImage: "doc.text")
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            }
+            .accessibilityIdentifier("settings.licensesLink")
+        }
+    }
+    #endif
+
+    // MARK: - Audio-first contract
+
+    private var audioSection: some View {
+        @Bindable var store = store
+        return Section {
+            LabeledContent("Audio Quality", value: String(localized: "Auto", bundle: .module))
+                .accessibilityIdentifier("settings.audioQuality")
+            Toggle("Wi-Fi Only Downloads", isOn: $store.settings.downloadsWiFiOnly)
+                .accessibilityIdentifier("settings.downloadsWiFiOnly")
+        } header: {
+            Text("Audio")
+        } footer: {
+            Text("No ads, background playback, and pausing for external audio are always on.")
+        }
     }
 
     // MARK: - Account
@@ -96,7 +308,11 @@ public struct SettingsView: View {
             #if !os(iOS)
             Picker("Max Resolution", selection: $store.settings.preferredQuality) {
                 ForEach(AppSettings.VideoQuality.allCases, id: \.self) { q in
-                    Text(q.rawValue.capitalized).tag(q)
+                    if q == .auto {
+                        Text("Auto").tag(q)
+                    } else {
+                        Text(verbatim: q.rawValue).tag(q)
+                    }
                 }
             }
             .accessibilityIdentifier("settings.preferredQualityPicker")
@@ -190,6 +406,37 @@ public struct SettingsView: View {
         }
     }
 
+    // MARK: - Offline collection
+
+    private var offlineSection: some View {
+        @Bindable var store = store
+        return Section {
+            Picker("Storage Limit", selection: $store.settings.offlineStorageLimitMB) {
+                Text("1 GB").tag(1024)
+                Text("2 GB").tag(2048)
+                Text("4 GB").tag(4096)
+                Text("8 GB").tag(8192)
+                Text("16 GB").tag(16384)
+            }
+            .accessibilityIdentifier("settings.offlineStorageLimit")
+
+            LabeledContent(
+                "Collection Size",
+                value: ByteCountFormatter.string(fromByteCount: downloadStore.totalSizeBytes, countStyle: .file)
+            )
+
+            if !downloadStore.entries.isEmpty {
+                Button("Clear Offline Collection", role: .destructive) {
+                    showClearOfflineConfirmation = true
+                }
+            }
+        } header: {
+            Text("Offline Collection")
+        } footer: {
+            Text("Every tapped video is saved as audio. Duplicate items are reused and the storage limit protects the device.")
+        }
+    }
+
     // MARK: - UI
 
     private var uiSection: some View {
@@ -197,7 +444,7 @@ public struct SettingsView: View {
         return Section("Interface") {
             Picker("Theme", selection: $store.settings.themeName) {
                 ForEach(AppSettings.ThemeName.allCases, id: \.self) { t in
-                    Text(t.rawValue).tag(t)
+                    Text(LocalizedStringKey(t.rawValue), bundle: .module).tag(t)
                 }
             }
             .accessibilityIdentifier("settings.themeRow")
@@ -279,18 +526,26 @@ public struct SettingsView: View {
         }
     }
 
-    // MARK: - Experimental (macOS)
+    // MARK: - Experimental
 
-    #if os(macOS)
+    #if !os(tvOS)
     private var experimentalSection: some View {
         @Bindable var store = store
         return Section {
+            Toggle("EDR Press Glow", isOn: $store.settings.experimentalEDRPressGlowEnabled)
+                .accessibilityIdentifier("settings.experimentalEDRPressGlow")
+            #if os(macOS)
             Toggle("IFrame Player (TOS-compliant, shows ads)", isOn: $store.settings.useTOSPlayerOnMac)
                 .accessibilityIdentifier("settings.useTOSPlayerOnMacToggle")
+            #endif
         } header: {
             Text("Experimental")
         } footer: {
-            Text("Uses YouTube's official embedded player instead of the direct stream pipeline. Quality selection and downloads are unavailable. Ads will play. Useful for videos that refuse to play via the standard path.")
+            #if os(macOS)
+            Text("EDR press glow targets supported displays. The IFrame player uses YouTube's official embedded player; quality selection and downloads are unavailable.")
+            #else
+            Text("Uses true local EDR headroom on supported displays. Simulator, Low Power Mode, and SDR displays use a restrained fallback.")
+            #endif
         }
     }
     #endif
@@ -307,7 +562,7 @@ public struct SettingsView: View {
                 Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #else
-            Link(destination: URL(string: "https://github.com/milika/SmartTubeIOS")!) {
+            Link(destination: URL(string: "https://github.com/axrbarsic/iPocketTube")!) {
                 Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #endif
@@ -324,8 +579,8 @@ public struct SettingsView: View {
             }
             .disabled(reportSent)
             .accessibilityIdentifier("settings.sendDiagnosticReportButton")
-            Button("Reset All Settings", role: .destructive) { store.reset() }
-                .accessibilityIdentifier("settings.resetAllButton")
+            Link("Licenses", destination: URL(string: "https://github.com/axrbarsic/iPocketTube/blob/alex-personal/LICENSE")!)
+                .accessibilityIdentifier("settings.licensesLink")
         } header: {
             Text("About")
         }
@@ -346,7 +601,7 @@ public struct SettingsView: View {
 private struct GitHubQRView: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let githubURL = "https://github.com/milika/SmartTubeIOS"
+    private let githubURL = "https://github.com/axrbarsic/iPocketTube"
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
@@ -358,7 +613,7 @@ private struct GitHubQRView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(.white)
 
-                    Text("SmartTube on GitHub")
+                    Text("iPocketTube on GitHub")
                         .font(.largeTitle).fontWeight(.bold)
 
                     Text("Scan the QR code with your phone to view the project on GitHub.")
@@ -405,7 +660,7 @@ struct SectionsSettingsView: View {
         @Bindable var store = store
         List {
             ForEach(allSections) { section in
-                Toggle(section.title, isOn: Binding(
+                Toggle(section.type.localizedTitle, isOn: Binding(
                     get: { store.settings.enabledSections.contains(section.type) },
                     set: { enabled in
                         if enabled {

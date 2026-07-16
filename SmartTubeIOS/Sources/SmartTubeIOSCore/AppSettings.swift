@@ -45,7 +45,17 @@ public struct AppSettings: Codable {
     // MARK: UI
     public var defaultSection: String
     public var compactThumbnails: Bool
+    /// Full-width horizontal cards in Search/Home/Recommended feeds.
+    public var compactSearchCards: Bool
+    /// Full-width horizontal cards in Media Library catalogues.
+    public var compactMediaLibraryCards: Bool
     public var hideShorts: Bool
+    /// User-facing positive form of the persisted legacy `hideShorts` flag.
+    /// Keeping the stored key preserves existing settings compatibility.
+    public var showShorts: Bool {
+        get { !hideShorts }
+        set { hideShorts = !newValue }
+    }
     public var hideLiveShorts: Bool
     public var hideVideoPremieres: Bool
     /// When `true` (default), a per-device `visitorData` token is included in home-feed
@@ -131,6 +141,20 @@ public struct AppSettings: Codable {
     /// ~90% data reduction vs 1080p. Live streams are excluded automatically.
     public var audioOnlyMode: Bool
 
+    // MARK: Offline collection
+    public enum OfflineAutoSaveMode: String, Codable, CaseIterable, Sendable {
+        case off
+        case audio
+        case video
+    }
+    /// Automatic internal saving starts once playback begins. Disabled by default.
+    public var offlineAutoSaveMode: OfflineAutoSaveMode
+    /// Hard collection ceiling in MiB. New saves fail clearly instead of silently
+    /// evicting items or filling the device.
+    public var offlineStorageLimitMB: Int
+    /// When enabled, progressive audio downloads wait for an unmetered Wi-Fi path.
+    public var downloadsWiFiOnly: Bool
+
     // MARK: Codec preference
     /// When `true`, restricts adaptive video format selection to H.264 (`avc1`) only.
     /// Mirrors Android's `limitVideoCodec("avc1")` opt-in for devices with VP9/AV1
@@ -147,6 +171,9 @@ public struct AppSettings: Codable {
     /// instead of the AVPlayer-based pipeline. Ads will play. Quality control is unavailable.
     /// Opt-in experiment — has no effect on tvOS.
     public var useTOSPlayerOnMac: Bool
+    /// Enables local EDR-capable press pulses on selected dark-mode controls.
+    /// Unsupported displays and Simulator use a restrained SDR outline fallback.
+    public var experimentalEDRPressGlowEnabled: Bool
 
     // Note: there is no user-facing `useTOSPlayerOnIOS` setting. iOS uses the
     // native AVPlayer pipeline by default because WKWebView media is suspended by
@@ -235,7 +262,9 @@ public struct AppSettings: Codable {
         queueShuffleEnabled  = false
         defaultSection       = BrowseSection.SectionType.home.rawValue
         compactThumbnails    = false
-        hideShorts           = false
+        compactSearchCards   = true
+        compactMediaLibraryCards = true
+        hideShorts           = true
         hideLiveShorts       = false
         hideVideoPremieres   = false
         perDeviceRecommendationsEnabled = true
@@ -264,6 +293,9 @@ public struct AppSettings: Codable {
         deArrowEnabled       = false
         poTokenServiceURL    = nil
         audioOnlyMode        = false
+        offlineAutoSaveMode  = .off
+        offlineStorageLimitMB = 4096
+        downloadsWiFiOnly     = false
         preferH264           = false
         iCloudSyncEnabled    = false
         #if os(macOS)
@@ -271,7 +303,8 @@ public struct AppSettings: Codable {
         #else
         useTOSPlayerOnMac    = false
         #endif
-        settingsVersion      = 2
+        experimentalEDRPressGlowEnabled = true
+        settingsVersion      = 5
     }
 }
 
@@ -315,6 +348,8 @@ extension AppSettings {
         case queueShuffleEnabled
         case defaultSection
         case compactThumbnails
+        case compactSearchCards
+        case compactMediaLibraryCards
         case hideShorts
         case hideLiveShorts
         case hideVideoPremieres
@@ -332,9 +367,13 @@ extension AppSettings {
         case deArrowEnabled
         case poTokenServiceURL
         case audioOnlyMode
+        case offlineAutoSaveMode
+        case offlineStorageLimitMB
+        case downloadsWiFiOnly
         case preferH264
         case iCloudSyncEnabled
         case useTOSPlayerOnMac
+        case experimentalEDRPressGlowEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -358,6 +397,8 @@ extension AppSettings {
         queueShuffleEnabled          = c.safeDecode(Bool.self,              forKey: .queueShuffleEnabled,          default: d.queueShuffleEnabled)
         defaultSection               = c.safeDecode(String.self,            forKey: .defaultSection,               default: d.defaultSection)
         compactThumbnails            = c.safeDecode(Bool.self,              forKey: .compactThumbnails,            default: d.compactThumbnails)
+        compactSearchCards           = c.safeDecode(Bool.self,              forKey: .compactSearchCards,           default: d.compactSearchCards)
+        compactMediaLibraryCards     = c.safeDecode(Bool.self,              forKey: .compactMediaLibraryCards,     default: d.compactMediaLibraryCards)
         hideShorts                   = c.safeDecode(Bool.self,              forKey: .hideShorts,                   default: d.hideShorts)
         hideLiveShorts               = c.safeDecode(Bool.self,              forKey: .hideLiveShorts,               default: d.hideLiveShorts)
         hideVideoPremieres           = c.safeDecode(Bool.self,              forKey: .hideVideoPremieres,           default: d.hideVideoPremieres)
@@ -375,8 +416,12 @@ extension AppSettings {
         deArrowEnabled               = c.safeDecode(Bool.self,              forKey: .deArrowEnabled,               default: d.deArrowEnabled)
         poTokenServiceURL            = c.safeDecode(URL?.self,              forKey: .poTokenServiceURL,            default: d.poTokenServiceURL)
         audioOnlyMode                = c.safeDecode(Bool.self,              forKey: .audioOnlyMode,                default: d.audioOnlyMode)
+        offlineAutoSaveMode          = c.safeDecode(OfflineAutoSaveMode.self, forKey: .offlineAutoSaveMode,       default: d.offlineAutoSaveMode)
+        offlineStorageLimitMB        = c.safeDecode(Int.self,               forKey: .offlineStorageLimitMB,        default: d.offlineStorageLimitMB)
+        downloadsWiFiOnly            = c.safeDecode(Bool.self,              forKey: .downloadsWiFiOnly,            default: d.downloadsWiFiOnly)
         preferH264                   = c.safeDecode(Bool.self,              forKey: .preferH264,                   default: d.preferH264)
         iCloudSyncEnabled            = c.safeDecode(Bool.self,              forKey: .iCloudSyncEnabled,            default: d.iCloudSyncEnabled)
         useTOSPlayerOnMac            = c.safeDecode(Bool.self,              forKey: .useTOSPlayerOnMac,            default: d.useTOSPlayerOnMac)
+        experimentalEDRPressGlowEnabled = c.safeDecode(Bool.self,           forKey: .experimentalEDRPressGlowEnabled, default: d.experimentalEDRPressGlowEnabled)
     }
 }

@@ -132,7 +132,6 @@ extension PlaybackViewModel {
         player.replaceCurrentItem(with: nil)
         isPlaying = false
         audioInterruptionState.reset()
-        wasPlayingBeforeMediaServicesLoss = false
         videoEnded = false
         wasPlayingBeforeSuspend = false
         currentTime = 0
@@ -240,26 +239,79 @@ extension PlaybackViewModel {
     /// Reactivates the AVAudioSession and resumes the player if it was playing
     /// before the interruption/background transition.
     public func handleForeground() {
+        playbackSceneState = .active
         guard player.currentItem != nil else { return }
         #if canImport(UIKit)
-        Self.activatePlaybackAudioSession(reason: "foreground transition")
+        _ = audioInterruptionState.enteredForeground()
+        AudioDiagnostics.shared.record(
+            event: "lifecycle.foreground",
+            decision: isPlaying ? "playIntent" : "pausedIntent",
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration
+        )
+        guard !isHandlingAudioInterruption,
+              !audioInterruptionState.mediaServicesAreLost else { return }
         #endif
         // Resume only if we consider ourselves to be in playing state.
         // isPlaying is kept in sync with player.rate via KVO, so this only fires
         // when the player was paused while still intending to play (e.g. background transition).
         if isPlaying && player.rate == 0 {
+            #if canImport(UIKit)
+            guard Self.activatePlaybackAudioSession(reason: "foreground transition") else {
+                isPlaying = false
+                updateNowPlayingPlayback()
+                return
+            }
+            _ = resumeAudiblePlayback(reason: "foreground transition")
+            #else
             player.rate = Float(settings.playbackSpeed)
+            #endif
             playerLog.notice("[handleForeground] resumed player after foreground transition")
         }
+    }
+
+    /// Scene inactivity is commonly the first phase of pressing the side button.
+    /// It is observational only: no pause, session deactivation, item replacement,
+    /// or Now Playing reset is allowed here.
+    public func handleSceneInactive() {
+        playbackSceneState = .inactive
+        #if canImport(UIKit)
+        AudioDiagnostics.shared.record(
+            event: "lifecycle.inactive",
+            decision: isPlaying ? "preservePlaybackAndMetadata" : "preservePausedMetadata",
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration,
+            itemID: currentVideo?.id
+        )
+        if player.currentItem != nil { updateNowPlayingInfo() }
+        #endif
     }
 
     /// Call when the app enters the background.
     /// Pauses playback when the user has disabled background audio.
     public func handleBackground() {
+        playbackSceneState = .background
+        #if canImport(UIKit)
+        let action = audioInterruptionState.enteredBackground(
+            playbackAllowed: settings.backgroundPlaybackEnabled,
+            wasPlaying: isPlaying
+        )
+        AudioDiagnostics.shared.record(
+            event: "lifecycle.background",
+            decision: String(describing: action),
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration,
+            itemID: currentVideo?.id
+        )
+        #endif
         guard !settings.backgroundPlaybackEnabled else { return }
         guard isPlaying else { return }
+        #if canImport(UIKit)
+        performUserPause(reason: "background playback disabled")
+        #else
         player.pause()
-        // isPlaying is synced to false by the rate KVO observer.
+        isPlaying = false
+        #endif
         playerLog.notice("[handleBackground] background playback disabled — paused")
     }
 
@@ -277,6 +329,10 @@ extension PlaybackViewModel {
             }
         }
         wasPlayingBeforeSuspend = isPlaying
+        #if canImport(UIKit)
+        audioRecoveryVerificationTask?.cancel()
+        audioInterruptionState.userPaused()
+        #endif
         player.pause()
         isPlaying = false
         controlsTimer?.cancel()
@@ -306,17 +362,9 @@ extension PlaybackViewModel {
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = false
         updateNowPlayingPlayback()
-        // Deregister from the global command center so a suspended VM never
-        // handles lock screen Play while another VM is the active player.
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
+        // Remote handlers are owned by the app-lifetime PlaybackViewModel. A
+        // temporary view suspension must leave the saved track recoverable from
+        // AirPods and the Lock Screen.
         #endif
     }
 
@@ -330,14 +378,18 @@ extension PlaybackViewModel {
         playerLog.notice("[resume] resume() called — currentVideo=\(self.currentVideo?.id ?? "nil")")
         wasPlayingBeforeSuspend = false
         #if canImport(UIKit)
-        // Re-register lock screen commands (removed in suspend()).
+        // Idempotently verify the app-lifetime Lock Screen owner.
         setupRemoteCommandCenter()
         #endif
         // Re-establish the rate KVO observer (invalidated in suspend()) so isPlaying
         // stays in sync with the player again for this resumed session.
         setupRateObserver()
+        #if canImport(UIKit)
+        performUserPlay(reason: "player resume")
+        #else
         player.rate = Float(settings.playbackSpeed)
         isPlaying = true
+        #endif
         showControls()
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = true
@@ -438,6 +490,9 @@ extension PlaybackViewModel {
                 .appendingPathComponent("SmartTubeDownloads").path
             if localURL.path.hasPrefix(downloadsDir),
                FileManager.default.fileExists(atPath: localURL.path) {
+                // A local M4A uses the exact same AVPlayer/audio-session/remote-command
+                // path as video, but keeps the thumbnail visible as player chrome.
+                isAudioOnlyMode = video.localMediaKind == .audio || settings.audioOnlyMode
                 let item = AVPlayerItem(url: localURL)
                 item.audioTimePitchAlgorithm = .spectral
                 // Wire up observers BEFORE replaceCurrentItem (task-80 rule).
@@ -1095,7 +1150,6 @@ extension PlaybackViewModel {
         parkedVideoId = currentVideo?.id
         isPlaying = false
         audioInterruptionState.reset()
-        wasPlayingBeforeMediaServicesLoss = false
         #if canImport(UIKit)
         Self.deactivatePlaybackAudioSession(reason: "player stop")
         #endif
@@ -1166,32 +1220,10 @@ extension PlaybackViewModel {
         #if canImport(UIKit)
         UIApplication.shared.isIdleTimerDisabled = false
         clearNowPlayingInfo()
-        let center = MPRemoteCommandCenter.shared()
-        center.playCommand.removeTarget(nil)
-        center.pauseCommand.removeTarget(nil)
-        center.togglePlayPauseCommand.removeTarget(nil)
-        center.skipForwardCommand.removeTarget(nil)
-        center.skipBackwardCommand.removeTarget(nil)
-        center.changePlaybackPositionCommand.removeTarget(nil)
-        center.nextTrackCommand.removeTarget(nil)
-        center.previousTrackCommand.removeTarget(nil)
         #endif
-        if let obs = audioSessionObserver {
-            NotificationCenter.default.removeObserver(obs)
-            audioSessionObserver = nil
-        }
-        if let obs = audioRouteChangeObserver {
-            NotificationCenter.default.removeObserver(obs)
-            audioRouteChangeObserver = nil
-        }
-        if let obs = mediaServicesLostObserver {
-            NotificationCenter.default.removeObserver(obs)
-            mediaServicesLostObserver = nil
-        }
-        if let obs = mediaServicesResetObserver {
-            NotificationCenter.default.removeObserver(obs)
-            mediaServicesResetObserver = nil
-        }
+        // Audio observers and remote handlers are app-lifetime infrastructure.
+        // Explicit stop clears the current source/session but does not destroy
+        // the machinery needed by the next saved item.
     }
 
     // MARK: - Phase 2: Background enrichment

@@ -12,6 +12,7 @@ import AppKit
 
 public struct SignInView: View {
     @Environment(AuthService.self) private var auth
+    @Environment(SettingsStore.self) private var settingsStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var showError = false
@@ -52,6 +53,7 @@ public struct SignInView: View {
                 if hasError == 1 { showError = true }
             }
         }
+        .smartTubeScreenSurface()
         .task {
             await auth.beginSignIn()
         }
@@ -116,7 +118,7 @@ public struct SignInView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(.red)
 
-                    Text("Sign in to SmartTube")
+                    Text("Sign in to iPocketTube")
                         .font(.largeTitle).fontWeight(.bold)
 
                     Text("On any device, open the link below and enter the code.")
@@ -224,7 +226,7 @@ public struct SignInView: View {
                     .foregroundStyle(.red)
 
                 VStack(spacing: 6) {
-                    Text("Activate SmartTube")
+                    Text("Activate iPocketTube")
                         .font(.title2).fontWeight(.bold)
                     Text("On this device, tap the button below — the sign-in page opens with your code already filled in.")
                         .font(.subheadline)
@@ -247,6 +249,10 @@ public struct SignInView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
+                .smartTubeEDRPressEffect(
+                    enabled: settingsStore.settings.experimentalEDRPressGlowEnabled,
+                    cornerRadius: 12
+                )
 
                 // ── Or: scan from another device ────────────────────────────
                 HStack(spacing: 8) {

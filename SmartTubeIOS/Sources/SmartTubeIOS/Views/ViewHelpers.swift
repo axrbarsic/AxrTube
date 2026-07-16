@@ -1,6 +1,28 @@
 import SwiftUI
 import SmartTubeIOSCore
 
+extension BrowseSection.SectionType {
+    /// Localised title for the app-defined browse sections. API-provided content
+    /// titles remain untouched at their call sites.
+    var localizedTitle: String {
+        switch self {
+        case .home:          return String(localized: "Home", bundle: .module)
+        case .recommended:   return String(localized: "Recommended", bundle: .module)
+        case .subscriptions: return String(localized: "Subscriptions", bundle: .module)
+        case .history:       return String(localized: "History", bundle: .module)
+        case .playlists:     return String(localized: "Playlists", bundle: .module)
+        case .channels:      return String(localized: "Channels", bundle: .module)
+        case .shorts:        return String(localized: "Shorts", bundle: .module)
+        case .music:         return String(localized: "Music", bundle: .module)
+        case .news:          return String(localized: "News", bundle: .module)
+        case .gaming:        return String(localized: "Gaming", bundle: .module)
+        case .live:          return String(localized: "Live", bundle: .module)
+        case .sports:        return String(localized: "Sports", bundle: .module)
+        case .settings:      return String(localized: "Settings", bundle: .module)
+        }
+    }
+}
+
 // MARK: - ShortsPresentation
 //
 // Shared Identifiable wrapper used by BrowseView and ChannelView to present

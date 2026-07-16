@@ -12,93 +12,91 @@ import SmartTubeIOSCore
 /// Tapping the bar expands back to full-screen.
 struct MiniPlayerView: View {
     @Environment(PlayerStateStore.self) private var playerState
+    @Environment(PlayerRouter.self) private var playerRouter
 
     var body: some View {
-        HStack(spacing: 8) {
-            // Live video thumbnail (same AVPlayerLayer, transplanted here)
-            MiniPlayerLayerView(hostView: playerState.playerHostView)
-                .frame(width: 96, height: 54)
-                .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                AsyncImage(url: playerRouter.audioFirst.currentVideo?.thumbnailURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        ZStack {
+                            Color.secondary.opacity(0.16)
+                            Image(systemName: "waveform")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(playerState.playingVideo?.title ?? "")
-                    .font(.caption.weight(.medium))
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-                    .accessibilityIdentifier("miniPlayer.titleLabel")
-                Text(playerState.playingVideo?.channelTitle ?? "")
-                    .font(.caption2)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-            }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(playerRouter.audioFirst.currentVideo?.title ?? "")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(2)
+                        .foregroundStyle(.primary)
+                        .accessibilityIdentifier("miniPlayer.titleLabel")
+                    Text(playerRouter.audioFirst.statusText)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .accessibilityIdentifier("miniPlayer.audioStatus")
+                }
 
-            Spacer(minLength: 0)
+                Spacer(minLength: 0)
 
-            Button {
-                playerState.vm.togglePlayPause()
-            } label: {
-                Image(systemName: playerState.vm.isPlaying ? "pause.fill" : "play.fill")
-                    .font(.system(size: 18))
-                    .foregroundStyle(.primary)
-                    .padding(12)
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityIdentifier("miniPlayer.playPauseButton")
+                Button {
+                    playerState.vm.togglePlayPause()
+                } label: {
+                    Image(systemName: playerState.vm.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .disabled(playerState.vm.player.currentItem == nil)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("miniPlayer.playPauseButton")
 
-            Button {
-                playerState.stop()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .padding(12)
+                Button {
+                    playerRouter.closeAudioFirst()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .contentShape(Rectangle())
+                .accessibilityIdentifier("miniPlayer.closeButton")
             }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityIdentifier("miniPlayer.closeButton")
+            .padding(.horizontal, 6)
+
+            ZStack(alignment: .leading) {
+                Rectangle().fill(Color.secondary.opacity(0.15))
+                Rectangle()
+                    .fill(Color.mint.opacity(0.45))
+                    .scaleEffect(x: playerRouter.audioFirst.bufferedProgress, anchor: .leading)
+                Rectangle()
+                    .fill(Color.green)
+                    .scaleEffect(x: playerRouter.audioFirst.downloadProgress, anchor: .leading)
+            }
+            .frame(height: 3)
+            .accessibilityElement()
+            .accessibilityLabel("Audio download progress")
+            .accessibilityValue("\(Int(playerRouter.audioFirst.downloadProgress * 100)) percent")
+            .accessibilityIdentifier("miniPlayer.downloadProgress")
         }
-        .padding(.leading, 4)
-        .padding(.trailing, 4)
-        .frame(height: 62)
-        .background(.regularMaterial)
-        .contentShape(Rectangle())
-        .onTapGesture { playerState.expand() }
-        // Ensure child buttons remain individually discoverable by XCTest even though
-        // the enclosing HStack carries its own onTapGesture (which can cause SwiftUI
-        // to group all children into a single accessibility element).
+        .frame(height: 70)
+        .background(SmartTubeVisualTokens.panel.opacity(0.97))
+        .smartTubeCardSurface(cornerRadius: 16, contentPadding: 0)
+        .padding(.horizontal, 8)
+        .padding(.bottom, 4)
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("miniPlayer.bar")
-        .overlay(alignment: .top) {
-            Divider()
-        }
     }
 }
 
-// MARK: - MiniPlayerLayerView
-
-/// UIViewRepresentable that embeds PersistentPlayerHostView as a subview.
-/// UIView.addSubview transplants the hostView from the full-screen context
-/// automatically — no explicit removeFromSuperview needed.
-private struct MiniPlayerLayerView: UIViewRepresentable {
-    let hostView: PersistentPlayerHostView
-
-    func makeUIView(context: Context) -> UIView {
-        let container = UIView()
-        container.backgroundColor = .black
-        hostView.videoGravity = .resizeAspectFill
-        hostView.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(hostView)
-        NSLayoutConstraint.activate([
-            hostView.topAnchor.constraint(equalTo: container.topAnchor),
-            hostView.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-            hostView.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-            hostView.trailingAnchor.constraint(equalTo: container.trailingAnchor),
-        ])
-        return container
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-}
 #endif

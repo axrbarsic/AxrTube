@@ -7,14 +7,14 @@ struct SmartTubeApp: App {
     @State private var authService: AuthService
     @State private var browseViewModel: BrowseViewModel
     @State private var settingsStore: SettingsStore
-    /// Shared download service used by video cards. Lives at the app scope so
-    /// the download task is not orphaned when a card view leaves the hierarchy
-    /// (e.g. after a context menu dismiss). PlayerView creates its own isolated
-    /// service instance and is unaffected.
+    /// App-scoped download coordinator shared by cards, player, and collection.
     @State private var cardDownloadService: VideoDownloadService
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        #if DEBUG && os(iOS)
+        AudioRecoverySimulatorProbe.runIfRequested()
+        #endif
         let api = InnerTubeAPI()
         _api = State(initialValue: api)
         _authService = State(initialValue: AuthService())

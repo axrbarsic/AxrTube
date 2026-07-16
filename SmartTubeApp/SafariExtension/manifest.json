@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "SmartTube for YouTube",
+  "name": "iPocketTube for YouTube",
   "version": "1.0",
-  "description": "Opens YouTube videos automatically in SmartTube.",
+  "description": "Opens YouTube videos automatically in iPocketTube.",
   "icons": {
     "16":  "icons/Icon-16.png",
     "48":  "icons/Icon-48.png",

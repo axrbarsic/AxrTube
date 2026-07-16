@@ -4,6 +4,11 @@ import Foundation
 
 /// Mirrors the Android `Video` data model.
 public struct Video: Identifiable, Hashable, Codable, Sendable {
+    public enum PublicationDateStatus: String, Hashable, Codable, Sendable {
+        case exact
+        case unavailable
+    }
+
     public let id: String                   // videoId
     public var title: String
     public var channelTitle: String
@@ -17,6 +22,9 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
     /// Preserved for display so the UI shows the honest approximation instead of
     /// formatting the computed `publishedAt` as a precise "May 12"-style string.
     public var publishedTimeText: String?
+    /// `nil` means renderer metadata is present but exact enrichment has not
+    /// completed yet. `.unavailable` is set only after all allowed sources fail.
+    public var publicationDateStatus: PublicationDateStatus?
     public var isLive: Bool
     public var isUpcoming: Bool
     public var isShort: Bool
@@ -40,16 +48,19 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
     /// Transient local file URL set when playing a downloaded video.
     /// Excluded from `CodingKeys` — never persisted to JSON cache.
     public var localFileURL: URL? = nil
+    /// Media representation for a local file. Used to render the thumbnail for
+    /// audio-only M4A items without changing the user's global Audio Only setting.
+    public var localMediaKind: OfflineMediaKind? = nil
     /// `true` when this video refers to a local downloaded file rather than a remote stream.
     public var isDownloaded: Bool { localFileURL != nil }
 
     private enum CodingKeys: String, CodingKey {
         case id, title, channelTitle, channelId, description, thumbnailURL, duration
-        case viewCount, publishedAt, publishedTimeText, isLive, isUpcoming, isShort, hasPortraitThumbnail
+        case viewCount, publishedAt, publishedTimeText, publicationDateStatus, isLive, isUpcoming, isShort, hasPortraitThumbnail
         case watchProgress, playlistId, playlistIndex, badges
         case notInterestedToken, dontLikeToken, hideChannelToken
         case deArrowTitle, deArrowThumbnailTimestamp
-        // localFileURL intentionally omitted — runtime only, never persisted to cache JSON
+        // localFileURL/localMediaKind intentionally omitted — runtime only
     }
 
     public init(
@@ -63,6 +74,7 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
         viewCount: Int? = nil,
         publishedAt: Date? = nil,
         publishedTimeText: String? = nil,
+        publicationDateStatus: PublicationDateStatus? = nil,
         isLive: Bool = false,
         isUpcoming: Bool = false,
         isShort: Bool = false,
@@ -85,6 +97,7 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
         self.viewCount = viewCount
         self.publishedAt = publishedAt
         self.publishedTimeText = publishedTimeText
+        self.publicationDateStatus = publicationDateStatus ?? (publishedAt == nil ? nil : .exact)
         self.isLive = isLive
         self.isUpcoming = isUpcoming
         self.isShort = isShort

@@ -22,8 +22,8 @@ public struct SearchView: View {
 
     public var body: some View {
         VStack(spacing: 0) {
+            compactSearchTitle
             searchBar
-            Divider()
             if !vm.query.isEmpty {
                 filterChipsRow
             }
@@ -44,11 +44,12 @@ public struct SearchView: View {
                 } else if !vm.query.isEmpty {
                     noResultsView
                 } else {
-                    suggestionsListView
+                    discoveryView
                 }
                 #endif
             }
         }
+        .smartTubeScreenSurface()
         #if os(tvOS)
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedVideo) { video in
@@ -58,7 +59,7 @@ public struct SearchView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .navigationDestination(item: $channelDestination) { dest in
-            ChannelView(channelId: dest.channelId)
+            ChannelView(channelId: dest.channelId, catalogContext: .search)
         }
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
@@ -76,6 +77,16 @@ public struct SearchView: View {
     }
 
     // MARK: - Search bar
+
+    private var compactSearchTitle: some View {
+        Text("iPocketTube", bundle: .module)
+            .font(.system(.title2, design: .rounded, weight: .heavy))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
+            .accessibilityAddTraits(.isHeader)
+            .accessibilityIdentifier("search.compactTitle")
+    }
 
     private var searchBar: some View {
         @Bindable var vm = vm
@@ -99,21 +110,67 @@ public struct SearchView: View {
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
+                .frame(width: 44, height: 44)
                 .accessibilityIdentifier("search.clearButton")
             }
+            Menu {
+                if vm.history.isEmpty {
+                    Text("No Recent Searches", bundle: .module)
+                } else {
+                    ForEach(vm.history.prefix(10)) { entry in
+                        Button {
+                            vm.query = entry.query
+                            vm.search()
+                            isSearchFocused = false
+                        } label: {
+                            Label(entry.query, systemImage: "clock")
+                        }
+                    }
+                    Divider()
+                    Button("Clear History", role: .destructive) {
+                        vm.clearHistory()
+                    }
+                }
+            } label: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(vm.history.isEmpty ? SmartTubeVisualTokens.secondaryText : SmartTubeVisualTokens.mintSoft)
+                    .frame(width: 44, height: 44)
+            }
+            .accessibilityLabel("Recent Searches")
+            .accessibilityIdentifier("search.historyMenu")
             Button {
                 showFilterSheet = true
             } label: {
                 Image(systemName: vm.filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                     .foregroundStyle(vm.filter.isDefault ? .secondary : Color.accentColor)
+                    .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
+            .smartTubeEDRPressEffect(
+                enabled: store.settings.experimentalEDRPressGlowEnabled,
+                cornerRadius: 22
+            )
             .accessibilityIdentifier("search.filterButton")
         }
-        .padding(10)
-        .background(Color.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
-        .padding(.horizontal)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14)
+        .frame(minHeight: 44)
+        .background(SmartTubeVisualTokens.panelElevated.opacity(0.95), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(SmartTubeVisualTokens.stroke, lineWidth: 0.8)
+        }
+        .padding(.horizontal, SmartTubeVisualTokens.horizontalPadding)
+        .padding(.bottom, 4)
+    }
+
+    // MARK: - Discovery
+
+    private var discoveryView: some View {
+        // The former Home discovery feed now lives under the primary search
+        // field, so discovery has one owner and one tab. Recent queries moved
+        // into the clock menu beside the field and no longer consume height.
+        HomeView(api: api)
+            .accessibilityIdentifier("search.discoveryFeed")
     }
 
     // MARK: - Active filter chips
@@ -154,11 +211,12 @@ public struct SearchView: View {
     // MARK: - Results
 
     private var resultsView: some View {
-        let hideShorts = store.settings.hideShorts
         let hideLiveShorts = store.settings.hideLiveShorts
         let hideVideoPremieres = store.settings.hideVideoPremieres
-        let displayResults = vm.results
-            .filter { !hideShorts || !$0.isShort }
+        let displayResults = FeedCatalogPolicy.visibleVideos(
+            vm.results,
+            showShorts: store.settings.showShorts
+        )
             .filter { !hideLiveShorts || !($0.isLive && $0.isShort) }
             .filter { !hideVideoPremieres || !$0.isUpcoming }
         return ScrollView {
@@ -180,7 +238,8 @@ public struct SearchView: View {
                         #endif
                     }
                 },
-                loadMore: vm.loadMore
+                loadMore: vm.loadMore,
+                catalogContext: .search
             )
             if vm.isLoading && !vm.results.isEmpty {
                 ProgressView().frame(maxWidth: .infinity).padding()
@@ -243,9 +302,11 @@ public struct SearchView: View {
                 }
             }
 
-            // Suggestions / Recommended section (existing behaviour)
-            Section(header: Text(suggestionsHeader).font(.caption).foregroundStyle(.secondary)) {
-                ForEach(vm.suggestions, id: \.self) { suggestion in
+            // Suggestions are supplied by YouTube for the active query. There
+            // is deliberately no fabricated English fallback.
+            if !vm.suggestions.isEmpty {
+                Section(header: Text(LocalizedStringKey(suggestionsHeader), bundle: .module).font(.caption).foregroundStyle(.secondary)) {
+                    ForEach(vm.suggestions, id: \.self) { suggestion in
                     Button {
                         vm.query = suggestion
                         vm.search()
@@ -269,10 +330,12 @@ public struct SearchView: View {
                         }
                         .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                        .buttonStyle(.plain)
+                    }
                 }
             }
         }
+        .scrollContentBackground(.hidden)
         .listStyle(.plain)
         .accessibilityIdentifier("search.suggestionsContainer")
         // Tapping empty list space (outside a row) must dismiss the keyboard.

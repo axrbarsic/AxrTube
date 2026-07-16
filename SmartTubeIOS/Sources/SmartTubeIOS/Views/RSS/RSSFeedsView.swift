@@ -118,7 +118,8 @@ struct RSSFeedsView: View {
                     #else
                     selectedVideo = video
                     #endif
-                }
+                },
+                catalogContext: .mediaLibrary
             )
             if vm.isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding()

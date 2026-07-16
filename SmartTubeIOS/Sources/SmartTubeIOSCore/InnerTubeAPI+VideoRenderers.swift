@@ -159,10 +159,14 @@ extension InnerTubeAPI {
         // History (and similar sections) use itemSectionRenderer with a header title
         // like "Today", "Yesterday", "This week" that is the closest available date
         // when the tile metadata lines contain no relative date string.
-        var currentSectionDate: Date? = nil
         // Diagnostic counters for unknown/skipped renderers — logged at the end.
         var rendererHits: [String: Int] = [:]
         var rendererMisses: [String: Int] = [:]
+        let adRendererKeys: Set<String> = [
+            "adSlotRenderer", "adRenderer", "promotedSparklesVideoRenderer",
+            "promotedVideoRenderer", "adBreakServiceRenderer", "displayAdRenderer",
+            "carouselAdRenderer", "inFeedAdLayoutRenderer",
+        ]
 
         // Walk the renderer tree to find videoRenderers and continuationItemRenderers.
         // Handles WEB (videoRenderer, richItemRenderer, compactVideoRenderer),
@@ -180,6 +184,11 @@ extension InnerTubeAPI {
                 return
             }
             if let dict = obj as? [String: Any] {
+                let keys = Set(dict.keys)
+                if !keys.isDisjoint(with: adRendererKeys) {
+                    rendererMisses["ad", default: 0] += 1
+                    return
+                }
                 // TVHTML5 gridRenderer stores its continuation in
                 // gridRenderer.continuations[0].nextContinuationData.continuation.
                 // Check this independently of the renderer dispatch below so we still
@@ -241,25 +250,20 @@ extension InnerTubeAPI {
                     walk(r["items"] as Any, depth: depth + 1); return
                 }
 
-                // TVHTML5 History groups tiles under itemSectionRenderer with a date
-                // header ("Today", "Yesterday", "This week", …). Capture that header
-                // and apply it as a fallback publishedAt for tiles with no explicit date.
+                // History section headers describe when the user watched an item,
+                // not when YouTube published it. Never write them into publishedAt.
                 if let sectionRenderer = dict["itemSectionRenderer"] as? [String: Any] {
-                    let prevDate = currentSectionDate
                     if let header = sectionRenderer["header"] as? [String: Any] {
                         let headerTitle = extractSectionTitle(from: header)
-                        currentSectionDate = headerTitle.flatMap { parseSectionDate($0) }
-                        tubeLog.debug("parseVideoGroup: section '\(headerTitle ?? "nil", privacy: .public)' → date=\(currentSectionDate != nil ? "yes" : "nil", privacy: .public)")
+                        tubeLog.debug("parseVideoGroup: history section '\(headerTitle ?? "nil", privacy: .public)' kept separate from publication date")
                     }
                     walk(sectionRenderer["contents"] as Any, depth: depth + 1)
-                    currentSectionDate = prevDate
                     return
                 }
 
                 if let renderer = dict["tileRenderer"] as? [String: Any] {
                     // TVHTML5 client (subs, history, home) — Android ItemWrapper.tileRenderer
-                    if var v = parseTileRenderer(renderer) {
-                        if v.publishedAt == nil { v.publishedAt = currentSectionDate }
+                    if let v = parseTileRenderer(renderer) {
                         videos.append(v)
                         rendererHits["tileRenderer", default: 0] += 1
                     } else {
@@ -497,42 +501,20 @@ extension InnerTubeAPI {
             ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "LIVE"
         } ?? false
 
-        // isShorts: style == "TILE_STYLE_YTLR_SHORTS" — Android: TileItem.isShorts()
-        // Secondary signals (in priority order):
-        //  • reelWatchEndpoint present on onSelectCommand/navigationEndpoint — definitive for Shorts
-        //    tiles that carry neither TILE_STYLE_YTLR_SHORTS nor the overlay SHORTS style.
-        //  • thumbnailOverlayTimeStatusRenderer.style == "SHORTS" — older TV subs feed fallback.
-        //  • ustreamerConfig == "GgIIBQ==" — encodes proto(field3{field1:5}); value 5 is YouTube's
-        //    CONTENT_TYPE_SHORTS hint embedded in the watchEndpoint. Observed on Shorts tiles that
-        //    carry none of the other signals (TILE_STYLE_YTLR_DEFAULT, watchEndpoint not reel,
-        //    landscape thumbnail). Regular videos carry value 1 ("GgIIAQ==") or omit the field.
-        //  • Portrait thumbnail (height > width) — Shorts have 9:16 thumbnails; news/sports clips
-        //    are always landscape 16:9, so this signal has zero false-positive risk for those.
+        // Shorts classification uses only explicit YouTube/InnerTube markers.
+        // Duration and thumbnail aspect ratio are presentation metadata, not a
+        // content type, and must never hide an ordinary short upload.
         let isVerticalThumbnail = thumbnails?.contains {
             let w = ($0["width"] as? Int) ?? 0
             let h = ($0["height"] as? Int) ?? 0
             return h > w && w > 0
         } ?? false
 
-        let ustreamerConfig = watchEndpoint?["ustreamerConfig"] as? String
-        // GgIIBQ== encodes CONTENT_TYPE_SHORTS, but YouTube also attaches it to long-form
-        // videos that appear in Shorts-adjacent shelves (subscription Shorts shelf, history,
-        // home recommendations). Guard with a 180 s ceiling — the maximum YouTube Shorts
-        // length — so only genuine Shorts are matched. When duration is unknown (nil),
-        // default to trusting the signal.
-        let isUstreamerShorts = ustreamerConfig == "GgIIBQ==" && (duration.map { $0 <= 180 } ?? true)
-
         let isShort = (tile["style"] as? String) == "TILE_STYLE_YTLR_SHORTS"
             || reelWatchEndpoint != nil
             || overlays?.contains {
                 ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
             } ?? false
-            || isUstreamerShorts
-            || (isVerticalThumbnail && (duration.map { $0 <= 180 } ?? true))
-
-        if isUstreamerShorts {
-            tubeLog.debug("tileRenderer isShort=true id=\(videoId, privacy: .public) signal=ustreamerConfig(\(ustreamerConfig ?? "", privacy: .public))")
-        }
 
         // Diagnostic: log every TV-feed tile's Short signals so Console shows exactly
         // which signals are (or aren't) present, even for non-Short tiles.
@@ -540,7 +522,7 @@ extension InnerTubeAPI {
             ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String
         }.first ?? "nil"
         let durationStr = duration.map { Int($0).description } ?? "nil"
-        tubeLog.debug("tileRenderer id=\(videoId, privacy: .public) tileStyle=\(tile["style"] as? String ?? "nil", privacy: .public) reelEp=\(reelWatchEndpoint != nil, privacy: .public) overlayStyle=\(overlayStyle, privacy: .public) dur=\(durationStr, privacy: .public) vertThumb=\(isVerticalThumbnail, privacy: .public) ustreamerShorts=\(isUstreamerShorts, privacy: .public) → isShort=\(isShort, privacy: .public)")
+        tubeLog.debug("tileRenderer id=\(videoId, privacy: .public) tileStyle=\(tile["style"] as? String ?? "nil", privacy: .public) reelEp=\(reelWatchEndpoint != nil, privacy: .public) overlayStyle=\(overlayStyle, privacy: .public) dur=\(durationStr, privacy: .public) vertThumb=\(isVerticalThumbnail, privacy: .public) → isShort=\(isShort, privacy: .public)")
 
         // publishedAt: best-effort from tileMetadata lines (second line may contain "2 years ago")
         var publishedTimeText: String? = nil
@@ -553,16 +535,16 @@ extension InnerTubeAPI {
                     guard let text = (item["lineItemRenderer"] as? [String: Any])?["text"] as? [String: Any],
                           let str = extractText(text)
                     else { continue }
-                    if let date = parseRelativeDate(str) {
+                    if parseRelativeDate(str) != nil {
                         publishedTimeText = str
                         tubeLog.notice("tileRenderer id=\(videoId, privacy: .public) publishedTimeText='\(str, privacy: .public)'")
-                        return date
+                        return nil
                     }
                     // Upcoming/scheduled: "Scheduled for 5/27/26, 4:00 PM"
-                    if let date = parseScheduledDate(str) {
+                    if parseScheduledDate(str) != nil {
                         publishedTimeText = str
                         isUpcoming = true
-                        return date
+                        return nil
                     }
                 }
             }
@@ -736,6 +718,7 @@ extension InnerTubeAPI {
             }
         }
 
+        var publishedTimeText: String?
         let publishedAt: Date? = {
             for row in metaRows.dropFirst() {
                 guard let parts = row["metadataParts"] as? [[String: Any]] else { continue }
@@ -743,7 +726,10 @@ extension InnerTubeAPI {
                     guard let text = part["text"] as? [String: Any],
                           let str = text["content"] as? String ?? extractText(text)
                     else { continue }
-                    if let date = parseRelativeDate(str) { return date }
+                    if parseRelativeDate(str) != nil {
+                        publishedTimeText = str
+                        return nil
+                    }
                 }
             }
             return nil
@@ -766,7 +752,7 @@ extension InnerTubeAPI {
                 }
                 return nil
             }(),
-            publishedAt: publishedAt,
+            publishedAt: publishedAt, publishedTimeText: publishedTimeText,
             isLive: false, isShort: isShort, badges: []
         )
     }
@@ -860,52 +846,17 @@ extension InnerTubeAPI {
             (($0["metadataBadgeRenderer"] as? [String: Any])?["style"] as? String) == "BADGE_STYLE_TYPE_LIVE_NOW"
         } ?? false
 
-        let isShort: Bool = {
-            // Primary signal: reelWatchEndpoint in navigationEndpoint (home, search, most feeds)
-            // Guard with duration ≤ 180 s: YouTube occasionally attaches reelWatchEndpoint to
-            // regular videos (e.g. because they were also published as a Short). The duration
-            // guard prevents those from being misclassified as Shorts. When duration is unknown
-            // (nil) we trust the endpoint signal alone — Shorts with no parsed duration are
-            // still Shorts.
-            if let nav = r["navigationEndpoint"] as? [String: Any], nav["reelWatchEndpoint"] != nil {
-                if duration.map({ $0 <= 180 }) ?? true { return true }
-            }
-            // Secondary signal: thumbnailOverlayTimeStatusRenderer.style == "SHORTS"
-            // (subscriptions feed often omits reelWatchEndpoint and uses this style instead).
-            // Guard with duration ≤ 180 s: regular videos can appear in Shorts-adjacent shelves
-            // with this overlay style, causing false positives. Duration validation prevents
-            // misclassification of videos like vkUokV3Xwp8. Mirrors the guard in parseTileRenderer.
-            let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
-                ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
-            } ?? false
-            if hasShortOverlay && (duration.map { $0 <= 180 } ?? true) { return true }
-            // Tertiary signal: ustreamerConfig == "GgIIBQ==" — mirrors parseTileRenderer.
-            // Catches compactVideoRenderer Short tiles in TV subs/history feeds that omit both
-            // reelWatchEndpoint and the overlay style.
-            let watchEndpoint = (r["navigationEndpoint"] as? [String: Any])?["watchEndpoint"] as? [String: Any]
-            let ustreamerConfig = watchEndpoint?["ustreamerConfig"] as? String
-            if ustreamerConfig == "GgIIBQ==" && (duration.map { $0 <= 180 } ?? true) { return true }
-            // Quaternary signal: vertical thumbnail (height > width) — another parseTileRenderer mirror.
-            // Guard with duration ≤ 180 s: long-form landscape videos sometimes have portrait
-            // thumbnails (movie trailers, talk show clips). Without the guard any such video
-            // is misclassified as a Short (task #201).
-            let thumbnails = (r["thumbnail"] as? [String: Any])?["thumbnails"] as? [[String: Any]]
-            let isVerticalThumbnail = thumbnails?.contains {
-                let w = ($0["width"] as? Int) ?? 0
-                let h = ($0["height"] as? Int) ?? 0
-                return h > w && w > 0
-            } ?? false
-            return isVerticalThumbnail && (duration.map { $0 <= 180 } ?? true)
-        }()
+        let hasReelEndpoint = (r["navigationEndpoint"] as? [String: Any])?["reelWatchEndpoint"] != nil
+        let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
+            ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
+        } ?? false
+        let isShort = hasReelEndpoint || hasShortOverlay
         if isShort {
             let signal: String
-            if let nav = r["navigationEndpoint"] as? [String: Any], nav["reelWatchEndpoint"] != nil {
+            if hasReelEndpoint {
                 signal = "reelWatchEndpoint"
             } else {
-                let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
-                    ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
-                } ?? false
-                signal = hasShortOverlay ? "overlayStyle" : "ustreamerConfig/verticalThumb"
+                signal = "overlayStyle"
             }
             tubeLog.debug("videoRenderer isShort=true id=\(videoId, privacy: .public) signal=\(signal, privacy: .public) duration=\(Int(duration ?? -1))")
         }
@@ -939,7 +890,9 @@ extension InnerTubeAPI {
         }()
 
         let publishedTimeText: String? = (r["publishedTimeText"] as? [String: Any]).flatMap { extractText($0) }
-        let publishedAt: Date? = publishedTimeText.flatMap { parseRelativeDate($0) }
+        // Relative text is presentation metadata only. Exact publication dates
+        // are enriched from player microformat and stored in `publishedAt`.
+        let publishedAt: Date? = nil
         let _ptv = publishedTimeText ?? "nil"
         tubeLog.notice("videoRenderer id=\(videoId, privacy: .public) publishedTimeText='\(_ptv, privacy: .public)'")
 
@@ -1002,37 +955,18 @@ extension InnerTubeAPI {
                 .flatMap { $0["percentDurationWatched"] as? Double } }
             .first.map { $0 / 100.0 }
 
-        // isShort: apply same 4 signals as parseVideoRenderer (BUG-019 fix).
-        // playlistVideoRenderer items appear in Home, Subscriptions, and History feeds
-        // and previously had isShort hard-coded to false, bypassing all hideShorts filtering.
-        let isShort: Bool = {
-            // Primary: reelWatchEndpoint in navigationEndpoint
-            if let nav = r["navigationEndpoint"] as? [String: Any], nav["reelWatchEndpoint"] != nil {
-                if duration.map({ $0 <= 180 }) ?? true { return true }
-            }
-            // Secondary: thumbnailOverlayTimeStatusRenderer.style == "SHORTS"
-            let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
-                ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
-            } ?? false
-            if hasShortOverlay && (duration.map { $0 <= 180 } ?? true) { return true }
-            // Tertiary: ustreamerConfig == "GgIIBQ=="
-            let watchEndpoint = (r["navigationEndpoint"] as? [String: Any])?["watchEndpoint"] as? [String: Any]
-            if watchEndpoint?["ustreamerConfig"] as? String == "GgIIBQ=="
-               && (duration.map { $0 <= 180 } ?? true) { return true }
-            // Quaternary: vertical thumbnail (height > width), guarded by duration
-            let isVerticalThumbnail = thumbnails?.contains {
-                let w = ($0["width"] as? Int) ?? 0
-                let h = ($0["height"] as? Int) ?? 0
-                return h > w && w > 0
-            } ?? false
-            return isVerticalThumbnail && (duration.map { $0 <= 180 } ?? true)
-        }()
+        let hasReelEndpoint = (r["navigationEndpoint"] as? [String: Any])?["reelWatchEndpoint"] != nil
+        let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
+            ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
+        } ?? false
+        let isShort = hasReelEndpoint || hasShortOverlay
         if isShort {
             tubeLog.debug("playlistVideoRenderer isShort=true id=\(videoId, privacy: .public) duration=\(Int(duration ?? -1))")
         }
 
         let publishedTimeText: String? = (r["publishedTimeText"] as? [String: Any]).flatMap { extractText($0) }
-        let publishedAt: Date? = publishedTimeText.flatMap { parseRelativeDate($0) }
+        // Preserve explicit playlist order; the relative label is never a sort key.
+        let publishedAt: Date? = nil
         let _ptp = publishedTimeText ?? "nil"
         tubeLog.notice("playlistVideoRenderer id=\(videoId, privacy: .public) publishedTimeText='\(_ptp, privacy: .public)'")
 
@@ -1128,4 +1062,3 @@ extension InnerTubeAPI {
         )
     }
 }
-

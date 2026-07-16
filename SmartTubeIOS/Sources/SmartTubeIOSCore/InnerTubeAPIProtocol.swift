@@ -42,6 +42,10 @@ public protocol InnerTubeAPIProtocol: AnyObject, Sendable {
     func search(query: String, continuationToken: String?, filter: SearchFilter) async throws -> VideoGroup
     func fetchSearchSuggestions(query: String) async throws -> [String]
 
+    // MARK: Publication metadata
+    /// Exact UTC publication day from player microformat, when YouTube exposes it.
+    func fetchExactPublicationDate(videoId: String) async throws -> Date?
+
     // MARK: Playlist
     func fetchPlaylistVideos(playlistId: String, continuationToken: String?) async throws -> VideoGroup
 
@@ -57,6 +61,9 @@ public protocol InnerTubeAPIProtocol: AnyObject, Sendable {
 // MARK: - Default-parameter convenience wrappers
 
 public extension InnerTubeAPIProtocol {
+
+    /// Test doubles and restricted clients may not expose player microformat.
+    func fetchExactPublicationDate(videoId: String) async throws -> Date? { nil }
 
     /// Fetches the flat recommended home feed from the first page.
     func fetchHome() async throws -> VideoGroup {

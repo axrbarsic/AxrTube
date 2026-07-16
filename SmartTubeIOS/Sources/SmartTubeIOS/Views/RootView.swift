@@ -37,17 +37,30 @@ public struct RootView: View {
             MainTabView()
             #endif
         }
-        .preferredColorScheme(store.settings.themeName.colorScheme)
+        .smartTubeScreenSurface()
+        // Matrix is iPocketTube's product identity, independent of the system theme.
+        .preferredColorScheme(.dark)
         #if !os(tvOS)
         .onChange(of: cardDownloadService.state) { _, newState in
             switch newState {
             case .done:
+                if cardDownloadService.lastWasAutomatic {
+                    cardDownloadService.reset()
+                    return
+                }
+                let isAudio = cardDownloadService.lastCompletedKind == .audio
                 cardDownloadAlertItem = DownloadAlertItem(
-                    title: String(localized: "Saved to Gallery", bundle: .module),
-                    message: String(localized: "Video has been saved to your Photos library.", bundle: .module)
+                    title: String(localized: isAudio ? "Audio Saved" : "Video Saved", bundle: .module),
+                    message: cardDownloadService.lastSavedToPhotos
+                        ? String(localized: "The video is in Photos and iPocketTube's offline collection.", bundle: .module)
+                        : String(localized: "The item is available in iPocketTube's offline collection.", bundle: .module)
                 )
                 cardDownloadService.reset()
             case .failed(let reason):
+                if cardDownloadService.lastWasAutomatic {
+                    cardDownloadService.reset()
+                    return
+                }
                 cardDownloadAlertItem = DownloadAlertItem(
                     title: String(localized: "Download Failed", bundle: .module),
                     message: reason
@@ -96,15 +109,47 @@ enum AppSection: String, CaseIterable, Identifiable {
     case home      = "Home"
     case search    = "Search"
     case library   = "Library"
+    case downloads = "Downloads"
     case settings  = "Settings"
 
+    static var allCases: [AppSection] {
+        #if os(iOS)
+        [.search, .library, .downloads, .settings]
+        #else
+        [.home, .search, .library, .settings]
+        #endif
+    }
+
     var id: String { rawValue }
+
+    var localizedTitle: String {
+        switch self {
+        case .home:     return String(localized: "Home", bundle: .module)
+        case .search:   return String(localized: "Search", bundle: .module)
+        case .library:  return String(localized: "Media Library", bundle: .module)
+        case .downloads:return String(localized: "Downloads", bundle: .module)
+        case .settings: return String(localized: "Settings", bundle: .module)
+        }
+    }
+
+    #if os(iOS)
+    var primaryRoute: AxrTubePrimaryRoute? {
+        switch self {
+        case .search: .search
+        case .library: .media
+        case .downloads: .downloads
+        case .settings: .settings
+        case .home: nil
+        }
+    }
+    #endif
 
     var icon: String {
         switch self {
         case .home:     return AppSymbol.home
         case .search:   return AppSymbol.search
         case .library:  return AppSymbol.library
+        case .downloads:return AppSymbol.download
         case .settings: return AppSymbol.settings
         }
     }
@@ -115,6 +160,7 @@ enum AppSection: String, CaseIterable, Identifiable {
         case .home:     HomeView(api: api)
         case .search:   SearchView()
         case .library:  LibraryView()
+        case .downloads:DownloadsView()
         case .settings: SettingsView()
         }
     }
@@ -122,20 +168,9 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 // MARK: - MainTabView  (iOS / iPadOS)
 
-// Propagates the bottom safe-area inset (tab bar + home indicator) from inside a
-// NavigationStack tab to the enclosing MainTabView so the mini player overlay can
-// be positioned exactly at the top of the tab bar without hard-coding its height.
-private struct TabBarBottomInsetKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = max(value, nextValue())
-    }
-}
-
 struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
-    @State private var selectedTab: AppSection = .home
-    @State private var tabBarBottomInset: CGFloat = 0
+    @State private var selectedTab: AppSection = .search
     @Environment(\.innerTubeAPI) private var api
     #if os(iOS)
     @Environment(PlayerStateStore.self) private var playerState
@@ -181,68 +216,38 @@ struct MainTabView: View {
         TabView(selection: $selectedTab) {
             ForEach(AppSection.allCases) { section in
                 NavigationStack { section.destination(api: api) }
-                    // Capture the bottom safe-area inset as seen from inside the tab
-                    // (UITabBarController sets this to tab-bar height + home-indicator).
-                    // The value is propagated up to tabBarBottomInset via PreferenceKey
-                    // so the mini-player overlay can be positioned above the tab bar.
-                    .background {
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(
-                                    key: TabBarBottomInsetKey.self,
-                                    value: geo.safeAreaInsets.bottom
-                                )
+                    #if os(iOS)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if let route = section.primaryRoute,
+                           AxrTubeInformationArchitecture.showsGlobalMiniPlayer(on: route) {
+                            if playerState.presentation == .miniPlayer {
+                                MiniPlayerView()
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            } else if tosState.presentation == .miniPlayer {
+                                TOSMiniPlayerView()
+                                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                            }
                         }
                     }
-                    .tabItem { Label(section.rawValue, systemImage: section.icon) }
+                    #endif
+                    .tabItem { Label(section.localizedTitle, systemImage: section.icon) }
                     .tag(section)
                     .accessibilityIdentifier("tab.\(section.rawValue.lowercased())")
             }
         }
-        .onPreferenceChange(TabBarBottomInsetKey.self) { tabBarBottomInset = $0 }
+        #if os(iOS)
+        .tint(SmartTubeVisualTokens.mint)
+        .toolbarBackground(SmartTubeVisualTokens.tabBar, for: .tabBar)
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarColorScheme(.dark, for: .tabBar)
+        #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in
             selectedTab = .search
         }
         #if os(iOS)
-        // Reserve vertical space so scrollable tab content is not hidden under the
-        // mini player. Uses a transparent placeholder rather than the real MiniPlayerView
-        // to avoid duplicating the PersistentPlayerHostView UIKit layer across tabs.
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Reserve vertical space for whichever mini-player is visible so
-            // scrollable content is not obscured (only one can be active at a time).
-            if playerState.presentation == .miniPlayer || tosState.presentation == .miniPlayer {
-                Color.clear.frame(height: 62)
-            }
-        }
-        // Render the single visible MiniPlayerView above the tab bar.
-        // tabBarBottomInset = tab-bar height + home-indicator (e.g. 83 pt on Face ID
-        // iPhones), read from inside the NavigationStack where UITabBarController has
-        // already baked it into the safe area. The transparent passthrough spacer below
-        // the mini player ensures tab-bar items remain tappable.
-        .overlay(alignment: .bottom) {
-            // Only one mini-player can be active at a time: AVPlayer and TOS are
-            // mutually exclusive (onChange stops the other before starting the new one).
-            if playerState.presentation == .miniPlayer {
-                VStack(spacing: 0) {
-                    MiniPlayerView()
-                    Color.clear
-                        .frame(height: tabBarBottomInset)
-                        .allowsHitTesting(false)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: playerState.presentation)
-            } else if tosState.presentation == .miniPlayer {
-                VStack(spacing: 0) {
-                    TOSMiniPlayerView()
-                    Color.clear
-                        .frame(height: tabBarBottomInset)
-                        .allowsHitTesting(false)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .animation(.easeInOut(duration: 0.2), value: tosState.presentation)
-            }
-        }
+        .animation(.easeInOut(duration: 0.2), value: playerState.presentation)
+        .animation(.easeInOut(duration: 0.2), value: tosState.presentation)
         .landscapePlayerCover(item: fullScreenBinding, dismissStore: playerState) { video in
             PlayerView(video: video, api: api)
         }
@@ -312,7 +317,7 @@ struct MainTVTabView: View {
             ForEach(AppSection.allCases) { section in
                 NavigationStack { section.destination(api: api) }
                     .tabItem {
-                        Label(section.rawValue, systemImage: section.icon)
+                        Label(section.localizedTitle, systemImage: section.icon)
                     }
                     .tag(section)
             }
@@ -342,10 +347,10 @@ struct MainSidebarView: View {
         ZStack {
             NavigationSplitView {
                 List(AppSection.allCases, selection: $selectedSection) { section in
-                    Label(section.rawValue, systemImage: section.icon)
+                    Label(section.localizedTitle, systemImage: section.icon)
                         .tag(section)
                 }
-                .navigationTitle("SmartTube")
+                .navigationTitle("iPocketTube")
                 if auth.isSignedIn {
                     Divider()
                     HStack {
