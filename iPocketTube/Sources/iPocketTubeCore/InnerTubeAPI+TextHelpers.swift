@@ -151,6 +151,23 @@ extension InnerTubeAPI {
         return result
     }
 
+    /// Recognizes YouTube's honest publication labels without converting a
+    /// coarse relative value into an invented absolute date. The English path
+    /// remains parseable for exact sorting enrichment; localized renderer text
+    /// is preserved verbatim for display fallback.
+    func isPublicationDateLabel(_ text: String) -> Bool {
+        if parseRelativeDate(text) != nil { return true }
+        let normalized = text
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !normalized.isEmpty else { return false }
+        let markers = [
+            "today", "yesterday", " ago", "streamed ", "premiered ", "started ",
+            "сегодня", "вчера", " назад", "трансляция ", "премьера ", "началось ",
+        ]
+        return markers.contains { normalized == $0.trimmingCharacters(in: .whitespaces) || normalized.contains($0) }
+    }
+
     func extractNumber(_ text: String) -> Int? {
         // Suffix path: extract leading decimal + K/M/B multiplier (e.g. "1.5K" → 1500)
         let pattern = #"([\d,]+(?:\.\d+)?)\s*([KkMmBb])\b"#

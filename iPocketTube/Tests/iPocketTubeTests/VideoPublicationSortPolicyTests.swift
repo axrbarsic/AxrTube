@@ -46,6 +46,12 @@ struct VideoPublicationSortPolicyTests {
         #expect(components.hour == 0)
     }
 
+    @Test("Official/player ISO timestamp preserves the exact instant")
+    func exactISOTimestampParsing() throws {
+        let date = try #require(YouTubePublicationDateParser.parseUTCDate("2026-07-15T09:00:37-07:00"))
+        #expect(date == ISO8601DateFormatter().date(from: "2026-07-15T16:00:37Z"))
+    }
+
     @Test("Localized display labels never drive ordering")
     func localizedLabelIsIgnored() {
         let first = video("first", date: nil, label: "10 years ago")
@@ -118,7 +124,59 @@ struct VideoPublicationSortPolicyTests {
         #expect(metadata["shared-video"]?.publishedAt == exactDate)
     }
 
-    @Test("Failed enrichment is negatively cached and remains unknown")
+    @Test("Duplicate metadata prefers exact then relative then unknown")
+    func duplicateMetadataQuality() {
+        let unknown = video("same", date: nil)
+        let relative = video("same", date: nil, label: "3 days ago")
+        let exactDate = Date(timeIntervalSince1970: 700)
+        let exact = video("same", date: exactDate)
+
+        let relativeWinner = VideoPublicationSortPolicy.metadataByVideoID([unknown, relative])
+        #expect(relativeWinner["same"]?.publishedTimeText == "3 days ago")
+
+        let exactWinner = VideoPublicationSortPolicy.metadataByVideoID([relative, exact, unknown])
+        #expect(exactWinner["same"]?.publishedAt == exactDate)
+        #expect(exactWinner["same"]?.publishedTimeText == "3 days ago")
+    }
+
+    @Test("Failed exact enrichment cannot erase a renderer-relative label")
+    func relativeSurvivesFailedEnrichment() async {
+        let enricher = VideoPublicationDateEnricher(successTTL: 60, failureTTL: 60, maxConcurrentRequests: 1)
+        let input = [video("relative", date: nil, label: "3 days ago")]
+
+        let enriched = await enricher.enrich(input) { _ in nil }
+        let merged = VideoPublicationSortPolicy.mergingPublicationMetadata(base: input[0], candidate: enriched[0])
+
+        #expect(merged.publishedTimeText == "3 days ago")
+        #expect(merged.publicationDateStatus == .unavailable)
+        #expect(VideoPublicationFormatter.string(
+            for: merged,
+            locale: Locale(identifier: "ru_RU")
+        ) != "Дата неизвестна")
+    }
+
+    @Test("Channel route uses the same publication merge and display fallback")
+    func secondaryRouteUsesSharedPolicy() {
+        let unknown = video("same", date: nil)
+        let relative = video("same", date: nil, label: "вчера")
+        var failed = relative
+        failed.publicationDateStatus = .unavailable
+
+        let merged = VideoPublicationSortPolicy.merging(
+            existing: [unknown],
+            page: [failed],
+            for: .channel
+        )
+
+        #expect(merged.count == 1)
+        #expect(merged[0].publishedTimeText == "вчера")
+        #expect(VideoPublicationFormatter.string(
+            for: merged[0],
+            locale: Locale(identifier: "ru_RU")
+        ) == "вчера")
+    }
+
+    @Test("Failed exact enrichment is negatively cached")
     func enrichmentFailureCache() async {
         let counter = PublicationResolverCounter(result: nil)
         let enricher = VideoPublicationDateEnricher(successTTL: 3_600, failureTTL: 60, maxConcurrentRequests: 2)

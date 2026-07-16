@@ -16,28 +16,27 @@ struct ChannelListView: View {
 
     var body: some View {
         ScrollView {
-            LazyVStack(spacing: 0) {
+            LazyVStack(spacing: 8) {
                 ForEach(channels) { channel in
-                    #if os(tvOS)
                     Button { onSelect(channel) } label: {
                         ChannelListRow(channel: channel)
+                            #if os(tvOS)
                             .background(
                                 focusedChannelId == channel.id
                                     ? Color.primary.opacity(0.12)
                                     : Color.clear
                             )
+                            #endif
                     }
                     .buttonStyle(.plain)
+                    .accessibilityIdentifier("library.channel.\(channel.id)")
+                    #if os(tvOS)
                     .focused($focusedChannelId, equals: channel.id)
-                    #else
-                    ChannelListRow(channel: channel)
-                        .contentShape(Rectangle())
-                        .onTapGesture { onSelect(channel) }
                     #endif
-                    Divider()
-                        .padding(.leading, 72)
                 }
             }
+            .padding(.horizontal, iPocketTubeVisualTokens.horizontalPadding)
+            .padding(.vertical, 8)
         }
         #if os(tvOS)
         .focusSection()
@@ -54,9 +53,15 @@ private struct ChannelListRow: View {
         HStack(spacing: 12) {
             avatar
             VStack(alignment: .leading, spacing: 2) {
-                Text(channel.title.isEmpty ? "Unknown channel" : channel.title)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
+                if channel.title.isEmpty {
+                    Text("Unknown channel", bundle: .module)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                } else {
+                    Text(verbatim: channel.title)
+                        .font(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                }
                 if let count = channel.subscriberCount {
                     Text(count)
                         .font(.caption)
@@ -68,8 +73,15 @@ private struct ChannelListRow: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
         }
-        .padding(.horizontal)
-        .padding(.vertical, 12)
+        .frame(minHeight: 64)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(iPocketTubeVisualTokens.panelElevated, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(iPocketTubeVisualTokens.mint.opacity(0.22), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder

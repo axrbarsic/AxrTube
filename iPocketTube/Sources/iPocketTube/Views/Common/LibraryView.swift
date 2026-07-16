@@ -31,7 +31,7 @@ public struct LibraryView: View {
         case subscriptions = "Subs"
         case history       = "History"
         case playlists     = "Playlists"
-        case rss           = "RSS Feeds"
+        case channels      = "Channels"
 
         var id: String { rawValue }
         var localizedTitle: String {
@@ -39,7 +39,7 @@ public struct LibraryView: View {
             case .subscriptions: return String(localized: "Subs", bundle: .module)
             case .history:       return String(localized: "History", bundle: .module)
             case .playlists:     return String(localized: "Playlists", bundle: .module)
-            case .rss:           return String(localized: "RSS Feeds", bundle: .module)
+            case .channels:      return String(localized: "Channels", bundle: .module)
             }
         }
         var browseSectionType: BrowseSection.SectionType {
@@ -47,7 +47,7 @@ public struct LibraryView: View {
             case .subscriptions: return .subscriptions
             case .history:       return .history
             case .playlists:     return .playlists
-            case .rss:           return .history  // not used — RSS renders its own view
+            case .channels:      return .channels
             }
         }
     }
@@ -147,8 +147,8 @@ public struct LibraryView: View {
             #endif
 
             Group {
-                if selectedSection == .rss {
-                    RSSFeedsView()
+                if selectedSection == .channels {
+                    channelsContent
                 } else if !auth.isSignedIn && selectedSection != .subscriptions {
                     segmentSignInPrompt
                 } else if browseVM.isLoading && browseVM.videoGroups.flatMap({ $0.videos }).isEmpty {
@@ -220,7 +220,6 @@ public struct LibraryView: View {
             }
         }
         .onChange(of: selectedSection) { _, section in
-            guard section != .rss else { return }
             browseVM.select(section: BrowseSection(
                 id: section.id,
                 title: section.rawValue,
@@ -250,7 +249,6 @@ public struct LibraryView: View {
             #endif
         }
         .onAppear {
-            guard selectedSection != .rss else { return }
             browseVM.select(section: BrowseSection(
                 id: selectedSection.id,
                 title: selectedSection.rawValue,
@@ -269,6 +267,68 @@ public struct LibraryView: View {
             guard selectedSection == .playlists else { return }
             queueVideosCount = await CurrentQueueStore.shared.videos.count
         }
+    }
+
+    @ViewBuilder private var channelsContent: some View {
+        if !auth.isSignedIn {
+            VStack(spacing: 16) {
+                Image(systemName: AppSymbol.personCircleQuestion)
+                    .font(.system(size: 60))
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                Text("Sign in to see your YouTube channels")
+                    .font(.headline)
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                    .multilineTextAlignment(.center)
+                NavigationLink("Sign In") { SignInView() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("library.channels.signIn")
+        } else if browseVM.isLoading && browseVM.subscribedChannels.isEmpty {
+            ProgressView("Loading channels…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .accessibilityIdentifier("library.channels.loading")
+        } else if browseVM.error != nil && browseVM.subscribedChannels.isEmpty {
+            VStack(spacing: 14) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 44))
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                Text("Could not load channels")
+                    .font(.headline)
+                Text("Check your connection and try again.")
+                    .font(.subheadline)
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                    .multilineTextAlignment(.center)
+                Button("Retry") { reloadChannels() }
+                    .buttonStyle(.borderedProminent)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("library.channels.error")
+        } else if browseVM.subscribedChannels.isEmpty {
+            VStack(spacing: 14) {
+                Image(systemName: "person.2.slash")
+                    .font(.system(size: 44))
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                Text("No subscribed channels")
+                    .font(.headline)
+                Text("Your YouTube subscriptions will appear here.")
+                    .font(.subheadline)
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .accessibilityIdentifier("library.channels.empty")
+        } else {
+            ChannelListView(channels: browseVM.subscribedChannels) { channel in
+                channelDestination = ChannelDestination(channelId: channel.id)
+            }
+            .refreshable { reloadChannels() }
+            .accessibilityIdentifier("library.channels.list")
+        }
+    }
+
+    private func reloadChannels() {
+        browseVM.reload(section: BrowseSection(type: .channels))
     }
 
     @ViewBuilder private var currentQueueRow: some View {

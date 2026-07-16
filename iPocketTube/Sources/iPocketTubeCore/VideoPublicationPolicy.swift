@@ -1,15 +1,23 @@
 import Foundation
 
 public enum YouTubePublicationDateParser {
-    /// InnerTube player microformat exposes a locale-independent `yyyy-MM-dd`
-    /// calendar day. Normalize it to midnight UTC.
+    /// Player/Data API metadata can expose either an ISO-8601 instant or a
+    /// locale-independent `yyyy-MM-dd` calendar day. Preserve a real instant;
+    /// normalize a day-only value to midnight UTC.
     public static func parseUTCDate(_ raw: String) -> Date? {
+        let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = iso.date(from: value) { return date }
+        iso.formatOptions = [.withInternetDateTime]
+        if let date = iso.date(from: value) { return date }
+
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
         formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.date(from: raw)
+        return formatter.date(from: value)
     }
 }
 
@@ -41,15 +49,59 @@ public enum VideoListRoute: String, Sendable, CaseIterable {
 /// One stable, typed publication-date ordering policy shared by every feed.
 /// Display strings such as "today" or "Дата неизвестна" never participate.
 public enum VideoPublicationSortPolicy {
+    private enum MetadataQuality: Int {
+        case unknown = 0
+        case relative = 1
+        case exact = 2
+    }
+
+    private static func normalizedRelativeLabel(_ video: Video) -> String? {
+        guard let label = video.publishedTimeText?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !label.isEmpty else { return nil }
+        return label
+    }
+
+    private static func metadataQuality(_ video: Video) -> MetadataQuality {
+        if video.publishedAt != nil { return .exact }
+        if normalizedRelativeLabel(video) != nil { return .relative }
+        return .unknown
+    }
+
+    /// Merges publication metadata without ever replacing a more trustworthy
+    /// value with a failed/empty enrichment result. Renderer-relative text is
+    /// intentionally kept when the exact player lookup is unavailable.
+    public static func mergingPublicationMetadata(base: Video, candidate: Video) -> Video {
+        var result = base
+
+        if result.publishedAt == nil, let exact = candidate.publishedAt {
+            result.publishedAt = exact
+            result.publicationDateStatus = .exact
+        }
+        if normalizedRelativeLabel(result) == nil,
+           let relative = normalizedRelativeLabel(candidate) {
+            result.publishedTimeText = relative
+        }
+
+        if result.publishedAt != nil {
+            result.publicationDateStatus = .exact
+        } else if result.publicationDateStatus == nil,
+                  candidate.publicationDateStatus == .unavailable {
+            // This status records only that exact lookup was exhausted. It must
+            // not suppress an independently valid renderer-relative label.
+            result.publicationDateStatus = .unavailable
+        }
+        return result
+    }
+
     /// Builds a stable lookup for feed snapshots where the same YouTube video
     /// can legitimately appear in multiple shelves. Prefer the copy carrying
     /// an exact publication date, but never trap on a duplicate ID.
     public static func metadataByVideoID(_ videos: [Video]) -> [String: Video] {
         Dictionary(videos.map { ($0.id, $0) }, uniquingKeysWith: { existing, candidate in
-            if existing.publishedAt == nil, candidate.publishedAt != nil {
-                return candidate
+            if metadataQuality(candidate).rawValue > metadataQuality(existing).rawValue {
+                return mergingPublicationMetadata(base: candidate, candidate: existing)
             }
-            return existing
+            return mergingPublicationMetadata(base: existing, candidate: candidate)
         })
     }
 
@@ -80,8 +132,16 @@ public enum VideoPublicationSortPolicy {
         page: [Video],
         for route: VideoListRoute
     ) -> [Video] {
-        var seen = Set<String>()
-        let merged = (existing + page).filter { seen.insert($0.id).inserted }
+        var indices: [String: Int] = [:]
+        var merged: [Video] = []
+        for video in existing + page {
+            if let index = indices[video.id] {
+                merged[index] = mergingPublicationMetadata(base: merged[index], candidate: video)
+            } else {
+                indices[video.id] = merged.count
+                merged.append(video)
+            }
+        }
         return sorted(merged, for: route)
     }
 }

@@ -44,7 +44,7 @@ public struct ChannelView: View {
                 content
             }
         }
-        .navigationTitle(vm.channel?.title ?? "Channel")
+        .navigationTitle(vm.channel?.title ?? String(localized: "Channel", bundle: .module))
         .onAppear { vm.load(channelId: channelId) }
         .task(id: vm.channel?.id) {
             guard let id = vm.channel?.id else { return }
@@ -72,12 +72,6 @@ public struct ChannelView: View {
             ShortsPlayerView(videos: target.videos, startIndex: target.startIndex, api: api)
         }
         #endif
-        .alert("Error", isPresented: .constant(vm.error != nil), presenting: vm.error) { _ in
-            Button("Retry") { vm.load(channelId: channelId) }
-            Button("Dismiss", role: .cancel) {}
-        } message: { err in
-            Text(err.localizedDescription)
-        }
         .toolbar {
             if let channel = vm.channel {
                 #if os(macOS)
@@ -118,19 +112,26 @@ public struct ChannelView: View {
                     channelHeader(channel)
                 }
 
-                // All / Shorts filter
-                Picker("Filter", selection: $filter) {
-                    ForEach(ChannelFilter.allCases, id: \.self) { tab in
-                        Text(LocalizedStringKey(tab.rawValue), bundle: .module).tag(tab)
+                // All / Shorts filter. When Shorts are hidden globally, the
+                // dedicated route disappears too; a stale selection is reset below.
+                if store.settings.showShorts {
+                    Picker("Filter", selection: $filter) {
+                        ForEach(ChannelFilter.allCases, id: \.self) { tab in
+                            Text(LocalizedStringKey(tab.rawValue), bundle: .module).tag(tab)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.vertical, 10)
+                    .accessibilityIdentifier("channel.filterPicker")
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 10)
-                .accessibilityIdentifier("channel.filterPicker")
 
                 let filtered = filteredVideos
-                if filter == .shorts {
+                if vm.error != nil && vm.channel == nil {
+                    channelErrorState
+                } else if filtered.isEmpty && !vm.isLoading {
+                    channelEmptyState
+                } else if filter == .shorts {
                     shortsGrid(filtered)
                 } else {
                     videosGrid(filtered)
@@ -142,6 +143,9 @@ public struct ChannelView: View {
             }
         }
         .refreshable { vm.load(channelId: channelId) }
+        .onChange(of: store.settings.showShorts) { _, showShorts in
+            if !showShorts { filter = .all }
+        }
         .accessibilityIdentifier("channel.view")
     }
 
@@ -152,6 +156,35 @@ public struct ChannelView: View {
         case .all:    return vm.videos.filter { !store.settings.hideShorts || !$0.isShort }
         case .shorts: return vm.videos.filter { $0.isShort }
         }
+    }
+
+    private var channelErrorState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 44))
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+            Text("Could not load channel")
+                .font(.headline)
+            Button("Retry") { vm.load(channelId: channelId) }
+                .buttonStyle(.borderedProminent)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
+        .accessibilityIdentifier("channel.error")
+    }
+
+    private var channelEmptyState: some View {
+        VStack(spacing: 14) {
+            Image(systemName: "play.rectangle.on.rectangle")
+                .font(.system(size: 44))
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+            Text("No videos available in this channel")
+                .font(.headline)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 48)
+        .accessibilityIdentifier("channel.empty")
     }
 
     // MARK: - Grid layouts

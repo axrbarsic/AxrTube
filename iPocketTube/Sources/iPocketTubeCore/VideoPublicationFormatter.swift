@@ -8,13 +8,17 @@ public enum VideoPublicationFormatter {
         calendar: Calendar = .autoupdatingCurrent
     ) -> String {
         guard let date = video.publishedAt else {
-            if video.publicationDateStatus != .unavailable,
-               let raw = video.publishedTimeText,
-               let components = relativeComponents(from: raw) {
-                let formatter = RelativeDateTimeFormatter()
-                formatter.locale = locale
-                formatter.unitsStyle = .full
-                return formatter.localizedString(from: components)
+            if let raw = video.publishedTimeText?.trimmingCharacters(in: .whitespacesAndNewlines),
+               !raw.isEmpty {
+                if let components = relativeComponents(from: raw) {
+                    let formatter = RelativeDateTimeFormatter()
+                    formatter.locale = locale
+                    formatter.unitsStyle = .full
+                    return formatter.localizedString(from: components)
+                }
+                // A localized/changed YouTube label is still more truthful than
+                // "unknown". Never derive an invented absolute day from it.
+                return raw
             }
             return locale.language.languageCode?.identifier == "ru"
                 ? "Дата неизвестна"

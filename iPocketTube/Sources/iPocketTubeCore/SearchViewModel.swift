@@ -212,6 +212,7 @@ public final class ChannelViewModel {
     }
 
     private func loadAsync(channelId: String) async {
+        error = nil
         isLoading = true
         defer { isLoading = false }
         do {
@@ -228,6 +229,7 @@ public final class ChannelViewModel {
     public func loadMore() {
         guard let id = channel?.id, let token = nextPageToken, !isLoading else { return }
         Task {
+            error = nil
             isLoading = true
             defer { isLoading = false }
             do {

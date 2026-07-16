@@ -216,7 +216,6 @@ extension InnerTubeAPI {
     func parseGuideChannels(from json: [String: Any]) -> [Channel] {
         var channels: [Channel] = []
         var seen = Set<String>()
-        var firstEntryDumped = false
 
         func walk(_ obj: Any, depth: Int = 0) {
             guard depth < 50 else {
@@ -227,17 +226,6 @@ extension InnerTubeAPI {
                 if let entry = dict["guideEntryRenderer"] as? [String: Any] {
                     let browseEndpoint = (entry["navigationEndpoint"] as? [String: Any])?["browseEndpoint"] as? [String: Any]
                     let channelId = browseEndpoint?["browseId"] as? String
-
-                    // Dump the first entry that has a browseId (channel entry) regardless of thumbnail
-                    if !firstEntryDumped, let channelId, !channelId.isEmpty {
-                        firstEntryDumped = true
-                        let allKeys = entry.keys.sorted()
-                        tubeLog.notice("guideEntryRenderer (channel) keys: \(allKeys, privacy: .public)")
-                        if let data = try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys]),
-                           let str = String(data: data, encoding: .utf8) {
-                            tubeLog.notice("guideEntryRenderer (channel) JSON: \(String(str.prefix(1500)), privacy: .public)")
-                        }
-                    }
 
                     guard let channelId, !channelId.isEmpty else { return }
 
@@ -280,7 +268,7 @@ extension InnerTubeAPI {
         let withThumbs = channels.filter { $0.thumbnailURL != nil }.count
         // Sort alphabetically so the list is stable and predictable regardless of
         // the order YouTube's guide API returns entries. Matches LocalSubscriptionStore.
-        channels.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        channels = SubscribedChannelCatalogPolicy.sortedDeduplicated(channels)
         tubeLog.notice("parseGuideChannels → \(channels.count, privacy: .public) channels, \(withThumbs, privacy: .public) with thumbnail")
         return channels
     }
@@ -451,7 +439,6 @@ extension InnerTubeAPI {
             return Channel(id: channelId, title: channelTitle)
         }
 
-        var tileDumped = false
         func walk(_ obj: Any, depth: Int = 0) {
             guard depth < 50 else {
                 tubeLog.warning("parseSubscribedChannels: walk depth limit (50) reached — skipping subtree")
@@ -459,14 +446,6 @@ extension InnerTubeAPI {
             }
             if let dict = obj as? [String: Any] {
                 if let tile = dict["tileRenderer"] as? [String: Any] {
-                    // Dump the first tile to reveal its full structure
-                    if !tileDumped {
-                        tileDumped = true
-                        if let data = try? JSONSerialization.data(withJSONObject: tile, options: [.sortedKeys]),
-                           let str = String(data: data, encoding: .utf8) {
-                            tubeLog.notice("parseSubscribedChannels first tileRenderer JSON: \(String(str.prefix(2000)), privacy: .public)")
-                        }
-                    }
                     if let channel = channelFromTile(tile) {
                         if seen.insert(channel.id).inserted {
                             channels.append(channel)
@@ -482,7 +461,7 @@ extension InnerTubeAPI {
 
         walk(json)
         // Sort alphabetically so the channel list is stable. Matches LocalSubscriptionStore.
-        channels.sort { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+        channels = SubscribedChannelCatalogPolicy.sortedDeduplicated(channels)
         tubeLog.notice("parseSubscribedChannels → \(channels.count, privacy: .public) unique channels")
         return channels
     }

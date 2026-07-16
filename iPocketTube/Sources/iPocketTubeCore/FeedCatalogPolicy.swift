@@ -14,6 +14,54 @@ public enum FeedCatalogPolicy {
     }
 }
 
+/// One deterministic catalogue policy for channels returned by the authenticated
+/// subscriptions endpoint. The API may repeat a channel through multiple guide
+/// renderers, so deduplication and ordering happen again at the model boundary
+/// instead of relying on renderer traversal order.
+public enum SubscribedChannelCatalogPolicy {
+    public static func sortedDeduplicated(
+        _ channels: [Channel],
+        locale: Locale = .current
+    ) -> [Channel] {
+        var channelByID: [String: Channel] = [:]
+
+        for channel in channels where !channel.id.isEmpty {
+            guard var existing = channelByID[channel.id] else {
+                channelByID[channel.id] = channel
+                continue
+            }
+
+            // Preserve the first record, but fill metadata that another renderer
+            // supplied. This keeps the result stable while avoiding blank titles
+            // or avatars when the same subscription appears twice.
+            if existing.title.isEmpty, !channel.title.isEmpty { existing.title = channel.title }
+            if existing.description == nil { existing.description = channel.description }
+            if existing.thumbnailURL == nil { existing.thumbnailURL = channel.thumbnailURL }
+            if existing.subscriberCount == nil { existing.subscriberCount = channel.subscriberCount }
+            existing.isSubscribed = existing.isSubscribed || channel.isSubscribed
+            channelByID[channel.id] = existing
+        }
+
+        return channelByID.values.sorted { left, right in
+            if left.title.isEmpty != right.title.isEmpty { return !left.title.isEmpty }
+
+            let localized = left.title.compare(
+                right.title,
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                range: nil,
+                locale: locale
+            )
+            if localized != .orderedSame { return localized == .orderedAscending }
+
+            // Locale collation can consider distinct spellings equal. A literal
+            // title comparison followed by the persisted channel ID makes ties
+            // deterministic across renders and launches.
+            if left.title != right.title { return left.title < right.title }
+            return left.id < right.id
+        }
+    }
+}
+
 public enum VideoCardCatalogContext: Sendable, Equatable {
     case search
     case mediaLibrary

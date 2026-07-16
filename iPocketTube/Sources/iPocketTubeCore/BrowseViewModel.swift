@@ -149,6 +149,7 @@ public final class BrowseViewModel {
 
     public func loadContent(for section: BrowseSection? = nil, refresh: Bool = false, source: String = "unknown") {
         let target = section ?? currentSection
+        error = nil
         let chCount = subscribedChannels.count
         let vCount = videoGroups.flatMap(\.videos).count
         let loading = isLoading
@@ -430,14 +431,14 @@ public final class BrowseViewModel {
                     browseLog.notice("channels fetch complete: \(channels.count) channels, isCancelled=\(Task.isCancelled)")
                     if !Task.isCancelled {
                         isAuthRequired = channels.isEmpty
-                        subscribedChannels = channels
+                        subscribedChannels = SubscribedChannelCatalogPolicy.sortedDeduplicated(channels)
                         videoGroups = []
                         let chCount = subscribedChannels.count
                         let authReq = isAuthRequired
                         browseLog.notice("channels state set: subscribedChannels=\(chCount) isAuthRequired=\(authReq)")
                         // Background-enrich avatars — the guide/params approaches yield no thumbnails;
                         // fetch each channel's About tab concurrently to get the avatar URL.
-                        if !channels.isEmpty {
+                        if !subscribedChannels.isEmpty {
                             enrichTask?.cancel()
                             enrichTask = Task { await self.enrichChannelAvatars() }
                         }
@@ -447,7 +448,9 @@ public final class BrowseViewModel {
                     browseLog.notice("channels (local): \(localChannels.count) followed channels sorted by subscription date, isCancelled=\(Task.isCancelled)")
                     if !Task.isCancelled {
                         isAuthRequired = false
-                        subscribedChannels = localChannels.map { $0.toChannel() }
+                        subscribedChannels = SubscribedChannelCatalogPolicy.sortedDeduplicated(
+                            localChannels.map { $0.toChannel() }
+                        )
                         videoGroups = []
                     }
                 }
@@ -706,11 +709,8 @@ public final class BrowseViewModel {
         videoGroups = videoGroups.map { group in
             var copy = group
             let patched = group.videos.map { video -> Video in
-                guard video.publishedAt == nil, let source = metadata[video.id] else { return video }
-                var updated = video
-                updated.publishedAt = source.publishedAt
-                updated.publicationDateStatus = source.publicationDateStatus
-                return updated
+                guard let source = metadata[video.id] else { return video }
+                return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: source)
             }
             copy.videos = VideoPublicationSortPolicy.sorted(patched, for: route)
             return copy

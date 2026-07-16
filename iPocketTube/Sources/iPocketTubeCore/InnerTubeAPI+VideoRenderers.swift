@@ -535,7 +535,7 @@ extension InnerTubeAPI {
                     guard let text = (item["lineItemRenderer"] as? [String: Any])?["text"] as? [String: Any],
                           let str = extractText(text)
                     else { continue }
-                    if parseRelativeDate(str) != nil {
+                    if isPublicationDateLabel(str) {
                         publishedTimeText = str
                         tubeLog.notice("tileRenderer id=\(videoId, privacy: .public) publishedTimeText='\(str, privacy: .public)'")
                         return nil
@@ -726,7 +726,7 @@ extension InnerTubeAPI {
                     guard let text = part["text"] as? [String: Any],
                           let str = text["content"] as? String ?? extractText(text)
                     else { continue }
-                    if parseRelativeDate(str) != nil {
+                    if isPublicationDateLabel(str) {
                         publishedTimeText = str
                         return nil
                     }
@@ -890,6 +890,7 @@ extension InnerTubeAPI {
         }()
 
         let publishedTimeText: String? = (r["publishedTimeText"] as? [String: Any]).flatMap { extractText($0) }
+            ?? (r["dateText"] as? [String: Any]).flatMap { extractText($0) }
         // Relative text is presentation metadata only. Exact publication dates
         // are enriched from player microformat and stored in `publishedAt`.
         let publishedAt: Date? = nil

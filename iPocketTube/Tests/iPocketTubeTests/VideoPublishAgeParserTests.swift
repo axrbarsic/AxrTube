@@ -89,6 +89,22 @@ struct VideoRendererPublishAgeTests {
         #expect(video.publishedTimeText == "3 months ago")
     }
 
+    @Test("Current Home renderer dateText fallback is preserved")
+    func videoRenderer_dateTextFallback() async throws {
+        var renderer = makeRenderer(publishedTimeText: nil)
+        renderer["dateText"] = ["simpleText": "5 days ago"]
+        let response = makeVideoRendererAgeResponse(renderer)
+        let api = InnerTubeAPI()
+        let group = try await api.parseVideoGroupForTesting(response, title: nil)
+        let video = try #require(group.videos.first)
+
+        #expect(video.publishedTimeText == "5 days ago")
+        #expect(VideoPublicationFormatter.string(
+            for: video,
+            locale: Locale(identifier: "ru_RU")
+        ) != "Дата неизвестна")
+    }
+
     @Test("parseVideoRenderer without publishedTimeText leaves publishedAt nil")
     func videoRenderer_noPublishedTimeText_publishedAtIsNil() async throws {
         let response = makeVideoRendererAgeResponse(makeRenderer(publishedTimeText: nil))
@@ -152,6 +168,27 @@ struct LockupViewModelPublishAgeTests {
         let video = try #require(group.videos.first, "Expected at least one video from lockupViewModel response")
         #expect(video.publishedAt == nil)
         #expect(video.publishedTimeText == "2 years ago")
+    }
+
+    @Test("Current lockupViewModel localized relative label is preserved")
+    func lockupViewModel_localizedDateText() async throws {
+        let rows: [[String: Any]] = [
+            ["metadataParts": [["text": ["content": "Channel Name"]]]],
+            ["metadataParts": [
+                ["text": ["content": "1,2 млн просмотров"]],
+                ["text": ["content": "3 дня назад"]],
+            ]],
+        ]
+        let response = makeLockupViewModelAgeResponse(makeLockup(metadataRows: rows))
+        let api = InnerTubeAPI()
+        let group = try await api.parseVideoGroupForTesting(response, title: nil)
+        let video = try #require(group.videos.first)
+
+        #expect(video.publishedTimeText == "3 дня назад")
+        #expect(VideoPublicationFormatter.string(
+            for: video,
+            locale: Locale(identifier: "ru_RU")
+        ) == "3 дня назад")
     }
 
     @Test("parseLockupViewModel with no relative-date text leaves publishedAt nil")

@@ -282,11 +282,8 @@ public final class HomeViewModel {
         return snapshots.enumerated().map { index, videos in
             let route: VideoListRoute = sections[index].section.type == .subscriptions ? .subscriptions : .home
             let patched = videos.map { video -> Video in
-                guard video.publishedAt == nil, let source = metadata[video.id] else { return video }
-                var copy = video
-                copy.publishedAt = source.publishedAt
-                copy.publicationDateStatus = source.publicationDateStatus
-                return copy
+                guard let source = metadata[video.id] else { return video }
+                return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: source)
             }
             return VideoPublicationSortPolicy.sorted(patched, for: route)
         }

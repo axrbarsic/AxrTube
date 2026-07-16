@@ -756,6 +756,7 @@ extension InnerTubeAPI {
         let raw = renderer?["publishDate"] as? String
             ?? renderer?["uploadDate"] as? String
             ?? (json["videoDetails"] as? [String: Any])?["publishDate"] as? String
+            ?? (json["videoDetails"] as? [String: Any])?["uploadDate"] as? String
         guard let raw else { return nil }
         return YouTubePublicationDateParser.parseUTCDate(raw)
     }

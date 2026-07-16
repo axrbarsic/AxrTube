@@ -531,6 +531,27 @@ struct BrowseViewModelTests {
         #expect(vm.videoGroups.first?.videos.first?.id == "histvid_AAAA")
     }
 
+    @Test("Channels use the authenticated fetcher and shared stable catalogue policy")
+    func loadChannelsUsesAuthenticatedSortedDeduplicatedResult() async {
+        let mock = MockInnerTubeAPI()
+        let avatar = URL(string: "https://example.invalid/avatar.jpg")!
+        mock.channelsResult = [
+            Channel(id: "z", title: "Яблоко", thumbnailURL: avatar),
+            Channel(id: "a", title: "альфа", thumbnailURL: avatar),
+            Channel(id: "a", title: "", thumbnailURL: avatar),
+            Channel(id: "b", title: "Бета", thumbnailURL: avatar),
+        ]
+
+        let section = BrowseSection(type: .channels)
+        let vm = BrowseViewModel(api: mock, initialSection: section)
+        await vm.updateAuthToken("fake-token")
+        await waitForTasks(until: { vm.subscribedChannels.count == 3 })
+
+        #expect(mock.calls.contains { $0.method == "fetchSubscribedChannels" })
+        #expect(vm.subscribedChannels.map(\.id) == ["a", "b", "z"])
+        #expect(vm.videoGroups.isEmpty)
+    }
+
     @Test("Empty subscriptions (local path) does not set isAuthRequired")
     func emptyLocalSubscriptionsDoNotSetAuthRequired() async {
         let mock = MockInnerTubeAPI()

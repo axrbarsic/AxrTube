@@ -49,29 +49,46 @@ struct SubscriptionsSortTests {
         #expect(videos[1].id == "undated")
     }
 
-    /// Subscribed channels must be sorted alphabetically (case-insensitive).
+    /// Subscribed channels use one locale-aware, deterministic catalogue policy.
     @Test func subscribedChannelsSortedAlphabetically() {
         let channels = [
-            Channel(id: "c1", title: "Zebra Channel"),
-            Channel(id: "c2", title: "alpha Channel"),
-            Channel(id: "c3", title: "Mango Talks"),
+            Channel(id: "c1", title: "Яблоко"),
+            Channel(id: "c2", title: "альфа"),
+            Channel(id: "c3", title: "Бета"),
         ]
-        let sorted = channels.sorted {
-            $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-        }
-        #expect(sorted[0].title == "alpha Channel")
-        #expect(sorted[1].title == "Mango Talks")
-        #expect(sorted[2].title == "Zebra Channel")
+        let sorted = SubscribedChannelCatalogPolicy.sortedDeduplicated(
+            channels,
+            locale: Locale(identifier: "ru_RU")
+        )
+        #expect(sorted.map(\.id) == ["c2", "c3", "c1"])
+        #expect(SubscribedChannelCatalogPolicy.sortedDeduplicated(
+            channels,
+            locale: Locale(identifier: "ru_RU")
+        ).map(\.id) == sorted.map(\.id))
     }
 
-    /// After paginating subscriptions, new videos must be appended at the bottom of
-    /// the feed without re-sorting the already-rendered videos.
-    ///
-    /// Re-sorting on every page load reorders rows that are already on screen, which
-    /// is jarring mid-scroll (videos jump to a different position). Page 2 may contain
-    /// videos that are newer than some of page 1's videos, but they must still land
-    /// at the end of the list, not interleaved.
-    @Test func paginatedSubscriptionsAppendNewVideosAtBottomWithoutResort() async {
+    @Test func subscribedChannelsDeduplicateByIDAndKeepRicherMetadata() {
+        let avatar = URL(string: "https://example.invalid/avatar.jpg")!
+        let channels = [
+            Channel(id: "same", title: ""),
+            Channel(id: "other", title: "Бета"),
+            Channel(id: "same", title: "Альфа", thumbnailURL: avatar, isSubscribed: true),
+        ]
+
+        let sorted = SubscribedChannelCatalogPolicy.sortedDeduplicated(
+            channels,
+            locale: Locale(identifier: "ru_RU")
+        )
+
+        #expect(sorted.map(\.id) == ["same", "other"])
+        #expect(sorted[0].title == "Альфа")
+        #expect(sorted[0].thumbnailURL == avatar)
+        #expect(sorted[0].isSubscribed)
+    }
+
+    /// Continuation pages join the same newest-first snapshot. This is the shared
+    /// publication contract used by subscription and channel feeds.
+    @Test func paginatedSubscriptionsMergeNewestFirst() async {
         let now = Date()
         let vidToday = Video(id: "today", title: "Today",   channelTitle: "Ch",
                              publishedAt: now)
@@ -98,8 +115,7 @@ struct SubscriptionsSortTests {
 
         #expect(vm.videoGroups[0].videos.count == 2, "page 1 should load 2 videos")
 
-        // Page 2: 2 days ago and 1 day ago — newer than "4d" but must still be appended
-        // after it, not interleaved between "today" and "4d".
+        // Page 2 contains items newer than the oldest result from page 1.
         mock.subscriptionsResult = VideoGroup(
             title: "Subs",
             videos: [vid2D, vid1D],
@@ -113,11 +129,10 @@ struct SubscriptionsSortTests {
 
         let merged = vm.videoGroups[0].videos
         #expect(merged.count == 4, "all 4 videos should be present after merge")
-        // Page 1's order is preserved, page 2's videos are appended at the bottom
-        // in the order the API returned them.
+        // The complete snapshot remains newest-first after pagination.
         #expect(merged[0].id == "today")
-        #expect(merged[1].id == "4d")
+        #expect(merged[1].id == "1d")
         #expect(merged[2].id == "2d")
-        #expect(merged[3].id == "1d")
+        #expect(merged[3].id == "4d")
     }
 }

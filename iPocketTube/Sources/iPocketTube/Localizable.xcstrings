@@ -26603,6 +26603,94 @@
         }
       }
     },
+    "Check your connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Проверьте подключение и повторите попытку."
+          }
+        }
+      }
+    },
+    "Could not load channel": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось загрузить канал"
+          }
+        }
+      }
+    },
+    "Could not load channels": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Не удалось загрузить каналы"
+          }
+        }
+      }
+    },
+    "Loading channels…": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Загрузка каналов…"
+          }
+        }
+      }
+    },
+    "No subscribed channels": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет подписок на каналы"
+          }
+        }
+      }
+    },
+    "No videos available in this channel": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этом канале нет доступных роликов"
+          }
+        }
+      }
+    },
+    "Sign in to see your YouTube channels": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Войдите, чтобы увидеть свои каналы YouTube"
+          }
+        }
+      }
+    },
+    "Your YouTube subscriptions will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Здесь появятся ваши подписки YouTube."
+          }
+        }
+      }
+    },
     "Dark": {
       "localizations": {
         "ru": {
