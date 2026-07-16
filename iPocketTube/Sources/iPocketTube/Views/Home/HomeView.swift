@@ -313,26 +313,23 @@ public struct HomeView: View {
                     sourceVideos.filter { seen.insert($0.id).inserted },
                     showShorts: store.settings.showShorts
                 )
+                let feedSentinelID = videos.last?.id
                 ScrollView {
                     VStack(alignment: .leading, spacing: 0) {
                         VideoGridSection(
                             videos: videos,
                             onSelect: { selectVideo($0, from: videos) },
                             loadMore: {
-                                homeVM.loadMoreMerged()
-                                if store.settings.showShorts {
-                                    homeVM.loadNextShortsPage()
-                                }
+                                homeVM.loadMoreMerged(triggeredBy: feedSentinelID)
                             },
                             catalogContext: .search
                         )
-                        let isLoadingMore = homeVM.sections.contains { $0.isLoadingMore }
-                        if isLoadingMore {
+                        if homeVM.isLoadingMoreMerged {
                             ProgressView().frame(maxWidth: .infinity).padding()
                         }
                     }
                 }
-                .refreshable { homeVM.load() }
+                .refreshable { await homeVM.refresh() }
                 #if os(tvOS)
                 .focusSection()
                 #endif

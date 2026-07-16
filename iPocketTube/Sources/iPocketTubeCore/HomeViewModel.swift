@@ -13,6 +13,21 @@ private let homeLog = ViewModelLogger(category: "Home")
 @Observable
 public final class HomeViewModel {
 
+    private struct FetchResult: Sendable {
+        var videos: [Video]
+        var nextPageToken: String?
+        var succeeded: Bool
+
+        static let failed = FetchResult(videos: [], nextPageToken: nil, succeeded: false)
+    }
+
+    private struct SectionFetchResult: Sendable {
+        var sectionID: String
+        var type: BrowseSection.SectionType
+        var requestedToken: String?
+        var page: FetchResult
+    }
+
     // MARK: - Section state
 
     public struct SectionState: Identifiable {
@@ -37,6 +52,10 @@ public final class HomeViewModel {
     /// content toward `preloadMoreShorts`'s threshold. Cancelled on the next `load()`.
     private var shortsPreloadTask: Task<Void, Never>? = nil
     private var publicationEnrichmentTask: Task<Void, Never>? = nil
+    private var mergedPaginationTask: Task<Void, Never>? = nil
+    private var stateGeneration: UInt = 0
+    private var paginationRequestKeys = Set<String>()
+    public private(set) var isLoadingMoreMerged: Bool = false
     public private(set) var isRefreshing: Bool = false
     /// Timestamp of the last successful load. Used for staleness checks.
     public private(set) var loadedAt: Date? = nil
@@ -58,18 +77,63 @@ public final class HomeViewModel {
         sections.contains { $0.isLoading }
     }
 
-    /// Rebuilds `mergedVideos` from both sections' current video lists.
-    /// Called once after a full load completes so mid-load arrivals never
-    /// rearrange already-rendered cards.  Not called during pagination —
-    /// `loadMore` appends to `mergedVideos` directly to keep positions stable.
-    private func rebuildMergedVideos() {
+    public var hasMoreMerged: Bool {
+        sections.contains {
+            ($0.section.type == .home || $0.section.type == .subscriptions)
+                && $0.nextPageToken != nil
+        }
+    }
+
+    /// Builds one atomic snapshot from the two intentionally supported Home
+    /// sources: YouTube recommendations and subscriptions.
+    private func mergedSourceSnapshot() -> [Video] {
         let recState  = sections.first { $0.section.type == .home }
         let subState  = sections.first { $0.section.type == .subscriptions }
         let recs  = recState?.videos  ?? []
         let subs  = subState?.videos  ?? []
         var seen = Set<String>()
         let deduped = (recs + subs).filter { seen.insert($0.id).inserted }
-        mergedVideos = VideoPublicationSortPolicy.sorted(deduped, for: .home)
+        return VideoPublicationSortPolicy.sorted(deduped, for: .home)
+    }
+
+    /// Produces the refreshed source snapshot in one commit. Cards that still
+    /// exist retain their stable YouTube identity and best publication metadata;
+    /// entries no longer returned by either supported source are removed instead
+    /// of contaminating the feed forever.
+    private static func refreshingStableSnapshot(
+        existing: [Video],
+        refreshed: [Video]
+    ) -> [Video] {
+        let existingByID = Dictionary(uniqueKeysWithValues: existing.map { ($0.id, $0) })
+        return refreshed.map { video in
+            guard let previous = existingByID[video.id] else { return video }
+            return VideoPublicationSortPolicy.mergingPublicationMetadata(
+                base: video,
+                candidate: previous
+            )
+        }
+    }
+
+    /// Updates publication metadata without changing identities or positions,
+    /// then appends only genuinely new page entries in their page chronology.
+    /// A continuation must never rebuild the already-visible prefix.
+    private static func orderedAppend(
+        existing: [Video],
+        page: [Video],
+        route: VideoListRoute
+    ) -> (videos: [Video], appended: [Video]) {
+        let metadata = VideoPublicationSortPolicy.metadataByVideoID(existing + page)
+        let patchedExisting = existing.map { video -> Video in
+            guard let candidate = metadata[video.id] else { return video }
+            return VideoPublicationSortPolicy.mergingPublicationMetadata(
+                base: video,
+                candidate: candidate
+            )
+        }
+        var seen = Set(patchedExisting.map(\.id))
+        let uniquePage = VideoPublicationSortPolicy.sorted(page, for: route)
+            .filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
+        return (patchedExisting + uniquePage, uniquePage)
     }
 
     /// Non-Short videos from the interleaved home feed.
@@ -141,82 +205,128 @@ public final class HomeViewModel {
     /// that create short-lived `HomeViewModel` instances — e.g. tests — should
     /// call this when done to avoid orphaned tasks bleeding state into later use.
     public func cancel() {
+        stateGeneration &+= 1
         loadTask?.cancel()
+        mergedPaginationTask?.cancel()
         shortsPreloadTask?.cancel()
         publicationEnrichmentTask?.cancel()
+        isRefreshing = false
+        isLoadingMoreMerged = false
+        for index in sections.indices {
+            sections[index].isLoading = false
+            sections[index].isLoadingMore = false
+        }
         hideObserverTasks.forEach { $0.cancel() }
     }
 
     // MARK: - Public API
 
     public func load() {
+        stateGeneration &+= 1
+        let generation = stateGeneration
+        let isInitialLoad = mergedVideos.isEmpty
         loadTask?.cancel()
+        mergedPaginationTask?.cancel()
         shortsPreloadTask?.cancel()
         publicationEnrichmentTask?.cancel()
-        loadedAt = nil
+        paginationRequestKeys.removeAll(keepingCapacity: true)
+        isLoadingMoreMerged = false
         isRefreshing = true
-        shortsVideos = []
-        mergedVideos = []
         for i in sections.indices {
-            sections[i].videos = []
+            if isInitialLoad {
+                sections[i].videos = []
+                sections[i].nextPageToken = nil
+                sections[i].hasFailed = false
+            }
             sections[i].isLoading = true
             sections[i].isLoadingMore = false
-            sections[i].hasFailed = false
-            sections[i].nextPageToken = nil
         }
 
-        loadTask = Task {
+        loadTask = Task { [weak self] in
+            guard let self else { return }
             // Fetch shorts via FEshorts in parallel with the home/subs feed.
             // The TV home feed (FEwhat_to_watch) never includes a Shorts shelf.
-            async let fetchedShortsResult: ([Video], String?) = HomeViewModel.fetchShortsVideos(api: self.api)
+            async let fetchedShortsResult = HomeViewModel.fetchShortsVideos(api: self.api)
 
-            await withTaskGroup(of: (String, [Video], String?).self) { group in
-                for state in sections {
+            let sectionResults = await withTaskGroup(
+                of: SectionFetchResult.self,
+                returning: [String: SectionFetchResult].self
+            ) { group in
+                for state in self.sections {
                     let sectionId = state.id
                     let type = state.section.type
                     let api = self.api
                     group.addTask {
-                        let (videos, token) = await HomeViewModel.fetchVideos(type: type, api: api)
-                        return (sectionId, videos, token)
+                        SectionFetchResult(
+                            sectionID: sectionId,
+                            type: type,
+                            requestedToken: nil,
+                            page: await HomeViewModel.fetchVideos(type: type, api: api)
+                        )
                     }
                 }
-                for await (sectionId, videos, token) in group {
-                    guard !Task.isCancelled else { break }
-                    if let idx = sections.firstIndex(where: { $0.id == sectionId }) {
-                        sections[idx].videos = videos
-                        sections[idx].nextPageToken = token
-                        sections[idx].isLoading = false
-                        sections[idx].hasFailed = videos.isEmpty
-                        // Show the first-arrived section immediately as a flat list so
-                        // the user sees content right away.  We do NOT interleave here —
-                        // that avoids re-ordering cards when the second section arrives.
-                        if mergedVideos.isEmpty, !videos.isEmpty {
-                            mergedVideos = videos
-                        }
-                    }
+                var collected: [String: SectionFetchResult] = [:]
+                for await result in group {
+                    collected[result.sectionID] = result
                 }
+                return collected
             }
-            // Both sections are now loaded. Show the server snapshot immediately;
-            // exact-date enrichment commits later as one atomic batch.
-            rebuildMergedVideos()
-            let fetchedShorts = await fetchedShortsResult.0
-            shortsVideos = VideoPublicationSortPolicy.sorted(fetchedShorts, for: .home)
-            shortsNextPageToken = await fetchedShortsResult.1
+
+            let fetchedShorts = await fetchedShortsResult
+            guard !Task.isCancelled, generation == self.stateGeneration else { return }
+
+            var loadedAnySection = false
+            for index in self.sections.indices {
+                let sectionID = self.sections[index].id
+                if let result = sectionResults[sectionID], result.page.succeeded {
+                    self.sections[index].videos = result.page.videos
+                    self.sections[index].nextPageToken = result.page.nextPageToken
+                    self.sections[index].hasFailed = false
+                    loadedAnySection = true
+                } else {
+                    // A transient refresh failure must not destroy the last visible
+                    // snapshot or its continuation cursor.
+                    self.sections[index].hasFailed = self.sections[index].videos.isEmpty
+                }
+                self.sections[index].isLoading = false
+                self.sections[index].isLoadingMore = false
+            }
+            if loadedAnySection || isInitialLoad {
+                let refreshedSnapshot = self.mergedSourceSnapshot()
+                self.mergedVideos = isInitialLoad
+                    ? refreshedSnapshot
+                    : Self.refreshingStableSnapshot(
+                        existing: self.mergedVideos,
+                        refreshed: refreshedSnapshot
+                    )
+            }
+            if fetchedShorts.succeeded {
+                self.shortsVideos = VideoPublicationSortPolicy.sorted(fetchedShorts.videos, for: .home)
+                self.shortsNextPageToken = fetchedShorts.nextPageToken
+            }
             // Fill the initial threshold (6 iOS / 8 tvOS) quickly.
             // Further pages are loaded lazily as the user scrolls to the last card.
-            await loadMoreShortsIfNeeded()
-            isRefreshing = false
-            loadedAt = Date()
-            schedulePublicationEnrichment()
+            await self.loadMoreShortsIfNeeded(generation: generation)
+            guard !Task.isCancelled, generation == self.stateGeneration else { return }
+            self.isRefreshing = false
+            if loadedAnySection { self.loadedAt = Date() }
+            self.schedulePublicationEnrichment(generation: generation)
             let merged = self.mergedVideos
             let mergedShorts = merged.filter { $0.isShort }.count
             homeLog.notice("load complete: merged=\(merged.count) regular=\(merged.count - mergedShorts) mergedShorts=\(mergedShorts) shortsSection=\(shortsVideos.count)")
             // Keep paging Shorts content in the background toward preloadMoreShorts's
             // higher threshold, without delaying the load completion above.
-            shortsPreloadTask = Task { @MainActor [weak self] in
-                await self?.preloadMoreShorts()
+            self.shortsPreloadTask = Task { @MainActor [weak self] in
+                await self?.preloadMoreShorts(generation: generation)
             }
         }
+    }
+
+    /// Keeps SwiftUI's pull-to-refresh indicator alive until the atomic refresh
+    /// commit (or a superseding generation) completes.
+    public func refresh() async {
+        load()
+        await loadTask?.value
     }
 
     public func updateAuthToken(_ token: String?) async {
@@ -244,77 +354,142 @@ public final class HomeViewModel {
 
     // MARK: - Pagination
 
-    public func loadMore(sectionId: String) {
-        guard let idx = sections.firstIndex(where: { $0.id == sectionId }),
-              let token = sections[idx].nextPageToken,
-              !sections[idx].isLoadingMore,
-              !sections[idx].isLoading else { return }
-        sections[idx].isLoadingMore = true
-        let type = sections[idx].section.type
-        Task {
-            let (newVideos, nextToken) = await HomeViewModel.fetchMoreVideos(type: type, token: token, api: api)
-            if let idx = sections.firstIndex(where: { $0.id == sectionId }) {
-                // Use a growing set so IDs that appear multiple times within
-                // newVideos itself (same page returning the same video twice)
-                // are also caught — not just duplicates against existing videos.
-                var seenIds = Set(sections[idx].videos.map(\.id))
-                let deduplicated = newVideos.filter { seenIds.insert($0.id).inserted }
-                let route: VideoListRoute = type == .subscriptions ? .subscriptions : .home
-                sections[idx].videos = VideoPublicationSortPolicy.merging(
-                    existing: sections[idx].videos,
-                    page: deduplicated,
-                    for: route
-                )
-                rebuildMergedVideos()
-                schedulePublicationEnrichment()
-                sections[idx].nextPageToken = nextToken
-                sections[idx].isLoadingMore = false
-            }
-        }
-    }
-
     private func enrichedSectionSnapshots(_ snapshots: [[Video]]) async -> [[Video]] {
         let all = snapshots.flatMap { $0 }
         let enriched = await VideoPublicationDateEnricher.shared.enrich(all) { [api] id in
             try? await api.fetchExactPublicationDate(videoId: id)
         }
         let metadata = VideoPublicationSortPolicy.metadataByVideoID(enriched)
-        return snapshots.enumerated().map { index, videos in
-            let route: VideoListRoute = sections[index].section.type == .subscriptions ? .subscriptions : .home
-            let patched = videos.map { video -> Video in
+        return snapshots.map { videos in
+            videos.map { video -> Video in
                 guard let source = metadata[video.id] else { return video }
                 return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: source)
             }
-            return VideoPublicationSortPolicy.sorted(patched, for: route)
         }
     }
 
-    private func schedulePublicationEnrichment() {
+    private func schedulePublicationEnrichment(generation: UInt) {
         publicationEnrichmentTask?.cancel()
         let sectionSnapshots = sections.map(\.videos)
         let sectionIDs = sectionSnapshots.map { $0.map(\.id) }
         let shortsSnapshot = shortsVideos
+        let mergedIDs = mergedVideos.map(\.id)
         publicationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
             let enrichedSections = await self.enrichedSectionSnapshots(sectionSnapshots)
             let enrichedShorts = await VideoPublicationDateEnricher.shared.enrich(shortsSnapshot) { [api] id in
                 try? await api.fetchExactPublicationDate(videoId: id)
             }
-            guard !Task.isCancelled, self.sections.map({ $0.videos.map(\.id) }) == sectionIDs else { return }
+            guard !Task.isCancelled,
+                  generation == self.stateGeneration,
+                  self.sections.map({ $0.videos.map(\.id) }) == sectionIDs,
+                  self.mergedVideos.map(\.id) == mergedIDs else { return }
             for index in self.sections.indices where index < enrichedSections.count {
                 self.sections[index].videos = enrichedSections[index]
             }
-            self.shortsVideos = VideoPublicationSortPolicy.sorted(enrichedShorts, for: .home)
-            self.rebuildMergedVideos()
+            let metadata = VideoPublicationSortPolicy.metadataByVideoID(
+                enrichedSections.flatMap { $0 } + enrichedShorts
+            )
+            self.shortsVideos = self.shortsVideos.map { video in
+                guard let candidate = metadata[video.id] else { return video }
+                return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: candidate)
+            }
+            self.mergedVideos = self.mergedVideos.map { video in
+                guard let candidate = metadata[video.id] else { return video }
+                return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: candidate)
+            }
         }
     }
 
     /// Called by the merged home feed when the user scrolls near the bottom.
     /// Pages both the recommended and subscriptions sections simultaneously so
     /// the interleaved list keeps growing evenly.
-    public func loadMoreMerged() {
-        for state in sections where state.section.type == .home || state.section.type == .subscriptions {
-            loadMore(sectionId: state.id)
+    public func loadMoreMerged(triggeredBy sentinelID: String?) {
+        guard let sentinelID, !sentinelID.isEmpty,
+              !isRefreshing,
+              !isLoadingMoreMerged else { return }
+
+        let requests = sections.compactMap { state -> (String, BrowseSection.SectionType, String)? in
+            guard (state.section.type == .home || state.section.type == .subscriptions),
+                  !state.isLoading,
+                  let token = state.nextPageToken else { return nil }
+            return (state.id, state.section.type, token)
+        }
+        guard !requests.isEmpty else { return }
+
+        // A visible sentinel may receive onAppear repeatedly while SwiftUI
+        // reconciles loading flags or metadata. It is permitted exactly once
+        // per stable last-card identity in this feed generation. A changed
+        // continuation cursor alone must not recursively page a still-visible
+        // sentinel; successful append changes the sentinel ID naturally.
+        let requestKey = "\(stateGeneration)|\(sentinelID)"
+        guard paginationRequestKeys.insert(requestKey).inserted else { return }
+
+        let generation = stateGeneration
+        isLoadingMoreMerged = true
+        for index in sections.indices where requests.contains(where: { $0.0 == sections[index].id }) {
+            sections[index].isLoadingMore = true
+        }
+
+        mergedPaginationTask?.cancel()
+        mergedPaginationTask = Task { [weak self] in
+            guard let self else { return }
+            let results = await withTaskGroup(of: SectionFetchResult.self, returning: [SectionFetchResult].self) { group in
+                for request in requests {
+                    let api = self.api
+                    group.addTask {
+                        SectionFetchResult(
+                            sectionID: request.0,
+                            type: request.1,
+                            requestedToken: request.2,
+                            page: await HomeViewModel.fetchMoreVideos(
+                                type: request.1,
+                                token: request.2,
+                                api: api
+                            )
+                        )
+                    }
+                }
+                var pages: [SectionFetchResult] = []
+                for await result in group { pages.append(result) }
+                return pages
+            }
+
+            guard !Task.isCancelled, generation == self.stateGeneration else { return }
+            var appendedToMerged: [Video] = []
+            for result in results.sorted(by: { $0.sectionID < $1.sectionID }) {
+                guard let index = self.sections.firstIndex(where: { $0.id == result.sectionID }),
+                      self.sections[index].nextPageToken == result.requestedToken else { continue }
+                defer { self.sections[index].isLoadingMore = false }
+                guard result.page.succeeded else { continue }
+
+                let route: VideoListRoute = result.type == .subscriptions ? .subscriptions : .home
+                let append = Self.orderedAppend(
+                    existing: self.sections[index].videos,
+                    page: result.page.videos,
+                    route: route
+                )
+                self.sections[index].videos = append.videos
+                appendedToMerged.append(contentsOf: append.appended)
+
+                // Empty pages and repeated cursors cannot make forward progress;
+                // exhausting them prevents an always-visible sentinel loop.
+                if append.appended.isEmpty || result.page.nextPageToken == result.requestedToken {
+                    self.sections[index].nextPageToken = nil
+                } else {
+                    self.sections[index].nextPageToken = result.page.nextPageToken
+                }
+            }
+
+            let mergedAppend = Self.orderedAppend(
+                existing: self.mergedVideos,
+                page: appendedToMerged,
+                route: .home
+            )
+            self.mergedVideos = mergedAppend.videos
+            self.isLoadingMoreMerged = false
+            self.mergedPaginationTask = nil
+            self.schedulePublicationEnrichment(generation: generation)
         }
     }
 
@@ -322,71 +497,55 @@ public final class HomeViewModel {
     /// Loads the next page unconditionally — no minimum-count threshold — so the row
     /// grows on demand as the user scrolls past the already-loaded cards.
     public func loadNextShortsPage() {
-        let subsToken = sections.first { $0.section.type == .subscriptions }?.nextPageToken
-        homeLog.notice("loadNextShortsPage: called — count=\(shortsVideos.count) isLoading=\(isLoadingMoreShorts) searchToken=\(shortsNextPageToken != nil) subsToken=\(subsToken != nil)")
-        guard !isLoadingMoreShorts, shortsNextPageToken != nil || subsToken != nil else {
+        homeLog.notice("loadNextShortsPage: called — count=\(shortsVideos.count) isLoading=\(isLoadingMoreShorts) searchToken=\(shortsNextPageToken != nil)")
+        guard !isLoadingMoreShorts, shortsNextPageToken != nil else {
             homeLog.notice("loadNextShortsPage: skipped — no tokens available")
             return
         }
+        let generation = stateGeneration
         Task { @MainActor [weak self] in
-            await self?.fetchAndAppendNextShortsPage()
+            await self?.fetchAndAppendNextShortsPage(generation: generation)
         }
     }
 
-    private func fetchAndAppendNextShortsPage() async {
-        let subsToken = sections.first { $0.section.type == .subscriptions }?.nextPageToken
-        guard !isLoadingMoreShorts, shortsNextPageToken != nil || subsToken != nil else { return }
+    private func fetchAndAppendNextShortsPage(generation: UInt) async {
+        guard generation == stateGeneration,
+              !isLoadingMoreShorts,
+              shortsNextPageToken != nil else { return }
         isLoadingMoreShorts = true
         defer { isLoadingMoreShorts = false }
-        _ = await fetchOneShortsPage()
+        _ = await fetchOneShortsPage(generation: generation)
     }
 
     /// Fetches one increment of Shorts content: a FEshorts search-continuation page
-    /// if available, falling back to one subscriptions-continuation page if the
-    /// search page is exhausted or returned nothing new. Search results land in
-    /// `shortsVideos`; subs results land in `sections[subscriptions].videos` — both
-    /// are surfaced together via `homeShortsVideos`.
+    /// if available. The subscriptions continuation belongs exclusively to the
+    /// merged Home paginator; consuming it here would skip or reorder regular
+    /// feed pages.
     /// Returns `true` if any new videos were appended.
-    private func fetchOneShortsPage() async -> Bool {
-        // Phase 1: one search page (srch: token from fetchShorts).
-        if let token = shortsNextPageToken {
-            homeLog.notice("fetchOneShortsPage search: fetching token=\(String(token.prefix(16)))\u{2026}")
-            do {
-                let more = try await api.fetchShortsMore(continuationToken: token)
-                let existingIDs = Set(shortsVideos.map(\.id))
-                let newVideos = more.videos.filter { !existingIDs.contains($0.id) }
-                shortsVideos.append(contentsOf: newVideos)
-                shortsNextPageToken = more.nextPageToken
-                homeLog.notice("fetchOneShortsPage search: added \(newVideos.count) total=\(shortsVideos.count) hasMore=\(more.nextPageToken != nil)")
-                if !newVideos.isEmpty {
-                    return true
-                }
-                // Search page returned 0 new Shorts — fall through to Phase 2
-            } catch {
-                homeLog.error("fetchOneShortsPage search: failed: \(error.localizedDescription)")
-                shortsNextPageToken = nil
-            }
-        }
-        // Phase 2: one subs page when search is exhausted or returned nothing new.
-        if let idx = sections.firstIndex(where: { $0.section.type == .subscriptions }),
-           let token = sections[idx].nextPageToken {
-            homeLog.notice("fetchOneShortsPage subs: fetching token=\(String(token.prefix(16)))\u{2026}")
-            let more = await Self.fetchMoreVideos(type: .subscriptions, token: token, api: api)
-            let existingIDs = Set(sections[idx].videos.map(\.id))
-            let newVideos = more.0.filter { !existingIDs.contains($0.id) }
-            sections[idx].videos.append(contentsOf: newVideos)
-            sections[idx].nextPageToken = more.1
-            let newShorts = newVideos.filter { $0.isShort }.count
-            homeLog.notice("fetchOneShortsPage subs: added \(newVideos.count) (\(newShorts) shorts) hasMore=\(more.1 != nil)")
+    private func fetchOneShortsPage(generation: UInt) async -> Bool {
+        guard generation == stateGeneration, let token = shortsNextPageToken else { return false }
+        homeLog.notice("fetchOneShortsPage search: fetching next page")
+        do {
+            let more = try await api.fetchShortsMore(continuationToken: token)
+            guard generation == stateGeneration, !Task.isCancelled else { return false }
+            var seen = Set(shortsVideos.map(\.id))
+            let newVideos = more.videos.filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
+            shortsVideos.append(contentsOf: newVideos)
+            shortsNextPageToken = more.nextPageToken == token ? nil : more.nextPageToken
+            homeLog.notice("fetchOneShortsPage search: added \(newVideos.count) total=\(shortsVideos.count) hasMore=\(shortsNextPageToken != nil)")
             return !newVideos.isEmpty
+        } catch {
+            guard generation == stateGeneration else { return false }
+            homeLog.error("fetchOneShortsPage search: failed: \(error.localizedDescription)")
+            return false
         }
-        return false
     }
 
     /// Auto-loads an additional page of FEshorts if the current count falls below
     /// the threshold needed to fill 2 horizontal screens.
     /// iOS: ~3 cards/screen → threshold = 6; tvOS: ~4 cards/screen → threshold = 8.
-    func loadMoreShortsIfNeeded() async {
+    func loadMoreShortsIfNeeded(generation: UInt? = nil) async {
+        let generation = generation ?? stateGeneration
         #if os(tvOS)
         let threshold = 8
         #else
@@ -397,8 +556,6 @@ public final class HomeViewModel {
             return
         }
         guard shortsVideos.count < threshold, shortsNextPageToken != nil else {
-            // If search token is exhausted but subs has a continuation, Phase 2 of
-            // fetchOneShortsPage will cover it. Nothing to do here.
             homeLog.notice("loadMoreShortsIfNeeded: skipped count=\(shortsVideos.count) hasToken=\(shortsNextPageToken != nil) loading=\(isLoadingMoreShorts)")
             return
         }
@@ -406,20 +563,22 @@ public final class HomeViewModel {
         defer { isLoadingMoreShorts = false }
         var loopIteration = 0
         // Loop until we have at least `threshold` items or pages run out.
-        while shortsVideos.count < threshold, shortsNextPageToken != nil {
+        while generation == stateGeneration,
+              !Task.isCancelled,
+              shortsVideos.count < threshold,
+              shortsNextPageToken != nil {
             loopIteration += 1
             homeLog.notice("loadMoreShortsIfNeeded: loop=\(loopIteration) count=\(shortsVideos.count) threshold=\(threshold)")
-            guard await fetchOneShortsPage() else { break }
+            guard await fetchOneShortsPage(generation: generation) else { break }
         }
     }
 
-    /// Continues fetching Shorts pages in the background (search continuation, then
-    /// subscriptions continuation) until `homeShortsVideos.count` reaches
-    /// `preloadHighThreshold` or both sources are exhausted. Started as a
+    /// Continues fetching dedicated Shorts pages in the background until
+    /// `homeShortsVideos.count` reaches `preloadHighThreshold`. Started as a
     /// fire-and-forget task after `load()` finishes its fast initial fill
     /// (`loadMoreShortsIfNeeded`), so the Shorts row keeps growing for an
     /// endless-scroll experience without delaying `isRefreshing = false`.
-    private func preloadMoreShorts() async {
+    private func preloadMoreShorts(generation: UInt) async {
         #if os(tvOS)
         let preloadHighThreshold = 50
         #else
@@ -429,15 +588,16 @@ public final class HomeViewModel {
         isLoadingMoreShorts = true
         defer { isLoadingMoreShorts = false }
         var loopIteration = 0
-        while !Task.isCancelled, homeShortsVideos.count < preloadHighThreshold {
-            let subsToken = sections.first { $0.section.type == .subscriptions }?.nextPageToken
-            guard shortsNextPageToken != nil || subsToken != nil else {
+        while generation == stateGeneration,
+              !Task.isCancelled,
+              homeShortsVideos.count < preloadHighThreshold {
+            guard shortsNextPageToken != nil else {
                 homeLog.notice("preloadMoreShorts: stopping — no continuation tokens left, count=\(homeShortsVideos.count)")
                 break
             }
             loopIteration += 1
             homeLog.notice("preloadMoreShorts: iteration=\(loopIteration) count=\(homeShortsVideos.count)/\(preloadHighThreshold)")
-            guard await fetchOneShortsPage() else {
+            guard await fetchOneShortsPage(generation: generation) else {
                 homeLog.notice("preloadMoreShorts: stopping — page returned no new videos")
                 break
             }
@@ -448,28 +608,32 @@ public final class HomeViewModel {
 
     /// Fetches the FEshorts feed. Non-isolated so it runs concurrently with
     /// the home/subs task group.
-    private static func fetchShortsVideos(api: any InnerTubeAPIProtocol) async -> ([Video], String?) {
+    private static func fetchShortsVideos(api: any InnerTubeAPIProtocol) async -> FetchResult {
         do {
             let group = try await api.fetchShorts()
             let hasToken = group.nextPageToken != nil
             homeLog.notice("fetchShortsVideos → \(group.videos.count) shorts hasToken=\(hasToken)")
-            return (group.videos, group.nextPageToken)
+            return FetchResult(videos: group.videos, nextPageToken: group.nextPageToken, succeeded: true)
         } catch {
             homeLog.error("fetchShortsVideos failed: \(error.localizedDescription)")
-            return ([], nil)
+            return .failed
         }
     }
 
     /// Non-isolated so child tasks run on the global executor and network
     /// calls can overlap.
-    private static func fetchVideos(type: BrowseSection.SectionType, api: any InnerTubeAPIProtocol) async -> ([Video], String?) {
+    private static func fetchVideos(type: BrowseSection.SectionType, api: any InnerTubeAPIProtocol) async -> FetchResult {
         do {
             switch type {
             case .subscriptions:
                 let group = try await api.fetchSubscriptions()
                 let shortsCount = group.videos.filter { $0.isShort }.count
                 homeLog.notice("fetchVideos subs: total=\(group.videos.count) shorts=\(shortsCount) regular=\(group.videos.count - shortsCount)")
-                return (Array(group.videos.prefix(InnerTubeClients.maxVideoResults)), group.nextPageToken)
+                return FetchResult(
+                    videos: Array(group.videos.prefix(InnerTubeClients.maxVideoResults)),
+                    nextPageToken: group.nextPageToken,
+                    succeeded: true
+                )
             case .home:
                 let rows = try await api.fetchHomeRows()
                 let token = rows.last(where: { $0.nextPageToken != nil })?.nextPageToken
@@ -477,22 +641,24 @@ public final class HomeViewModel {
                 let deduped = rows.flatMap(\.videos).filter { seen.insert($0.id).inserted }
                 let fetchedShortsCount = deduped.filter { $0.isShort }.count
                 homeLog.notice("fetchVideos home: total=\(deduped.count) shorts=\(fetchedShortsCount) regular=\(deduped.count - fetchedShortsCount)")
-                if deduped.isEmpty {
-                    // Home feed empty (no watch history / feedNudgeRenderer) — fall back to popular
-                    let popular = try await api.search(query: "popular")
-                    return (popular.videos, popular.nextPageToken)
-                }
-                return (Array(deduped.prefix(InnerTubeClients.maxVideoResults)), token)
+                // Empty Home is an honest Home state. Injecting a generic
+                // `popular` search here mixed a separate catalog (including
+                // movie results) into the authenticated YouTube feed.
+                return FetchResult(
+                    videos: Array(deduped.prefix(InnerTubeClients.maxVideoResults)),
+                    nextPageToken: token,
+                    succeeded: true
+                )
             default:
-                return ([], nil)
+                return FetchResult(videos: [], nextPageToken: nil, succeeded: true)
             }
         } catch {
             homeLog.error("HomeViewModel fetch \(String(describing: type)): \(error.localizedDescription)")
-            return ([], nil)
+            return .failed
         }
     }
 
-    private static func fetchMoreVideos(type: BrowseSection.SectionType, token: String, api: any InnerTubeAPIProtocol) async -> ([Video], String?) {
+    private static func fetchMoreVideos(type: BrowseSection.SectionType, token: String, api: any InnerTubeAPIProtocol) async -> FetchResult {
         do {
             switch type {
             case .subscriptions:
@@ -501,7 +667,7 @@ public final class HomeViewModel {
                 }
                 let shortsCount = group.videos.filter { $0.isShort }.count
                 homeLog.notice("fetchMoreVideos subs: total=\(group.videos.count) shorts=\(shortsCount) regular=\(group.videos.count - shortsCount)")
-                return (group.videos, group.nextPageToken)
+                return FetchResult(videos: group.videos, nextPageToken: group.nextPageToken, succeeded: true)
             case .home:
                 let rows = try await retryWithBackoff(label: "HomeVM.home") {
                     try await api.fetchHomeRows(continuationToken: token)
@@ -511,13 +677,13 @@ public final class HomeViewModel {
                 // in multiple shelves of the same continuation response.
                 var seen = Set<String>()
                 let deduped = rows.flatMap(\.videos).filter { seen.insert($0.id).inserted }
-                return (deduped, nextToken)
+                return FetchResult(videos: deduped, nextPageToken: nextToken, succeeded: true)
             default:
-                return ([], nil)
+                return FetchResult(videos: [], nextPageToken: nil, succeeded: true)
             }
         } catch {
             homeLog.error("HomeViewModel loadMore \(String(describing: type)): \(error.localizedDescription)")
-            return ([], nil)
+            return .failed
         }
     }
 }

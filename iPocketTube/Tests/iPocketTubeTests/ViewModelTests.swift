@@ -24,6 +24,8 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
     var homeResult: VideoGroup = VideoGroup(title: "Home", videos: [])
     var homeRowsResult: [VideoGroup] = []
     var subscriptionsResult: VideoGroup = VideoGroup(title: "Subs", videos: [])
+    var queuedHomeRows: [(result: [VideoGroup], delayMilliseconds: Int)] = []
+    var queuedSubscriptions: [(result: VideoGroup, delayMilliseconds: Int)] = []
     var historyResult: VideoGroup = VideoGroup(title: "History", videos: [])
     var shortsResult: VideoGroup = VideoGroup(title: "Shorts", videos: [])
     var shortsMoreResult: VideoGroup = VideoGroup(title: "Shorts", videos: [])
@@ -67,12 +69,28 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
     func fetchHomeRows(continuationToken: String?) async throws -> [VideoGroup] {
         calls.append(Call(method: "fetchHomeRows", args: [continuationToken ?? "nil"]))
         if let e = errorToThrow { throw e }
+        if !queuedHomeRows.isEmpty {
+            let queued = queuedHomeRows.removeFirst()
+            if queued.delayMilliseconds > 0 {
+                // Deliberately return the captured response even after cancellation;
+                // this models a transport callback that arrives late.
+                try? await Task.sleep(for: .milliseconds(queued.delayMilliseconds))
+            }
+            return queued.result
+        }
         return homeRowsResult
     }
 
     func fetchSubscriptions(continuationToken: String?) async throws -> VideoGroup {
         calls.append(Call(method: "fetchSubscriptions", args: [continuationToken ?? "nil"]))
         if let e = errorToThrow { throw e }
+        if !queuedSubscriptions.isEmpty {
+            let queued = queuedSubscriptions.removeFirst()
+            if queued.delayMilliseconds > 0 {
+                try? await Task.sleep(for: .milliseconds(queued.delayMilliseconds))
+            }
+            return queued.result
+        }
         return subscriptionsResult
     }
 
@@ -348,6 +366,190 @@ struct HomeViewModelTests {
         #expect(vm.mergedVideos == recs)
     }
 
+    @Test("Refresh preserves the visible snapshot until one atomic commit")
+    func refreshIsNonDestructive() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(title: "Home", videos: [makeVideo("old-home")])]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [makeVideo("old-sub")])
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing && vm.mergedVideos.count == 2 })
+        let visibleBeforeRefresh = vm.mergedVideos.map(\.id)
+
+        mock.queuedHomeRows = [(
+            [VideoGroup(title: "Home", videos: [makeVideo("new-home"), makeVideo("old-home")])],
+            120
+        )]
+        mock.queuedSubscriptions = [(
+            VideoGroup(title: "Subs", videos: [makeVideo("old-sub")]),
+            120
+        )]
+
+        let refreshTask = Task { await vm.refresh() }
+        await waitForTasks(until: { vm.isRefreshing })
+
+        #expect(vm.mergedVideos.map(\.id) == visibleBeforeRefresh)
+        await refreshTask.value
+        #expect(vm.mergedVideos.map(\.id) == ["new-home"] + visibleBeforeRefresh)
+        #expect(!vm.isRefreshing)
+    }
+
+    @Test("Merged pagination appends one ordered deduplicated batch with one in-flight request")
+    func mergedPaginationIsOrderedAndSingleFlight() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo("home-1")],
+            nextPageToken: "home-page-2"
+        )]
+        mock.subscriptionsResult = VideoGroup(
+            title: "Subs",
+            videos: [makeVideo("sub-1")],
+            nextPageToken: "subs-page-2"
+        )
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing && vm.mergedVideos.count == 2 })
+        let initialIDs = vm.mergedVideos.map(\.id)
+
+        mock.queuedHomeRows = [(
+            [VideoGroup(
+                title: "Home",
+                videos: [makeVideo("home-1"), makeVideo("home-2"), makeVideo("home-2")]
+            )],
+            100
+        )]
+        mock.queuedSubscriptions = [(
+            VideoGroup(
+                title: "Subs",
+                videos: [makeVideo("sub-1"), makeVideo("sub-2")]
+            ),
+            60
+        )]
+
+        vm.loadMoreMerged(triggeredBy: initialIDs.last)
+        vm.loadMoreMerged(triggeredBy: initialIDs.last)
+        await waitForTasks(until: { vm.isLoadingMoreMerged })
+        #expect(vm.mergedVideos.map(\.id) == initialIDs)
+        await waitForTasks(until: { !vm.isLoadingMoreMerged })
+
+        #expect(vm.mergedVideos.map(\.id) == initialIDs + ["home-2", "sub-2"])
+        #expect(Set(vm.mergedVideos.map(\.id)).count == vm.mergedVideos.count)
+        #expect(mock.calls.filter { $0.method == "fetchHomeRows" && $0.args == ["home-page-2"] }.count == 1)
+        #expect(mock.calls.filter { $0.method == "fetchSubscriptions" && $0.args == ["subs-page-2"] }.count == 1)
+        #expect(!vm.hasMoreMerged)
+    }
+
+    @Test("Late continuation response cannot overwrite a newer refresh generation")
+    func stalePaginationResponseIsIgnored() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo("current")],
+            nextPageToken: "slow-page"
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing && vm.mergedVideos.map(\.id) == ["current"] })
+
+        mock.queuedHomeRows = [
+            ([VideoGroup(title: "Late", videos: [makeVideo("stale-page")])], 180),
+            ([VideoGroup(title: "Fresh", videos: [makeVideo("fresh")])], 0),
+        ]
+        vm.loadMoreMerged(triggeredBy: "current")
+        await waitForTasks(until: {
+            mock.calls.contains { $0.method == "fetchHomeRows" && $0.args == ["slow-page"] }
+        })
+        await vm.refresh()
+        await waitForTasks()
+
+        #expect(vm.mergedVideos.map(\.id) == ["fresh"])
+        #expect(!vm.mergedVideos.map(\.id).contains("stale-page"))
+    }
+
+    @Test("No-progress page exhausts its cursor and the visible sentinel cannot recurse")
+    func noProgressPageStopsPaginationLoop() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo("sentinel")],
+            nextPageToken: "repeat-token"
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing && vm.hasMoreMerged })
+
+        mock.queuedHomeRows = [(
+            [VideoGroup(
+                title: "Repeated",
+                videos: [makeVideo("sentinel")],
+                nextPageToken: "repeat-token"
+            )],
+            0
+        )]
+        vm.loadMoreMerged(triggeredBy: "sentinel")
+        await waitForTasks(until: { !vm.isLoadingMoreMerged && !vm.hasMoreMerged })
+        vm.loadMoreMerged(triggeredBy: "sentinel")
+
+        #expect(mock.calls.filter { $0.method == "fetchHomeRows" && $0.args == ["repeat-token"] }.count == 1)
+        #expect(vm.mergedVideos.map(\.id) == ["sentinel"])
+    }
+
+    @Test("Dedicated Shorts paging never consumes the subscriptions continuation")
+    func shortsPreloadDoesNotAdvanceSubscriptionsCursor() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = []
+        mock.subscriptionsResult = VideoGroup(
+            title: "Subs",
+            videos: [makeVideo("sub-current")],
+            nextPageToken: "subs-next"
+        )
+        mock.shortsResult = VideoGroup(title: "Shorts", videos: [], nextPageToken: nil)
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing })
+        await waitForShortPreloadCompletion(vm)
+
+        #expect(!mock.calls.contains { $0.method == "fetchSubscriptions" && $0.args == ["subs-next"] })
+        #expect(!mock.calls.contains { $0.method == "search" })
+        #expect(vm.hasMoreMerged)
+    }
+
+    @Test("Refresh removes entries absent from both supported Home sources")
+    func refreshRemovesStaleSourceContamination() async {
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo("youtube-card"), makeVideo("stale-fallback-movie")]
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: { !vm.isRefreshing && vm.mergedVideos.count == 2 })
+
+        mock.queuedHomeRows = [(
+            [VideoGroup(title: "Home", videos: [makeVideo("youtube-card")])],
+            0
+        )]
+        mock.queuedSubscriptions = [(VideoGroup(title: "Subs", videos: []), 0)]
+        await vm.refresh()
+
+        #expect(vm.mergedVideos.map(\.id) == ["youtube-card"])
+    }
+
     @Test("homeRegularVideos excludes Shorts and homeShortsVideos contains only Shorts")
     func homePartitionsShorts() async {
         let mock = MockInnerTubeAPI()
@@ -493,6 +695,7 @@ struct HomeViewModelTests {
         #expect(vm.homeShortsVideos.count == 2)
         #expect(!mock.calls.contains(where: { $0.method == "fetchShortsMore" }))
     }
+
 }
 
 // MARK: - BrowseViewModelTests
