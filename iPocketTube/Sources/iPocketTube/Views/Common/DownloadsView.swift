@@ -33,9 +33,10 @@ struct DownloadsView: View {
             } else {
                 List {
                     ForEach(sortedEntries) { entry in
+                        let isCurrent = entry.videoId == playerRouter.audioFirst.currentVideo?.id
+                            && entry.kind == (playerRouter.audioFirst.currentVideo?.localMediaKind ?? .audio)
                         Group {
-                            if entry.videoId == playerRouter.audioFirst.currentVideo?.id,
-                               entry.kind == (playerRouter.audioFirst.currentVideo?.localMediaKind ?? .audio) {
+                            if isCurrent {
                                 DownloadedNowPlayingCard(
                                     entry: entry,
                                     statusText: playerRouter.audioFirst.statusText,
@@ -55,7 +56,8 @@ struct DownloadsView: View {
                                         iPocketTubeHaptics.shared.perform(.seekCommit)
                                         playerRouter.audioFirst.commitScrubbing()
                                     },
-                                    onRetry: { retry(entry) }
+                                    onRetry: { retry(entry) },
+                                    onDelete: { deleteConfirmationEntry = entry }
                                 )
                             } else {
                                 DownloadedMediaRow(
@@ -77,19 +79,19 @@ struct DownloadsView: View {
                                     iPocketTubeHaptics.shared.perform(.downloadSelection)
                                     playerRouter.open(video: entry.video, api: api)
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                    Button(role: .destructive) {
+                                        iPocketTubeHaptics.shared.perform(.primaryAction)
+                                        deleteConfirmationEntry = entry
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                iPocketTubeHaptics.shared.perform(.primaryAction)
-                                deleteConfirmationEntry = entry
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
                         .contextMenu {
                             Button(role: .destructive) {
                                 iPocketTubeHaptics.shared.perform(.primaryAction)
@@ -261,6 +263,7 @@ private struct DownloadedNowPlayingCard: View {
     let onScrubChanged: (TimeInterval) -> Void
     let onScrubEnded: () -> Void
     let onRetry: () -> Void
+    let onDelete: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -281,15 +284,27 @@ private struct DownloadedNowPlayingCard: View {
                     }
                 }
                 Spacer(minLength: 0)
-                Button(action: onPlayPause) {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.headline)
-                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
-                        .frame(width: 44, height: 44)
-                        .background(iPocketTubeVisualTokens.mint, in: Circle())
+                VStack(spacing: 4) {
+                    Button(action: onPlayPause) {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .font(.headline)
+                            .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                            .frame(width: 44, height: 44)
+                            .background(iPocketTubeVisualTokens.mint, in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(isPlaying ? "Pause" : "Play")
+                    Menu {
+                        Button(role: .destructive, action: onDelete) {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("More actions")
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(isPlaying ? "Pause" : "Play")
             }
 
             if entry.status == .failed || entry.status == .cancelled {
@@ -303,7 +318,19 @@ private struct DownloadedNowPlayingCard: View {
                     .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
                     .frame(minHeight: 44)
             } else {
-                playbackTimeline
+                AudioWaveformView(
+                    videoID: entry.videoId,
+                    fileURL: entry.fileURL,
+                    fileVersion: entry.fileSizeBytes,
+                    playbackTime: playbackTime,
+                    duration: playbackDuration,
+                    bufferedProgress: bufferedProgress,
+                    isPlaying: isPlaying,
+                    isScrubbing: isScrubbing,
+                    onScrubBegan: onScrubBegan,
+                    onScrubChanged: onScrubChanged,
+                    onScrubEnded: onScrubEnded
+                )
 
                 HStack {
                     Text(String(
@@ -343,60 +370,6 @@ private struct DownloadedNowPlayingCard: View {
         .accessibilityIdentifier("downloads.nowPlayingCard")
     }
 
-    private var hasFiniteDuration: Bool {
-        playbackDuration.isFinite && playbackDuration > 0
-    }
-
-    private var playbackTimeline: some View {
-        VStack(spacing: 2) {
-            ZStack {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(iPocketTubeVisualTokens.stroke)
-                        Capsule()
-                            .fill(iPocketTubeVisualTokens.mintSoft.opacity(0.55))
-                            .frame(width: proxy.size.width * min(1, max(0, bufferedProgress)))
-                    }
-                    .frame(height: 4)
-                    .frame(maxHeight: .infinity)
-                }
-                .frame(height: 44)
-                .allowsHitTesting(false)
-
-                Slider(
-                    value: Binding(
-                        get: { hasFiniteDuration ? min(playbackDuration, max(0, playbackTime)) : 0 },
-                        set: { onScrubChanged($0) }
-                    ),
-                    in: 0...max(1, playbackDuration),
-                    onEditingChanged: { editing in
-                        if editing { onScrubBegan() } else { onScrubEnded() }
-                    }
-                )
-                .tint(iPocketTubeVisualTokens.mint)
-                .disabled(!hasFiniteDuration)
-                .frame(minHeight: 44)
-                .accessibilityLabel("Playback position")
-                .accessibilityValue(hasFiniteDuration
-                    ? String(
-                        format: String(localized: "%@ of %@", bundle: .module),
-                        formatPlaybackTime(playbackTime),
-                        formatPlaybackTime(playbackDuration)
-                    )
-                    : String(localized: "Duration unavailable", bundle: .module))
-                .accessibilityHint("Swipe up or down to seek")
-            }
-
-            HStack {
-                Text(formatPlaybackTime(playbackTime))
-                Spacer()
-                Text(hasFiniteDuration ? "−\(formatPlaybackTime(max(0, playbackDuration - playbackTime)))" : "—:—")
-            }
-            .font(.caption2.monospacedDigit())
-            .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-        }
-        .accessibilityIdentifier("downloads.playbackScrubber")
-    }
 }
 
 private struct DownloadedMediaRow: View {
@@ -596,7 +569,7 @@ private func formattedBytes(_ bytes: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
 }
 
-private func formatPlaybackTime(_ seconds: TimeInterval) -> String {
+func formatPlaybackTime(_ seconds: TimeInterval) -> String {
     guard seconds.isFinite, seconds >= 0 else { return "—:—" }
     let total = Int(seconds.rounded(.down))
     let hours = total / 3600

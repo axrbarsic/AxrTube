@@ -753,8 +753,11 @@ extension PlaybackViewModel {
             }
 
             // Restore saved watch position (mirrors VideoStateController)
-            let savedState = await VideoStateStore.shared.state(for: video.id)
-            if let pos = savedState?.position, pos > 5 {
+            let pos = await VideoStateStore.shared.restoredPosition(
+                for: video.id,
+                actualDuration: video.duration ?? 0
+            )
+            if pos > 0 {
                 savedPositionToRestore = pos
                 playerLog.notice("Restoring position \(Int(pos))s for \(video.id)")
             }

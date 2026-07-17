@@ -311,6 +311,7 @@ extension PlaybackViewModel {
     }
 
     func performUserPause(reason: String) {
+        checkpointPlaybackPosition()
         audioRecoveryVerificationTask?.cancel()
         audioInterruptionState.userPaused()
         player.pause()
@@ -390,6 +391,7 @@ extension PlaybackViewModel {
                 playerLog.notice("[interruption] duplicate began ignored")
                 return
             }
+            checkpointPlaybackPosition()
             // A previously scheduled stall retry must never restart playback while
             // the microphone owns the route.
             exhaustiveRetryTask?.cancel()
@@ -440,7 +442,22 @@ extension PlaybackViewModel {
         }
     }
 
+    private func checkpointPlaybackPosition() {
+        guard let video = currentVideo else { return }
+        let position = player.currentTime().seconds
+        let currentDuration = duration
+        guard position.isFinite, currentDuration.isFinite, currentDuration > 0 else { return }
+        Task {
+            await VideoStateStore.shared.save(
+                videoId: video.id,
+                position: position,
+                duration: currentDuration
+            )
+        }
+    }
+
     func handleAudioRouteChange(reason: AVAudioSession.RouteChangeReason) {
+        checkpointPlaybackPosition()
         AudioDiagnostics.shared.record(
             event: "route.change",
             decision: String(reason.rawValue),
@@ -475,6 +492,7 @@ extension PlaybackViewModel {
     }
 
     func handleMediaServicesLost() {
+        checkpointPlaybackPosition()
         _ = audioInterruptionState.mediaServicesLost(
             wasPlaying: isPlaying || player.rate > 0
         )

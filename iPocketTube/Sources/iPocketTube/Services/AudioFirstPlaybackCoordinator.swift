@@ -57,6 +57,7 @@ public final class AudioFirstPlaybackCoordinator {
     private var reconciliationWatchdogTask: Task<Void, Never>?
     private var applicationIsActive = false
     private var wasPlayingBeforeScrub = false
+    private var lastPositionCheckpointAt: Date?
     /// Committed only after a user-selected command produces real timeline
     /// movement. System/interruption resumes never create a history activation.
     private var pendingHistoryActivation: (videoID: String, kind: OfflineMediaKind, generation: UInt64)?
@@ -88,6 +89,7 @@ public final class AudioFirstPlaybackCoordinator {
     }
 
     public func open(video: Video) {
+        persistCurrentPosition(force: true)
         cancelSupervisedDownload(ifMatching: video.id)
         if currentVideo?.id == video.id, isVisible {
             if case .failed = status {
@@ -106,6 +108,7 @@ public final class AudioFirstPlaybackCoordinator {
         let generation = commandGate.advance()
         cancelActiveWork(markCancelled: false, stopPlayer: false)
         currentVideo = video
+        lastPositionCheckpointAt = nil
         pendingHistoryActivation = (
             videoID: video.id,
             kind: video.localMediaKind ?? .audio,
@@ -131,7 +134,8 @@ public final class AudioFirstPlaybackCoordinator {
         )
         playerState.prepareAudioFirst(video: video)
         positionHydrationTask = Task { [weak self] in
-            let saved = await VideoStateStore.shared.state(for: video.id)?.position ?? 0
+            let duration = video.duration ?? self?.playerState.vm.duration ?? 0
+            let saved = await VideoStateStore.shared.restoredPosition(for: video.id, actualDuration: duration)
             guard let self, self.commandGate.isCurrent(generation), self.currentVideo?.id == video.id else { return }
             self.apply(.userSeek(generation: generation, position: saved))
         }
@@ -169,6 +173,7 @@ public final class AudioFirstPlaybackCoordinator {
         guard let video = currentVideo, playerState.vm.player.currentItem != nil else { return }
         let wasPlaying = playerState.vm.isPlaying
         playerState.vm.togglePlayPause()
+        if wasPlaying { persistCurrentPosition(force: true) }
         if !wasPlaying {
             pendingHistoryActivation = (
                 videoID: video.id,
@@ -212,6 +217,7 @@ public final class AudioFirstPlaybackCoordinator {
             reconcileDownloads(trigger: "foreground")
             startReconciliationWatchdog()
         } else {
+            persistCurrentPosition(force: true)
             reconciliationWatchdogTask?.cancel()
             reconciliationWatchdogTask = nil
         }
@@ -250,6 +256,7 @@ public final class AudioFirstPlaybackCoordinator {
         wasPlayingBeforeScrub = false
         apply(.userSeek(generation: commandGate.generation, position: target))
         playerState.vm.commitAudioFirstScrub(resumeAfterSeek: resume)
+        persistCurrentPosition(force: true, position: target)
     }
 
     public var playbackBufferedProgress: Double {
@@ -1019,6 +1026,7 @@ public final class AudioFirstPlaybackCoordinator {
     }
 
     private func close(markCancelled: Bool) {
+        persistCurrentPosition(force: true)
         _ = commandGate.advance()
         pendingHistoryActivation = nil
         cancelActiveWork(markCancelled: markCancelled, stopPlayer: true)
@@ -1082,6 +1090,7 @@ public final class AudioFirstPlaybackCoordinator {
                 let seconds = self.playerState.vm.player.currentTime().seconds
                 if seconds.isFinite, seconds >= 0.05 {
                     self.apply(.timeline(generation: generation, position: seconds))
+                    self.persistCurrentPosition(force: false, position: seconds)
                     if let pending = self.pendingHistoryActivation,
                        pending.videoID == video.id,
                        pending.generation == generation,
@@ -1114,6 +1123,26 @@ public final class AudioFirstPlaybackCoordinator {
                 }
                 try? await Task.sleep(for: .milliseconds(recordedFirstAdvance ? 200 : 50))
             }
+        }
+    }
+
+    private func persistCurrentPosition(force: Bool, position: TimeInterval? = nil) {
+        guard let video = currentVideo else { return }
+        let duration = playerState.vm.duration
+        let value = position ?? playerState.vm.player.currentTime().seconds
+        guard duration.isFinite, duration > 0, value.isFinite, value >= 0 else { return }
+        let now = Date()
+        guard force || PlaybackPositionPolicy.shouldWritePeriodicCheckpoint(
+            lastWrite: lastPositionCheckpointAt,
+            now: now
+        ) else { return }
+        lastPositionCheckpointAt = now
+        Task {
+            await VideoStateStore.shared.save(
+                videoId: video.id,
+                position: value,
+                duration: duration
+            )
         }
     }
 

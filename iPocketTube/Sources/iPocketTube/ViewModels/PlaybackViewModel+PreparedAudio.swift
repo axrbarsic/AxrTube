@@ -65,7 +65,10 @@ extension PlaybackViewModel {
                 case .readyToPlay:
                     let seconds = item.duration.seconds
                     if seconds.isFinite, seconds > 0 { self.duration = seconds }
-                    let saved = await VideoStateStore.shared.state(for: video.id)?.position ?? 0
+                    let saved = await VideoStateStore.shared.restoredPosition(
+                        for: video.id,
+                        actualDuration: self.duration
+                    )
                     guard self.player.currentItem === item else { return }
                     if saved > 5, self.duration <= 0 || saved < self.duration - 2 {
                         await self.player.seek(

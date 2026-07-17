@@ -35,45 +35,40 @@ struct VideoStateStoreTests {
         #expect(state?.watchedFraction == 0.5)
     }
 
-    // MARK: - Boundary: near start (< 5 s)
+    // MARK: - Boundary: near start
 
-    @Test("Position less than 5 s is not saved")
+    @Test("A meaningful early position is saved")
     func nearStartNotSaved() async {
         let store = makeStore()
         await store.save(videoId: "abc12345678", position: 4, duration: 100)
         let state = await store.state(for: "abc12345678")
-        #expect(state == nil)
+        #expect(state?.position == 4)
     }
 
-    @Test("Position just above 5 s is saved (exclusive lower bound)")
+    @Test("Sub-second noise is not saved")
     func exactBoundaryStartSaved() async {
         let store = makeStore()
-        // Production code uses > 5 (exclusive), so exactly 5 s is NOT saved
-        await store.save(videoId: "abc12345678", position: 5.0, duration: 100)
-        let notSaved = await store.state(for: "abc12345678")
-        #expect(notSaved == nil, "Exactly 5 s must not be saved (exclusive boundary)")
-        // Just above 5 s should be saved
-        await store.save(videoId: "abc12345678", position: 5.1, duration: 100)
-        let saved = await store.state(for: "abc12345678")
-        #expect(saved != nil, "5.1 s must be saved")
+        await store.save(videoId: "abc12345678", position: 0.5, duration: 100)
+        #expect(await store.state(for: "abc12345678") == nil)
     }
 
     // MARK: - Boundary: near end (≥ 95 %)
 
-    @Test("Position at or beyond 95 % of duration is not saved")
+    @Test("Completed position is explicit and restores from zero")
     func nearEndNotSaved() async {
         let store = makeStore()
         await store.save(videoId: "abc12345678", position: 96, duration: 100)
         let state = await store.state(for: "abc12345678")
-        #expect(state == nil)
+        #expect(state?.isCompleted == true)
+        #expect(await store.restoredPosition(for: "abc12345678", actualDuration: 100) == 0)
     }
 
     @Test("Position just below 95 % is saved")
     func justBelowNinetyFivePercent() async {
         let store = makeStore()
-        await store.save(videoId: "abc12345678", position: 94, duration: 100)
+        await store.save(videoId: "abc12345678", position: 80, duration: 100)
         let state = await store.state(for: "abc12345678")
-        #expect(state != nil)
+        #expect(state?.isCompleted == false)
     }
 
     // MARK: - Clear
@@ -115,5 +110,36 @@ struct VideoStateStoreTests {
         let stateB = await store.state(for: "videoBBBB12345")
         #expect(stateA?.position == 30)
         #expect(stateB?.position == 60)
+    }
+
+    @Test("Restore clamps a stale position to actual duration")
+    func restoreClampsToDuration() async {
+        let state = VideoStateStore.State(position: 90, watchedFraction: 0.45, duration: 200)
+        #expect(PlaybackPositionPolicy.restoredPosition(state: state, actualDuration: 60) == 59.5)
+    }
+
+    @Test("Periodic writes are throttled but final flush is independent")
+    func periodicThrottle() {
+        let start = Date(timeIntervalSince1970: 1_000)
+        #expect(!PlaybackPositionPolicy.shouldWritePeriodicCheckpoint(lastWrite: start, now: start.addingTimeInterval(4.9)))
+        #expect(PlaybackPositionPolicy.shouldWritePeriodicCheckpoint(lastWrite: start, now: start.addingTimeInterval(5)))
+    }
+}
+
+@Suite("Waveform interaction arbitration")
+struct WaveformInteractionPolicyTests {
+    @Test("Horizontal waveform gesture owns seek")
+    func horizontalSeek() {
+        #expect(WaveformGesturePolicy.intent(horizontal: 30, vertical: 4) == .seek)
+    }
+
+    @Test("Vertical waveform gesture remains list scrolling")
+    func verticalScroll() {
+        #expect(WaveformGesturePolicy.intent(horizontal: 4, vertical: 30) == .scroll)
+    }
+
+    @Test("Small movement does not claim either gesture")
+    func threshold() {
+        #expect(WaveformGesturePolicy.intent(horizontal: 3, vertical: 2) == .undecided)
     }
 }
