@@ -4,6 +4,101 @@ import AVFoundation
 import UIKit
 import iPocketTubeCore
 
+// MARK: - Shared Now Playing accessory
+
+struct NowPlayingAccessoryChrome<Artwork: View>: View {
+    let title: String
+    let isPlaying: Bool
+    let canTogglePlayback: Bool
+    let openDetails: () -> Void
+    let togglePlayback: () -> Void
+    let close: () -> Void
+    @ViewBuilder let artwork: () -> Artwork
+
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var contrast
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Button(action: openDetails) {
+                HStack(spacing: 10) {
+                    artwork()
+                        .frame(width: 42, height: 42)
+                        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+                        .accessibilityHidden(true)
+
+                    Text(title)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(title)
+            .accessibilityHint("Открыть текущую загрузку")
+            .accessibilityIdentifier("nowPlayingAccessory.detailsButton")
+
+            Button(action: togglePlayback) {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canTogglePlayback)
+            .accessibilityLabel(isPlaying ? "Пауза" : "Воспроизвести")
+            .accessibilityIdentifier("nowPlayingAccessory.playPauseButton")
+
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Закрыть")
+            .accessibilityIdentifier("nowPlayingAccessory.closeButton")
+        }
+        .frame(minHeight: 52)
+        .padding(.horizontal, 8)
+        .modifier(NowPlayingAccessoryFallbackSurface(
+            reduceTransparency: reduceTransparency,
+            increasedContrast: contrast == .increased
+        ))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("nowPlayingAccessory.bar")
+    }
+}
+
+private struct NowPlayingAccessoryFallbackSurface: ViewModifier {
+    let reduceTransparency: Bool
+    let increasedContrast: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+        } else {
+            content
+                .background(
+                    reduceTransparency ? AnyShapeStyle(Color(.systemBackground)) : AnyShapeStyle(.regularMaterial),
+                    in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(Color.secondary.opacity(increasedContrast ? 0.8 : 0.35), lineWidth: increasedContrast ? 1.5 : 0.75)
+                }
+                .padding(.horizontal, 8)
+                .padding(.bottom, 4)
+        }
+    }
+}
+
 // MARK: - MiniPlayerView
 
 /// Compact bar overlaid at the bottom of MainTabView when the player is minimized.
@@ -13,10 +108,24 @@ import iPocketTubeCore
 struct MiniPlayerView: View {
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(PlayerRouter.self) private var playerRouter
+    let openDetails: () -> Void
 
     var body: some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
+        NowPlayingAccessoryChrome(
+            title: playerRouter.audioFirst.currentVideo?.title ?? "Текущее аудио",
+            isPlaying: playerState.vm.isPlaying,
+            canTogglePlayback: playerState.vm.player.currentItem != nil,
+            openDetails: openDetails,
+            togglePlayback: {
+                iPocketTubeHaptics.shared.perform(.playbackTransport)
+                playerState.vm.togglePlayPause()
+            },
+            close: {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+                playerRouter.closeAudioFirst()
+            }
+        ) {
+            ZStack {
                 AsyncImage(url: playerRouter.audioFirst.currentVideo?.thumbnailURL) { phase in
                     if case .success(let image) = phase {
                         image.resizable().scaledToFill()
@@ -28,75 +137,8 @@ struct MiniPlayerView: View {
                         }
                     }
                 }
-                .frame(width: 58, height: 58)
-                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(playerRouter.audioFirst.currentVideo?.title ?? "")
-                        .font(.caption.weight(.semibold))
-                        .lineLimit(2)
-                        .foregroundStyle(.primary)
-                        .accessibilityIdentifier("miniPlayer.titleLabel")
-                    Text(playerRouter.audioFirst.statusText)
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .accessibilityIdentifier("miniPlayer.audioStatus")
-                }
-
-                Spacer(minLength: 0)
-
-                Button {
-                    iPocketTubeHaptics.shared.perform(.playbackTransport)
-                    playerState.vm.togglePlayPause()
-                } label: {
-                    Image(systemName: playerState.vm.isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 18))
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                }
-                .iPocketTubeLiquidButtonStyle()
-                .disabled(playerState.vm.player.currentItem == nil)
-                .contentShape(Rectangle())
-                .accessibilityIdentifier("miniPlayer.playPauseButton")
-
-                Button {
-                    iPocketTubeHaptics.shared.perform(.primaryAction)
-                    playerRouter.closeAudioFirst()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                }
-                .iPocketTubeLiquidButtonStyle()
-                .contentShape(Rectangle())
-                .accessibilityIdentifier("miniPlayer.closeButton")
             }
-            .padding(.horizontal, 6)
-
-            ZStack(alignment: .leading) {
-                Rectangle().fill(Color.secondary.opacity(0.15))
-                Rectangle()
-                    .fill(iPocketTubeVisualTokens.mintSoft.opacity(0.45))
-                    .scaleEffect(x: playerRouter.audioFirst.bufferedProgress, anchor: .leading)
-                Rectangle()
-                    .fill(iPocketTubeVisualTokens.mint)
-                    .scaleEffect(x: playerRouter.audioFirst.downloadProgress, anchor: .leading)
-            }
-            .frame(height: 3)
-            .accessibilityElement()
-            .accessibilityLabel("Audio download progress")
-            .accessibilityValue("\(Int(playerRouter.audioFirst.downloadProgress * 100)) percent")
-            .accessibilityIdentifier("miniPlayer.downloadProgress")
         }
-        .frame(height: 70)
-        .iPocketTubeGlassSurface(cornerRadius: 20, interactive: true)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 4)
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("miniPlayer.bar")
     }
 }
 

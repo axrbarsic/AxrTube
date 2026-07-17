@@ -19,94 +19,50 @@ struct TOSMiniPlayerView: View {
     @Environment(TOSPlayerStateStore.self) private var tosState
 
     var body: some View {
-        HStack(spacing: 0) {
-            // Play / pause
-            Button {
+        let isPlaying = tosState.vm?.playerState == .playing || tosState.vm?.playerState == .buffering
+        NowPlayingAccessoryChrome(
+            title: tosState.currentVideo?.title ?? "Текущее видео",
+            isPlaying: isPlaying,
+            canTogglePlayback: tosState.vm != nil,
+            openDetails: {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
+                tosState.expand()
+            },
+            togglePlayback: {
                 iPocketTubeHaptics.shared.perform(.playbackTransport)
-                if tosState.vm?.playerState == .playing || tosState.vm?.playerState == .buffering {
+                if isPlaying {
                     tosState.vm?.pause()
                 } else {
                     tosState.vm?.play()
                 }
-            } label: {
-                let isPlaying = tosState.vm?.playerState == .playing || tosState.vm?.playerState == .buffering
-                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                    .font(.title3)
-                    .foregroundStyle(.primary)
-                    .frame(width: 52, height: 62)
-            }
-            .iPocketTubeLiquidButtonStyle()
-            .accessibilityIdentifier("tosPlayer.miniPlayer.playPauseButton")
-
-            // Thumbnail + title → tap to expand
-            Button {
-                iPocketTubeHaptics.shared.perform(.contentSelection)
-                tosState.expand()
-            } label: {
-                HStack(spacing: 10) {
-                    if let webView = tosState.vm?.webView {
-                        // Live thumbnail — transplants the same WKWebView that was hosting
-                        // the full-screen player, so the embedded YouTube <video> stays
-                        // attached to the window (visibilityState remains 'visible') and
-                        // playback continues. See TOSMiniPlayerLayerView below.
-                        TOSMiniPlayerLayerView(webView: webView)
-                            .frame(width: 46, height: 46)
-                            .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                            .accessibilityHidden(true)
-                    } else if let thumb = tosState.currentVideo?.thumbnailURL {
-                        AsyncImage(url: thumb) { phase in
-                            switch phase {
-                            case .success(let image):
-                                image.resizable().scaledToFill()
-                            default:
-                                Color.gray.opacity(0.3)
-                            }
-                        }
-                        .frame(width: 46, height: 46)
-                        .clipShape(RoundedRectangle(cornerRadius: 4, style: .continuous))
-                    } else {
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
-                            .fill(Color.gray.opacity(0.3))
-                            .frame(width: 46, height: 46)
-                    }
-
-                    Text(tosState.currentVideo?.title ?? "")
-                        .font(.subheadline)
-                        .lineLimit(1)
-                        .foregroundStyle(.primary)
-
-                    Spacer()
-                }
-            }
-            .iPocketTubeLiquidButtonStyle()
-            .accessibilityIdentifier("tosPlayer.miniPlayer.expandButton")
-
-            // Dismiss
-            Button {
+            },
+            close: {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
                 tosState.stop()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 52, height: 62)
             }
-            .iPocketTubeLiquidButtonStyle()
-            .accessibilityIdentifier("tosPlayer.miniPlayer.closeButton")
+        ) {
+            Group {
+                if let webView = tosState.vm?.webView {
+                    // The same WKWebView remains attached while playback is minimized.
+                    TOSMiniPlayerLayerView(webView: webView)
+                } else if let thumb = tosState.currentVideo?.thumbnailURL {
+                    AsyncImage(url: thumb) { phase in
+                        switch phase {
+                        case .success(let image):
+                            image.resizable().scaledToFill()
+                        default:
+                            Color.gray.opacity(0.3)
+                        }
+                    }
+                } else {
+                    ZStack {
+                        Color.secondary.opacity(0.16)
+                        Image(systemName: "waveform")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
         }
-        .padding(.leading, 4)
-        .frame(height: 66)
-        .iPocketTubeGlassSurface(cornerRadius: 20, interactive: true)
-        .padding(.horizontal, 8)
-        .padding(.bottom, 4)
-        // Without this, SwiftUI flattens this HStack's accessibility tree so each
-        // child Button (play/pause, expand, close) inherits THIS container's
-        // identifier ("tosPlayer.miniPlayerBar") instead of its own — e.g.
-        // app.buttons["tosPlayer.miniPlayer.closeButton"] is never found by
-        // XCUITest. .contain keeps each child individually discoverable. Same
-        // fix as MiniPlayerView.bar — see its comment for details.
-        .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("tosPlayer.miniPlayerBar")
     }
 }
 

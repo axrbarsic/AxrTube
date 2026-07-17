@@ -176,6 +176,7 @@ struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
     @State private var selectedTab: AppSection = .search
     @Environment(\.innerTubeAPI) private var api
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(TOSPlayerStateStore.self) private var tosState
@@ -230,8 +231,8 @@ struct MainTabView: View {
                     #if os(iOS)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if #unavailable(iOS 26.0),
-                           let route = section.primaryRoute,
-                           iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: route) {
+                           section == selectedTab,
+                           showsCompactNowPlayingAccessory {
                             globalMiniPlayer
                         }
                     }
@@ -242,7 +243,9 @@ struct MainTabView: View {
             }
         }
         #if os(iOS)
-        .iPocketTubeLiquidTabChrome { globalMiniPlayer }
+        .iPocketTubeLiquidTabChrome(isAccessoryPresented: showsCompactNowPlayingAccessory) {
+            globalMiniPlayer
+        }
         #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in
@@ -252,8 +255,7 @@ struct MainTabView: View {
             selectedTab = .search
         }
         #if os(iOS)
-        .animation(.easeInOut(duration: 0.2), value: playerState.presentation)
-        .animation(.easeInOut(duration: 0.2), value: tosState.presentation)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsCompactNowPlayingAccessory)
         .landscapePlayerCover(item: fullScreenBinding, dismissStore: playerState) { video in
             PlayerView(video: video, api: api)
         }
@@ -308,13 +310,25 @@ struct MainTabView: View {
     }
 
     #if os(iOS)
+    private var showsCompactNowPlayingAccessory: Bool {
+        guard let route = selectedTab.primaryRoute else { return false }
+        let hasRecoverableItem = playerState.presentation == .miniPlayer || tosState.presentation == .miniPlayer
+        return iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(
+            on: route,
+            hasRecoverableItem: hasRecoverableItem
+        )
+    }
+
     @ViewBuilder private var globalMiniPlayer: some View {
-        if playerState.presentation == .miniPlayer {
-            MiniPlayerView()
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else if tosState.presentation == .miniPlayer {
+        if showsCompactNowPlayingAccessory, playerState.presentation == .miniPlayer {
+            MiniPlayerView {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
+                selectedTab = .downloads
+            }
+                .transition(.opacity)
+        } else if showsCompactNowPlayingAccessory, tosState.presentation == .miniPlayer {
             TOSMiniPlayerView()
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(.opacity)
         }
     }
     #endif

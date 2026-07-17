@@ -17,12 +17,31 @@ struct MatrixInformationArchitectureTests {
         #expect(iPocketTubeInformationArchitecture.storageOwner == .downloads)
     }
 
-    @Test("Global mini player is hidden only on Downloads")
+    @Test("One Now Playing surface is selected for every primary route")
     func miniPlayerVisibility() {
-        #expect(iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: .search))
-        #expect(iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: .media))
-        #expect(!iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: .downloads))
-        #expect(iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(on: .settings))
+        for route in iPocketTubePrimaryRoute.allCases {
+            #expect(iPocketTubeInformationArchitecture.nowPlayingSurface(
+                on: route,
+                hasRecoverableItem: false
+            ) == .hidden)
+        }
+
+        #expect(iPocketTubeInformationArchitecture.nowPlayingSurface(
+            on: .search,
+            hasRecoverableItem: true
+        ) == .compactAccessory)
+        #expect(iPocketTubeInformationArchitecture.nowPlayingSurface(
+            on: .media,
+            hasRecoverableItem: true
+        ) == .compactAccessory)
+        #expect(iPocketTubeInformationArchitecture.nowPlayingSurface(
+            on: .downloads,
+            hasRecoverableItem: true
+        ) == .expandedDownloadsCard)
+        #expect(iPocketTubeInformationArchitecture.nowPlayingSurface(
+            on: .settings,
+            hasRecoverableItem: true
+        ) == .compactAccessory)
     }
 
     @Test("Empty search uses data-backed surfaces, not English defaults")

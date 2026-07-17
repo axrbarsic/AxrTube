@@ -348,16 +348,21 @@ extension View {
     }
 
     @ViewBuilder
-    func iPocketTubeLiquidTabChrome<Accessory: View>(@ViewBuilder accessory: () -> Accessory) -> some View {
+    func iPocketTubeLiquidTabChrome<Accessory: View>(
+        isAccessoryPresented: Bool,
+        @ViewBuilder accessory: () -> Accessory
+    ) -> some View {
         #if os(iOS)
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.1, *) {
             self
-                .tabBarMinimizeBehavior(.onScrollDown)
-                .tabViewBottomAccessory {
-                    // Keep any adjacent accessory controls in one sampling group so
-                    // their Liquid Glass surfaces refract the same content.
-                    GlassEffectContainer(spacing: 8) { accessory() }
+                .tabBarMinimizeBehavior(.never)
+                .tabViewBottomAccessory(isEnabled: isAccessoryPresented) {
+                    accessory()
                 }
+        } else if #available(iOS 26.0, *), isAccessoryPresented {
+            self
+                .tabBarMinimizeBehavior(.never)
+                .tabViewBottomAccessory { accessory() }
         } else {
             self
         }
