@@ -242,6 +242,44 @@ struct InstantAudioSparseCacheTests {
         #expect(!SparseDownloadRetryPolicy.shouldRetry(failure: .corruptRange, attempt: 0))
     }
 
+    @Test("HTTP media response policy distinguishes media bytes from an error body")
+    func mediaResponseMetadataIsValidatedWithoutBodyLogging() {
+        #expect(SparseHTTPMediaResponsePolicy.acceptsContentType(
+            expected: "audio/mp4; codecs=\"mp4a.40.2\"",
+            response: "audio/mp4"
+        ))
+        #expect(SparseHTTPMediaResponsePolicy.acceptsContentType(
+            expected: "video/mp4",
+            response: "application/octet-stream"
+        ))
+        #expect(!SparseHTTPMediaResponsePolicy.acceptsContentType(
+            expected: "audio/mp4",
+            response: "text/html; charset=utf-8"
+        ))
+        #expect(SparseHTTPMediaResponsePolicy.acceptsContentEncoding("identity"))
+        #expect(!SparseHTTPMediaResponsePolicy.acceptsContentEncoding("gzip"))
+        #expect(SparseHTTPMediaResponsePolicy.bodyClass(contentType: "application/json", byteCount: 64) == "json")
+        #expect(SparseHTTPMediaResponsePolicy.bodyClass(contentType: "audio/mp4", byteCount: 64) == "media")
+        #expect(SparseHTTPMediaResponsePolicy.bodyClass(contentType: "audio/mp4", byteCount: 0) == "empty")
+    }
+
+    @Test("Terminal failure detaches Now Playing only when no playable source exists")
+    func terminalFailurePresentationDoesNotClaimUnplayableItem() {
+        #expect(AudioFirstTerminalPresentationPolicy.shouldDetachNowPlaying(hasPlayableSource: false))
+        #expect(!AudioFirstTerminalPresentationPolicy.shouldDetachNowPlaying(hasPlayableSource: true))
+
+        var unplayable = AudioFirstAuthoritativeState()
+        _ = unplayable.reduce(.begin(generation: 20, durableProgress: 0.35))
+        _ = unplayable.reduce(.exhaustedFailure(generation: 20, message: "unsupported format"))
+        #expect(unplayable.phase == .terminalFailure("unsupported format"))
+
+        var playable = AudioFirstAuthoritativeState()
+        _ = playable.reduce(.begin(generation: 21, durableProgress: 0.35))
+        _ = playable.reduce(.playbackInstalled(generation: 21))
+        _ = playable.reduce(.exhaustedFailure(generation: 21, message: "offline finalization failed"))
+        #expect(playable.phase == .finalizationPending("offline finalization failed"))
+    }
+
     @Test("Connection loss preserves verified chunks across manifest round-trip")
     func connectionLossPreservesDurableMissingRanges() throws {
         let fingerprint = SparseSourceFingerprint(

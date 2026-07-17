@@ -342,6 +342,67 @@ public enum SparseDownloadRetryPolicy {
     }
 }
 
+/// Privacy-safe validation for media responses used by the sparse loader.
+/// It deliberately reasons only about header classes and byte counts. Response
+/// bodies, URLs and signed query values never enter diagnostics.
+public enum SparseHTTPMediaResponsePolicy {
+    public static func normalizedContentType(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let normalized = value
+            .split(separator: ";", maxSplits: 1)
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalized?.isEmpty == false ? normalized : nil
+    }
+
+    public static func acceptsContentType(expected: String, response: String?) -> Bool {
+        guard let actual = normalizedContentType(response) else { return true }
+        let expectedBase = normalizedContentType(expected)
+        return actual == expectedBase
+            || actual == "application/octet-stream"
+            || actual == "binary/octet-stream"
+    }
+
+    public static func acceptsContentEncoding(_ value: String?) -> Bool {
+        guard let value else { return true }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty || normalized == "identity"
+    }
+
+    public static func bodyClass(contentType: String?, byteCount: Int) -> String {
+        guard byteCount > 0 else { return "empty" }
+        switch normalizedContentType(contentType) {
+        case "application/json": return "json"
+        case "text/html": return "html"
+        case let value? where value.hasPrefix("text/"): return "text"
+        case let value? where value.hasPrefix("audio/") || value.hasPrefix("video/"):
+            return "media"
+        case "application/octet-stream", "binary/octet-stream": return "binary-media"
+        default: return "binary-unknown"
+        }
+    }
+
+    public static func encodingClass(_ value: String?) -> String {
+        guard let value else { return "none" }
+        let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if normalized.isEmpty { return "none" }
+        if normalized == "identity" || normalized == "gzip" || normalized == "br" || normalized == "deflate" {
+            return normalized
+        }
+        return "other"
+    }
+}
+
+/// A terminal failure without a proven player source must detach the global
+/// now-playing identity. Keeping it selected makes a failed download appear to
+/// be playing and lets stale remote controls target an item that cannot open.
+public enum AudioFirstTerminalPresentationPolicy {
+    public static func shouldDetachNowPlaying(hasPlayableSource: Bool) -> Bool {
+        !hasPlayableSource
+    }
+}
+
 /// Tracks reservations separately from the cached index so overlapping AVPlayer
 /// requests are coalesced while cancellation immediately makes a range eligible
 /// for a fresh request.

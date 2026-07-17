@@ -96,6 +96,15 @@ struct OfflineAudioFallbackTests {
         #expect(second.plan?.source == .directM4A)
     }
 
+    @Test("Unsupported format resolution is not reported as a URL decoding failure")
+    func unsupportedResolutionHasOwnedErrorDomain() {
+        let failure = AudioSourceResolutionFailure.unsupportedFormats
+
+        #expect(AudioSourceResolutionFailure.errorDomain != NSURLErrorDomain)
+        #expect(failure.rawValue != NSURLErrorCannotDecodeContentData)
+        #expect(failure.diagnosticCode == "unsupported-formats")
+    }
+
     @Test("AVFoundation extracts an audio track from an MP4 container into playable M4A")
     func extractsMP4AudioToM4A() async throws {
         let source = try await makeMP4AudioFixture()

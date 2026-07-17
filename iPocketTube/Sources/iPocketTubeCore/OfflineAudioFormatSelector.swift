@@ -29,6 +29,25 @@ public struct OfflineAudioResolution: Sendable {
     public let plan: OfflineAudioDownloadPlan?
 }
 
+/// Owned failure identity for format resolution. A missing compatible YouTube
+/// representation is not an HTTP content-decoding failure and must never be
+/// surfaced as NSURLErrorCannotDecodeContentData.
+public enum AudioSourceResolutionFailure: Int, Sendable, Equatable {
+    case unsupportedFormats = 1
+    case selectedURLMissing = 2
+    case unsupportedPlaybackPlan = 3
+
+    public static let errorDomain = "iPocketTubeAudioResolution"
+
+    public var diagnosticCode: String {
+        switch self {
+        case .unsupportedFormats: "unsupported-formats"
+        case .selectedURLMissing: "selected-url-missing"
+        case .unsupportedPlaybackPlan: "unsupported-playback-plan"
+        }
+    }
+}
+
 /// Pure selection policy shared by production downloads and focused regression tests.
 /// Each call to `resolve(using:)` invokes the supplied resolver once, so a user retry
 /// cannot accidentally reuse an expired CDN URL from an earlier attempt.

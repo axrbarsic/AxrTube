@@ -339,6 +339,7 @@ public final class AudioFirstPlaybackCoordinator {
                 commandGeneration: generation,
                 error: error
             )
+            detachUnplayableNowPlaying(video: entry.video, generation: generation)
         }
     }
 
@@ -379,11 +380,57 @@ public final class AudioFirstPlaybackCoordinator {
         if let plan = OfflineAudioFormatSelector.select(from: android.formats) {
             return (plan, InnerTubeClients.Android.userAgent)
         }
-        if let vr = try? await api.fetchPlayerInfoAndroidVR(videoId: video.id),
-           let plan = OfflineAudioFormatSelector.select(from: vr.formats) {
-            return (plan, InnerTubeClients.AndroidVR.userAgent)
+        var resolvedFormats = android.formats
+        var vrFormatCount = 0
+        if let vr = try? await api.fetchPlayerInfoAndroidVR(videoId: video.id) {
+            resolvedFormats.append(contentsOf: vr.formats)
+            vrFormatCount = vr.formats.count
+            if let plan = OfflineAudioFormatSelector.select(from: vr.formats) {
+                return (plan, InnerTubeClients.AndroidVR.userAgent)
+            }
         }
-        throw URLError(.cannotDecodeContentData)
+        let reason = OfflineAudioFormatSelector.unsupportedReason(for: resolvedFormats)
+        let failure = AudioSourceResolutionFailure.unsupportedFormats
+        let error = Self.sourceResolutionError(failure, reason: reason)
+        AudioDiagnostics.shared.record(
+            source: "audio-source-resolution",
+            event: "format.unsupported",
+            decision: "code=\(failure.diagnosticCode) android=\(android.formats.count) vr=\(vrFormatCount)",
+            player: playerState.vm.player,
+            itemID: video.id,
+            commandGeneration: commandGate.generation,
+            error: error
+        )
+        throw error
+    }
+
+    nonisolated private static func sourceResolutionError(
+        _ failure: AudioSourceResolutionFailure,
+        reason: String? = nil
+    ) -> NSError {
+        let message: String
+        switch failure {
+        case .unsupportedFormats:
+            switch reason {
+            case "Audio formats were returned, but YouTube did not provide a downloadable URL.":
+                message = String(localized: "Audio formats were returned, but YouTube did not provide a downloadable URL.", bundle: .module)
+            case "Only WebM/Opus audio is downloadable, and iOS cannot export that container with AVFoundation.":
+                message = String(localized: "Only WebM/Opus audio is downloadable, and iOS cannot export that container with AVFoundation.", bundle: .module)
+            case "The available audio format cannot be decoded by iOS.":
+                message = String(localized: "The available audio format cannot be decoded by iOS.", bundle: .module)
+            default:
+                message = String(localized: "No downloadable audio or compatible MP4 video stream was returned.", bundle: .module)
+            }
+        case .selectedURLMissing:
+            message = String(localized: "YouTube did not provide a downloadable URL for the selected audio format.", bundle: .module)
+        case .unsupportedPlaybackPlan:
+            message = String(localized: "The available audio format cannot be decoded by iOS.", bundle: .module)
+        }
+        return NSError(
+            domain: AudioSourceResolutionFailure.errorDomain,
+            code: failure.rawValue,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
     }
 
     private func startSparsePlayback(
@@ -606,10 +653,14 @@ public final class AudioFirstPlaybackCoordinator {
                   reconciliationGeneration == generation,
                   reconciliationVideoID == entry.videoId,
                   entry.videoId != currentVideo?.id,
-                  DownloadStore.shared.entry(videoId: entry.videoId, kind: .audio)?.shouldAutomaticallyResume == true,
-                  let url = plan.format.url,
-                  OfflineAudioFormatSelector.supportsInstantPlayback(plan) else {
-                throw URLError(.cannotDecodeContentData)
+                  DownloadStore.shared.entry(videoId: entry.videoId, kind: .audio)?.shouldAutomaticallyResume == true else {
+                throw CancellationError()
+            }
+            guard let url = plan.format.url else {
+                throw Self.sourceResolutionError(.selectedURLMissing)
+            }
+            guard OfflineAudioFormatSelector.supportsInstantPlayback(plan) else {
+                throw Self.sourceResolutionError(.unsupportedPlaybackPlan)
             }
 
             let source = ProgressiveAudioResourceLoader.Source(
@@ -734,6 +785,16 @@ public final class AudioFirstPlaybackCoordinator {
                 progress: DownloadStore.shared.entry(videoId: video.id, kind: .audio)?.progress ?? 0,
                 errorMessage: String(localized: "Reconnecting…", bundle: .module),
                 resumePolicy: .automatic
+            )
+        }
+        if diagnostic.stage == "first-response" || diagnostic.stage.hasPrefix("http-") {
+            let status = diagnostic.statusCode.map(String.init) ?? "-"
+            AudioDiagnostics.shared.record(
+                source: "download-supervisor",
+                event: diagnostic.stage,
+                decision: "status=\(status) type=\(diagnostic.contentType ?? "-") encoding=\(diagnostic.contentEncoding ?? "-") body=\(diagnostic.bodyClass ?? "-")",
+                player: playerState.vm.player,
+                itemID: video.id
             )
         }
     }
@@ -1009,6 +1070,27 @@ public final class AudioFirstPlaybackCoordinator {
             commandGeneration: generation,
             error: error
         )
+        if AudioFirstTerminalPresentationPolicy.shouldDetachNowPlaying(hasPlayableSource: remainsPlayable) {
+            detachUnplayableNowPlaying(video: video, generation: generation)
+        }
+    }
+
+    private func detachUnplayableNowPlaying(video: Video, generation: UInt64) {
+        guard commandGate.isCurrent(generation), currentVideo?.id == video.id else { return }
+        AudioDiagnostics.shared.record(
+            source: "audio-first",
+            event: "nowPlaying.detached",
+            decision: "terminal-no-playable-source",
+            player: playerState.vm.player,
+            itemID: video.id,
+            commandGeneration: generation
+        )
+        pendingHistoryActivation = nil
+        cancelActiveWork(markCancelled: false, stopPlayer: true)
+        _ = commandGate.advance()
+        currentVideo = nil
+        apply(.close)
+        bufferedProgress = 0
     }
 
     private func handleFinalizationFailure(
@@ -1193,13 +1275,16 @@ public final class AudioFirstPlaybackCoordinator {
         let bytes = diagnostic.byteCount.map(String.init) ?? "-"
         let total = diagnostic.expectedBytes.map(String.init) ?? "-"
         let ranged = diagnostic.rangeSupported.map(String.init) ?? "-"
+        let contentType = diagnostic.contentType ?? "-"
+        let contentEncoding = diagnostic.contentEncoding ?? "-"
+        let bodyClass = diagnostic.bodyClass ?? "-"
         instantAudioLog.notice(
-            "[ttfa] stage=\(diagnostic.stage, privacy: .public) ms=\(diagnostic.elapsedMilliseconds) status=\(status, privacy: .public) offset=\(offset, privacy: .public) bytes=\(bytes, privacy: .public) total=\(total, privacy: .public) ranges=\(ranged, privacy: .public)"
+            "[ttfa] stage=\(diagnostic.stage, privacy: .public) ms=\(diagnostic.elapsedMilliseconds) status=\(status, privacy: .public) type=\(contentType, privacy: .public) encoding=\(contentEncoding, privacy: .public) body=\(bodyClass, privacy: .public) offset=\(offset, privacy: .public) bytes=\(bytes, privacy: .public) total=\(total, privacy: .public) ranges=\(ranged, privacy: .public)"
         )
         AudioDiagnostics.shared.record(
             source: "range-loader",
             event: diagnostic.stage,
-            decision: "offset=\(offset) bytes=\(bytes) total=\(total) status=\(status)",
+            decision: "offset=\(offset) bytes=\(bytes) total=\(total) status=\(status) type=\(contentType) encoding=\(contentEncoding) body=\(bodyClass)",
             player: playerState.vm.player,
             itemID: currentVideo?.id,
             commandGeneration: commandGate.generation

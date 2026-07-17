@@ -40,6 +40,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         let stage: String
         let elapsedMilliseconds: Int
         let statusCode: Int?
+        let contentType: String?
+        let contentEncoding: String?
+        let bodyClass: String?
         let requestedOffset: Int64?
         let byteCount: Int64?
         let expectedBytes: Int64?
@@ -59,6 +62,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         let contentLength: Int64?
         let entityTag: String?
         let lastModified: String?
+        let contentType: String?
+        let contentEncoding: String?
+        let bodyClass: String
         let refreshedSource: Source?
     }
 
@@ -73,6 +79,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         case invalidRangeResponse
         case missingContentLength
         case changedRepresentation
+        case unexpectedContentType(String)
+        case unexpectedContentEncoding(String)
 
         var errorDescription: String? {
             switch self {
@@ -80,6 +88,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             case .invalidRangeResponse: "Media server returned an invalid byte range."
             case .missingContentLength: "Media server did not report the file size."
             case .changedRepresentation: "The media format changed while resuming the download."
+            case .unexpectedContentType(let value): "Media server returned unexpected content type \(value)."
+            case .unexpectedContentEncoding(let value): "Media server returned unsupported content encoding \(value)."
             }
         }
     }
@@ -483,6 +493,14 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         }
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw URLError(.badServerResponse) }
+        let responseContentType = http.value(forHTTPHeaderField: "Content-Type")
+        let responseContentEncoding = http.value(forHTTPHeaderField: "Content-Encoding")
+        let normalizedContentType = SparseHTTPMediaResponsePolicy.normalizedContentType(responseContentType)
+        let encodingClass = SparseHTTPMediaResponsePolicy.encodingClass(responseContentEncoding)
+        let bodyClass = SparseHTTPMediaResponsePolicy.bodyClass(
+            contentType: responseContentType,
+            byteCount: data.count
+        )
 
         if permitRefresh, [401, 403, 410].contains(http.statusCode) {
             let refreshed = try await refreshSource()
@@ -497,11 +515,82 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 contentLength: retried.contentLength,
                 entityTag: retried.entityTag,
                 lastModified: retried.lastModified,
+                contentType: retried.contentType,
+                contentEncoding: retried.contentEncoding,
+                bodyClass: retried.bodyClass,
                 refreshedSource: refreshed
             )
         }
         guard http.statusCode == 206 || http.statusCode == 200 else {
+            emitDiagnostic(
+                stage: "http-response-rejected",
+                statusCode: http.statusCode,
+                byteCount: Int64(data.count),
+                contentType: normalizedContentType,
+                contentEncoding: encodingClass,
+                bodyClass: bodyClass
+            )
             throw LoaderError.invalidHTTPStatus(http.statusCode)
+        }
+        if !SparseHTTPMediaResponsePolicy.acceptsContentEncoding(responseContentEncoding) {
+            emitDiagnostic(
+                stage: "http-encoding-rejected",
+                statusCode: http.statusCode,
+                byteCount: Int64(data.count),
+                contentType: normalizedContentType,
+                contentEncoding: encodingClass,
+                bodyClass: bodyClass
+            )
+            if permitRefresh {
+                let refreshed = try await refreshSource()
+                guard source.fingerprint.isCompatible(with: refreshed.fingerprint) else {
+                    throw LoaderError.changedRepresentation
+                }
+                let retried = try await fetch(range, source: refreshed, permitRefresh: false)
+                return FetchResult(
+                    data: retried.data,
+                    statusCode: retried.statusCode,
+                    contentRange: retried.contentRange,
+                    contentLength: retried.contentLength,
+                    entityTag: retried.entityTag,
+                    lastModified: retried.lastModified,
+                    contentType: retried.contentType,
+                    contentEncoding: retried.contentEncoding,
+                    bodyClass: retried.bodyClass,
+                    refreshedSource: refreshed
+                )
+            }
+            throw LoaderError.unexpectedContentEncoding(encodingClass)
+        }
+        if !SparseHTTPMediaResponsePolicy.acceptsContentType(expected: mimeType, response: responseContentType) {
+            emitDiagnostic(
+                stage: "http-content-type-rejected",
+                statusCode: http.statusCode,
+                byteCount: Int64(data.count),
+                contentType: normalizedContentType,
+                contentEncoding: encodingClass,
+                bodyClass: bodyClass
+            )
+            if permitRefresh {
+                let refreshed = try await refreshSource()
+                guard source.fingerprint.isCompatible(with: refreshed.fingerprint) else {
+                    throw LoaderError.changedRepresentation
+                }
+                let retried = try await fetch(range, source: refreshed, permitRefresh: false)
+                return FetchResult(
+                    data: retried.data,
+                    statusCode: retried.statusCode,
+                    contentRange: retried.contentRange,
+                    contentLength: retried.contentLength,
+                    entityTag: retried.entityTag,
+                    lastModified: retried.lastModified,
+                    contentType: retried.contentType,
+                    contentEncoding: retried.contentEncoding,
+                    bodyClass: retried.bodyClass,
+                    refreshedSource: refreshed
+                )
+            }
+            throw LoaderError.unexpectedContentType(normalizedContentType ?? "missing")
         }
         return FetchResult(
             data: data,
@@ -510,6 +599,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             contentLength: http.expectedContentLength > 0 ? http.expectedContentLength : nil,
             entityTag: http.value(forHTTPHeaderField: "ETag"),
             lastModified: http.value(forHTTPHeaderField: "Last-Modified"),
+            contentType: normalizedContentType,
+            contentEncoding: encodingClass,
+            bodyClass: bodyClass,
             refreshedSource: nil
         )
     }
@@ -769,7 +861,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 stage: networkBytes == Int64(result.data.count) ? "first-response" : "range-response",
                 statusCode: result.statusCode,
                 requested: placement.storedRange,
-                byteCount: Int64(result.data.count)
+                byteCount: Int64(result.data.count),
+                contentType: networkBytes == Int64(result.data.count) ? result.contentType : nil,
+                contentEncoding: networkBytes == Int64(result.data.count) ? result.contentEncoding : nil,
+                bodyClass: networkBytes == Int64(result.data.count) ? result.bodyClass : nil
             )
             reportProgress()
 
@@ -1102,7 +1197,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         stage: String,
         statusCode: Int? = nil,
         requested: SparseByteRange? = nil,
-        byteCount: Int64? = nil
+        byteCount: Int64? = nil,
+        contentType: String? = nil,
+        contentEncoding: String? = nil,
+        bodyClass: String? = nil
     ) {
         let elapsed = ContinuousClock.now - startedAt
         diagnosticHandler(
@@ -1110,6 +1208,9 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 stage: stage,
                 elapsedMilliseconds: Int(elapsed.timeInterval * 1000),
                 statusCode: statusCode,
+                contentType: contentType,
+                contentEncoding: contentEncoding,
+                bodyClass: bodyClass,
                 requestedOffset: requested?.lowerBound,
                 byteCount: byteCount,
                 expectedBytes: expectedBytes > 0 ? expectedBytes : nil,
