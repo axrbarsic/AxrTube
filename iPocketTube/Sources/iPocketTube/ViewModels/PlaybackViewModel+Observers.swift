@@ -12,6 +12,7 @@ private let playerLog = CrashlyticsLogger(category: "Player")
 extension PlaybackViewModel {
 
     func setupTimeObserver() {
+        guard timeObserver == nil else { return }
         let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: nil) { [weak self] time in
             guard let self else { return }
@@ -28,12 +29,39 @@ extension PlaybackViewModel {
                 // AVPlayerItem is not yet ready and player.currentTime() may return 0
                 // or a stale value. currentTime is restored by qualityItemDidBecomeReady.
                 guard !self.isQualityChangePending else { return }
-                self.currentTime = seconds
+                self.applyObservedPlaybackTime(seconds)
                 self.checkSponsorSkip(at: seconds)
                 self.updateCaptionCue(for: seconds)
                 if self.statsForNerdsVisible { self.updateStatsSnapshot() }
             }
         }
+    }
+
+    /// Synchronizes UI and Now Playing from the actual long-lived AVPlayer item.
+    /// This is safe to call repeatedly on foreground and Downloads appearance and
+    /// never installs a second periodic observer.
+    func synchronizePlaybackTimeFromPlayer(reason: String) {
+        guard player.currentItem != nil, !isScrubbing, !isQualityChangePending else { return }
+        let observed = player.currentTime().seconds
+        applyObservedPlaybackTime(observed)
+        #if canImport(UIKit)
+        updateNowPlayingPlayback()
+        AudioDiagnostics.shared.record(
+            event: "timeline.lifecycleSync",
+            decision: reason,
+            player: player,
+            recoveryGeneration: audioInterruptionGeneration,
+            itemID: currentVideo?.id,
+            commandGeneration: nowPlayingSourceState.generation
+        )
+        #endif
+    }
+
+    private func applyObservedPlaybackTime(_ observed: TimeInterval) {
+        currentTime = PlaybackPositionPolicy.reconciledObservedPosition(
+            observed: observed,
+            current: currentTime
+        )
     }
 
     func setupRateObserver() {

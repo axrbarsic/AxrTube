@@ -131,6 +131,11 @@ extension PlaybackViewModel {
         player.pause()
         player.replaceCurrentItem(with: nil)
         isPlaying = false
+        #if canImport(UIKit)
+        audioInterruptionResumeTask?.cancel()
+        remotePauseClassificationTask?.cancel()
+        endInterruptionBackgroundTask()
+        #endif
         audioInterruptionState.reset()
         videoEnded = false
         wasPlayingBeforeSuspend = false
@@ -241,6 +246,7 @@ extension PlaybackViewModel {
     public func handleForeground() {
         playbackSceneState = .active
         guard player.currentItem != nil else { return }
+        synchronizePlaybackTimeFromPlayer(reason: "foreground")
         #if canImport(UIKit)
         _ = audioInterruptionState.enteredForeground()
         AudioDiagnostics.shared.record(
@@ -275,6 +281,7 @@ extension PlaybackViewModel {
     /// or Now Playing reset is allowed here.
     public func handleSceneInactive() {
         playbackSceneState = .inactive
+        synchronizePlaybackTimeFromPlayer(reason: "scene inactive")
         #if canImport(UIKit)
         AudioDiagnostics.shared.record(
             event: "lifecycle.inactive",
@@ -291,6 +298,7 @@ extension PlaybackViewModel {
     /// Pauses playback when the user has disabled background audio.
     public func handleBackground() {
         playbackSceneState = .background
+        synchronizePlaybackTimeFromPlayer(reason: "background")
         #if canImport(UIKit)
         let action = audioInterruptionState.enteredBackground(
             playbackAllowed: settings.backgroundPlaybackEnabled,
@@ -331,6 +339,9 @@ extension PlaybackViewModel {
         wasPlayingBeforeSuspend = isPlaying
         #if canImport(UIKit)
         audioRecoveryVerificationTask?.cancel()
+        audioInterruptionResumeTask?.cancel()
+        remotePauseClassificationTask?.cancel()
+        endInterruptionBackgroundTask()
         audioInterruptionState.userPaused()
         #endif
         player.pause()
@@ -1156,6 +1167,11 @@ extension PlaybackViewModel {
         // load() calls replaceCurrentItem(nil) when a different video is requested.
         parkedVideoId = currentVideo?.id
         isPlaying = false
+        #if canImport(UIKit)
+        audioInterruptionResumeTask?.cancel()
+        remotePauseClassificationTask?.cancel()
+        endInterruptionBackgroundTask()
+        #endif
         audioInterruptionState.reset()
         #if canImport(UIKit)
         Self.deactivatePlaybackAudioSession(reason: "player stop")

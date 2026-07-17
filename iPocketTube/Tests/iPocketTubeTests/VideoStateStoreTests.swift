@@ -124,6 +124,30 @@ struct VideoStateStoreTests {
         #expect(!PlaybackPositionPolicy.shouldWritePeriodicCheckpoint(lastWrite: start, now: start.addingTimeInterval(4.9)))
         #expect(PlaybackPositionPolicy.shouldWritePeriodicCheckpoint(lastWrite: start, now: start.addingTimeInterval(5)))
     }
+
+    @Test("Lifecycle zero does not reset an established playback position")
+    func lifecycleZeroDoesNotResetPosition() {
+        #expect(PlaybackPositionPolicy.reconciledObservedPosition(
+            observed: 0,
+            current: 412.5
+        ) == 412.5)
+    }
+
+    @Test("A real observed position synchronizes the UI clock")
+    func realObservedPositionSynchronizes() {
+        #expect(PlaybackPositionPolicy.reconciledObservedPosition(
+            observed: 413.25,
+            current: 0
+        ) == 413.25)
+    }
+
+    @Test("Explicit seek to start remains accepted after local value is committed")
+    func explicitSeekToStartRemainsAccepted() {
+        #expect(PlaybackPositionPolicy.reconciledObservedPosition(
+            observed: 0,
+            current: 0
+        ) == 0)
+    }
 }
 
 @Suite("Waveform interaction arbitration")

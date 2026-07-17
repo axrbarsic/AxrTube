@@ -31,7 +31,10 @@ public final class AudioFirstPlaybackCoordinator {
     public private(set) var downloadProgress: Double = 0
     public private(set) var bufferedProgress: Double = 0
     public private(set) var lastTTFAMilliseconds: Int?
-    public var displayedPlaybackTime: TimeInterval { authoritativeState.playbackPosition }
+    /// The long-lived PlaybackViewModel is the only UI time source. The reducer
+    /// still rejects stale download/finalizer callbacks, but it no longer owns a
+    /// second scrubber clock that can reset independently after scene changes.
+    public var displayedPlaybackTime: TimeInterval { playerState.vm.currentTime }
 
     private let api: InnerTubeAPI
     private let playerState: PlayerStateStore
@@ -214,6 +217,7 @@ public final class AudioFirstPlaybackCoordinator {
     public func setApplicationActive(_ active: Bool) {
         applicationIsActive = active
         if active {
+            synchronizePlaybackTime(reason: "application active")
             reconcileDownloads(trigger: "foreground")
             startReconciliationWatchdog()
         } else {
@@ -221,6 +225,14 @@ public final class AudioFirstPlaybackCoordinator {
             reconciliationWatchdogTask?.cancel()
             reconciliationWatchdogTask = nil
         }
+    }
+
+    public func synchronizePlaybackTime(reason: String) {
+        guard currentVideo != nil, playerState.vm.player.currentItem != nil else { return }
+        playerState.vm.synchronizePlaybackTimeFromPlayer(reason: reason)
+        let actual = playerState.vm.currentTime
+        guard actual.isFinite, actual >= 0 else { return }
+        apply(.timeline(generation: commandGate.generation, position: actual))
     }
 
     public func pauseDownload(_ entry: DownloadedVideo) {
@@ -243,6 +255,7 @@ public final class AudioFirstPlaybackCoordinator {
     }
 
     public func beginScrubbing() {
+        synchronizePlaybackTime(reason: "downloads scrub begin")
         wasPlayingBeforeScrub = playerState.vm.beginAudioFirstScrubbing()
     }
 

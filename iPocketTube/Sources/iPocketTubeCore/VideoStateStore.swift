@@ -202,4 +202,18 @@ public enum PlaybackPositionPolicy {
         guard let lastWrite else { return true }
         return now.timeIntervalSince(lastWrite) >= periodicSaveInterval
     }
+
+    /// AVPlayer can briefly publish zero while an existing item reconnects to its
+    /// output route. That lifecycle artifact must not move the visible scrubber or
+    /// Now Playing elapsed time back to the beginning. Explicit seeks update the
+    /// current value first, so a genuine user seek to zero remains accepted.
+    public static func reconciledObservedPosition(
+        observed: TimeInterval,
+        current: TimeInterval
+    ) -> TimeInterval {
+        guard observed.isFinite, observed >= 0 else { return max(0, current) }
+        guard current.isFinite, current >= 0 else { return observed }
+        if observed < 0.05, current > 1 { return current }
+        return observed
+    }
 }

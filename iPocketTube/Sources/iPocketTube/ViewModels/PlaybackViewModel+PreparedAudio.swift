@@ -51,6 +51,9 @@ extension PlaybackViewModel {
         chapters = []
         hasNext = false
         hasPrevious = false
+        audioInterruptionResumeTask?.cancel()
+        remotePauseClassificationTask?.cancel()
+        endInterruptionBackgroundTask()
         audioInterruptionState.reset()
         setupRateObserver()
         setupRemoteCommandCenter()
@@ -115,6 +118,7 @@ extension PlaybackViewModel {
         _ = Self.activatePlaybackAudioSession(reason: "audio-first initial buffer ready")
         setupRemoteCommandCenter()
         player.playImmediately(atRate: Float(settings.playbackSpeed))
+        audioInterruptionState.playbackBecameActive()
         isPlaying = true
         isLoading = false
         updateNowPlayingInfo()

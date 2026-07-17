@@ -111,6 +111,7 @@ struct DownloadsView: View {
         .iPocketTubeScreenSurface()
         .toolbar(.hidden, for: .navigationBar)
         .onAppear {
+            playerRouter.audioFirst.synchronizePlaybackTime(reason: "downloads active row")
             playerRouter.audioFirst.reconcileDownloads(trigger: "downloads-screen")
         }
         .alert(

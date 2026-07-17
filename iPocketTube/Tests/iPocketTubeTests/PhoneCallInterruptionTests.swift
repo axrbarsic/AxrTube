@@ -135,6 +135,64 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.ended(shouldResume: true) == .stayPaused)
     }
 
+    @Test("Route loss before interruption preserves the real playback intent")
+    func routeLossBeforeInterruptionPreservesIntent() {
+        var state = AudioInterruptionStateMachine()
+        state.playbackBecameActive()
+
+        #expect(state.routeBecameUnavailable(wasPlaying: true) == .pauseAndYield)
+        #expect(state.userWantsPlayback)
+        #expect(state.sourceBegan(.systemInterruption, wasPlaying: false) == .pauseAndYield)
+        let generation = state.generation
+        #expect(state.wasPlaying)
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: true) == .rebuildGraphAndResume)
+        #expect(state.acceptsPendingResume(generation: generation))
+        let firstCompletion = state.completePendingResume(generation: generation)
+        let duplicateCompletion = state.completePendingResume(generation: generation)
+        #expect(firstCompletion)
+        #expect(!duplicateCompletion)
+    }
+
+    @Test("User pause cancels an already approved pending resume")
+    func userPauseCancelsPendingResume() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.began(wasPlaying: true) == .pauseAndYield)
+        #expect(state.ended(shouldResume: true) == .rebuildGraphAndResume)
+        let generation = state.generation
+        #expect(state.acceptsPendingResume(generation: generation))
+
+        state.userPaused()
+
+        #expect(!state.userWantsPlayback)
+        #expect(!state.pendingSystemResume)
+        #expect(!state.acceptsPendingResume(generation: generation))
+    }
+
+    @Test("Item reset rejects a stale interruption end")
+    func itemResetRejectsStaleEnded() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.began(wasPlaying: true) == .pauseAndYield)
+        let oldGeneration = state.generation
+
+        state.reset()
+
+        #expect(state.ended(shouldResume: true) == .ignore)
+        #expect(!state.acceptsPendingResume(generation: oldGeneration))
+        #expect(!state.userWantsPlayback)
+    }
+
+    @Test("Route-disconnected interruption never resumes before its causal end")
+    func routeDisconnectedWaitsForEnded() {
+        var state = AudioInterruptionStateMachine()
+        #expect(state.sourceBegan(.systemInterruption, wasPlaying: true) == .pauseAndYield)
+        let generation = state.generation
+        #expect(state.isHandling)
+        #expect(!state.pendingSystemResume)
+        #expect(state.generation == generation)
+        #expect(state.sourceEnded(.systemInterruption, shouldResume: false) == .rebuildGraphAndResume)
+        #expect(state.acceptsPendingResume(generation: generation))
+    }
+
     @Test("Spoken hint cannot resume while a real interruption is still active")
     func overlappingHintEndsBeforeSystemInterruption() {
         var state = AudioInterruptionStateMachine()
@@ -147,13 +205,13 @@ struct PhoneCallInterruptionFlagTests {
         #expect(state.sourceEnded(.systemInterruption, shouldResume: true) == .ignore)
     }
 
-    @Test("System resume permission wins when a spoken hint overlaps")
-    func systemDenialWinsOverHintPermission() {
+    @Test("Causal system end preserves playback intent when recommendation is absent")
+    func causalSystemEndPreservesPlaybackIntent() {
         var state = AudioInterruptionStateMachine()
         #expect(state.sourceBegan(.systemInterruption, wasPlaying: true) == .pauseAndYield)
         #expect(state.sourceBegan(.secondaryAudioHint, wasPlaying: false) == .ignore)
         #expect(state.sourceEnded(.systemInterruption, shouldResume: false) == .ignore)
-        #expect(state.sourceEnded(.secondaryAudioHint, shouldResume: true) == .stayPaused)
+        #expect(state.sourceEnded(.secondaryAudioHint, shouldResume: true) == .rebuildGraphAndResume)
     }
 
     @Test("Manual pause wins across overlapping audio sources")
@@ -289,8 +347,114 @@ struct PhoneCallInterruptionNotificationTests {
         #expect(vm.audioInterruptionResumeCount == 1)
     }
 
-    @Test("Interruption ended without shouldResume stays honestly paused")
-    func interruptionEndedWithoutResumePermissionStaysPaused() async {
+    @Test("Transient activation failure retries once and resumes exactly once")
+    func transientActivationFailureRetriesCausally() async {
+        let vm = makeVMWithCurrentItem()
+        vm.audioInterruptionRetryDelays = [.zero, .zero]
+        var attempts = 0
+        vm.audioSessionActivator = { _ in
+            attempts += 1
+            return attempts == 2
+        }
+        vm.isPlaying = true
+
+        vm.handleAudioInterruption(type: .began)
+        vm.handleAudioInterruption(type: .ended, options: [.shouldResume])
+
+        for _ in 0..<50 {
+            if vm.audioInterruptionResumeCount == 1 { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(attempts == 2)
+        #expect(vm.audioInterruptionResumeCount == 1)
+        #expect(vm.isPlaying)
+
+        vm.handleAudioInterruption(type: .ended, options: [.shouldResume])
+        try? await Task.sleep(for: .milliseconds(20))
+        #expect(attempts == 2)
+        #expect(vm.audioInterruptionResumeCount == 1)
+    }
+
+    @Test("User pause cancels activation retry before it can resume")
+    func userPauseCancelsActivationRetry() async {
+        let vm = makeVMWithCurrentItem()
+        vm.audioInterruptionRetryDelays = [.milliseconds(50)]
+        var attempts = 0
+        vm.audioSessionActivator = { _ in
+            attempts += 1
+            return attempts > 1
+        }
+        vm.isPlaying = true
+
+        vm.handleAudioInterruption(type: .began)
+        vm.handleAudioInterruption(type: .ended, options: [.shouldResume])
+        for _ in 0..<20 {
+            if attempts == 1 { break }
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+        vm.performUserPause(reason: "test user pause during retry")
+        try? await Task.sleep(for: .milliseconds(80))
+
+        #expect(attempts == 1)
+        #expect(vm.audioInterruptionResumeCount == 0)
+        #expect(!vm.isPlaying)
+    }
+
+    @Test("ChatGPT route disconnect waits for a causal route restoration")
+    func routeDisconnectedMicCaptureWaitsForRouteRestoration() async {
+        let vm = makeVMWithCurrentItem()
+        vm.audioSessionActivator = { _ in true }
+        vm.audioInterruptionState.playbackBecameActive()
+        vm.isPlaying = true
+
+        vm.performRemotePause(reason: "test microphone prelude")
+        vm.handleAudioRouteChange(reason: .oldDeviceUnavailable)
+        vm.handleAudioInterruption(
+            type: .began,
+            reason: AVAudioSession.InterruptionReason.routeDisconnected.rawValue
+        )
+        try? await Task.sleep(for: .milliseconds(20))
+        #expect(vm.audioInterruptionResumeCount == 0)
+        #expect(!vm.isPlaying)
+        #expect(vm.isHandlingAudioInterruption)
+
+        vm.handleAudioRouteChange(reason: .newDeviceAvailable)
+        for _ in 0..<50 {
+            if vm.audioInterruptionResumeCount == 1 { break }
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(vm.audioInterruptionResumeCount == 1)
+        #expect(vm.isPlaying)
+        #expect(!vm.isHandlingAudioInterruption)
+    }
+
+    @Test("Remote pause during interruption cancels resume after ended")
+    func remotePauseDuringInterruptionCancelsEndedResume() async {
+        let vm = makeVMWithCurrentItem()
+        var attempts = 0
+        vm.audioSessionActivator = { _ in
+            attempts += 1
+            return true
+        }
+        vm.audioInterruptionState.playbackBecameActive()
+        vm.isPlaying = true
+        vm.handleAudioInterruption(
+            type: .began,
+            reason: AVAudioSession.InterruptionReason.routeDisconnected.rawValue
+        )
+
+        vm.performRemotePause(reason: "test AirPods pause during interruption")
+        vm.handleAudioRouteChange(reason: .newDeviceAvailable)
+        try? await Task.sleep(for: .milliseconds(20))
+
+        #expect(attempts == 0)
+        #expect(vm.audioInterruptionResumeCount == 0)
+        #expect(!vm.isPlaying)
+        #expect(!vm.audioInterruptionState.userWantsPlayback)
+    }
+
+    @Test("Interruption ended without recommendation restores retained play intent")
+    func interruptionEndedWithoutRecommendationResumes() async {
         let vm = makeVMWithCurrentItem()
         vm.isPlaying = true
 
@@ -310,15 +474,14 @@ struct PhoneCallInterruptionNotificationTests {
             userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
         )
         for _ in 0..<50 {
-            if !vm.isHandlingAudioInterruption { break }
+            if vm.audioInterruptionResumeCount == 1 { break }
             try? await Task.sleep(for: .milliseconds(10))
         }
 
         #expect(!vm.isHandlingAudioInterruption)
         #expect(!vm.wasPlayingBeforeInterruption)
-        #expect(!vm.isPlaying)
-        #expect(vm.player.rate == 0)
-        #expect(vm.audioInterruptionResumeCount == 0)
+        #expect(vm.isPlaying)
+        #expect(vm.audioInterruptionResumeCount == 1)
     }
 
     @Test("Remote Play restores the same item when interruption ended is missing")

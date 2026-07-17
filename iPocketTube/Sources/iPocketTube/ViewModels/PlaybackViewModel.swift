@@ -341,6 +341,27 @@ public final class PlaybackViewModel {
     /// Owns the single post-recovery health check. A newer interruption or manual
     /// pause cancels it so stale completions cannot restart playback.
     @ObservationIgnored nonisolated(unsafe) var audioRecoveryVerificationTask: Task<Void, Never>?
+    #if canImport(UIKit)
+    /// Owns the bounded AVAudioSession reactivation sequence after an allowed
+    /// interruption end. User actions, item changes, and newer system events
+    /// cancel it through the interruption generation gate.
+    @ObservationIgnored nonisolated(unsafe) var audioInterruptionResumeTask: Task<Void, Never>?
+    @ObservationIgnored nonisolated(unsafe) var remotePauseClassificationTask: Task<Void, Never>?
+    var audioInterruptionBackgroundTaskID: UIBackgroundTaskIdentifier = .invalid
+    /// A route-disconnected interruption may omit `.ended`. Only a later concrete
+    /// route-available event for this exact generation may close that cycle.
+    var routeDisconnectedInterruptionGeneration: UInt?
+    /// Injectable only for deterministic activation retry tests. Production uses
+    /// the process-wide AVAudioSession owner below.
+    @ObservationIgnored var audioSessionActivator: (String) -> Bool = {
+        PlaybackViewModel.activatePlaybackAudioSession(reason: $0)
+    }
+    @ObservationIgnored var audioInterruptionRetryDelays: [Duration] = [
+        .milliseconds(120),
+        .milliseconds(300),
+        .milliseconds(650),
+    ]
+    #endif
     /// At most one fresh-item repair is allowed per recovery generation. This
     /// prevents verification from becoming an endless play/rebuild loop.
     var lastAudioGraphRepairGeneration: UInt?
@@ -533,6 +554,10 @@ public final class PlaybackViewModel {
         if let obs = mediaServicesResetObserver { NotificationCenter.default.removeObserver(obs) }
         if let obs = secondaryAudioHintObserver { NotificationCenter.default.removeObserver(obs) }
         audioRecoveryVerificationTask?.cancel()
+        #if canImport(UIKit)
+        audioInterruptionResumeTask?.cancel()
+        remotePauseClassificationTask?.cancel()
+        #endif
         #if canImport(UIKit)
         let center = MPRemoteCommandCenter.shared()
         if let target = remotePlayTarget { center.playCommand.removeTarget(target) }

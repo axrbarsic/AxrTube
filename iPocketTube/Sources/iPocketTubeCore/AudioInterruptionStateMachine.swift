@@ -9,7 +9,8 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public enum Action: Equatable, Sendable {
         case pauseAndYield
-        /// Reactivate the session, rebuild the presentation graph, and resume once.
+        /// Reactivate the session and resume once. The concrete owner preserves
+        /// the item and rebuilds only after a failed post-resume health check.
         case rebuildGraphAndResume
         /// Media services were reset. Rebuild while paused; Apple requires a new
         /// user playback action rather than silently restarting media.
@@ -20,6 +21,14 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public private(set) var isHandling = false
     public private(set) var wasPlaying = false
+    /// Durable playback intent is separate from AVPlayer.rate. A route change can
+    /// publish rate=0 immediately before the matching interruption notification.
+    /// That system pause must not be mistaken for a user pause.
+    public private(set) var userWantsPlayback = false
+    /// Set only after the final interruption source ends with resume permission.
+    /// The owner clears it after one successful session activation or any newer
+    /// user, item, route, or media-services transition.
+    public private(set) var pendingSystemResume = false
     public private(set) var generation: UInt = 0
     public private(set) var mediaServicesAreLost = false
     public private(set) var wasPlayingBeforeMediaServicesLoss = false
@@ -31,11 +40,19 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public init() {}
 
+    public var diagnosticSummary: String {
+        "handling=\(isHandling) intent=\(userWantsPlayback) "
+            + "wasPlaying=\(wasPlaying) pendingResume=\(pendingSystemResume) "
+            + "generation=\(generation)"
+    }
+
     public mutating func began(wasPlaying: Bool) -> Action {
         guard !isHandling else { return .ignore }
         generation &+= 1
         isHandling = true
-        self.wasPlaying = wasPlaying
+        pendingSystemResume = false
+        if wasPlaying { userWantsPlayback = true }
+        self.wasPlaying = wasPlaying || userWantsPlayback
         return .pauseAndYield
     }
 
@@ -67,7 +84,13 @@ public struct AudioInterruptionStateMachine: Sendable {
         case .systemInterruption:
             guard systemInterruptionActive else { return .ignore }
             systemInterruptionActive = false
-            systemResumePermission = shouldResume
+            // `shouldResume` is a recommendation, not the notification that the
+            // competing audio owner has yielded. ChatGPT voice input can send a
+            // causal `.ended` with no option even though this app was playing and
+            // the user never paused it. Preserve that explicit user intent and let
+            // the concrete owner use `setActive(true)` as the final arbitration
+            // gate. A user/AirPods/Siri pause has already cleared the intent.
+            systemResumePermission = shouldResume || userWantsPlayback
         case .secondaryAudioHint:
             guard secondaryAudioHintActive else { return .ignore }
             secondaryAudioHintActive = false
@@ -85,10 +108,38 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public mutating func ended(shouldResume: Bool) -> Action {
         guard isHandling else { return .ignore }
-        let resume = shouldResume && wasPlaying
+        let resume = shouldResume && wasPlaying && userWantsPlayback
         isHandling = false
         wasPlaying = false
+        pendingSystemResume = resume
         return resume ? .rebuildGraphAndResume : .stayPaused
+    }
+
+    /// Records actual playback without creating a new interruption generation.
+    /// Initial audio-first playback reaches this point only after a user selected
+    /// an item and its first buffer became playable.
+    public mutating func playbackBecameActive() {
+        userWantsPlayback = true
+    }
+
+    public func acceptsPendingResume(generation: UInt) -> Bool {
+        self.generation == generation
+            && pendingSystemResume
+            && userWantsPlayback
+            && !isHandling
+            && !mediaServicesAreLost
+    }
+
+    @discardableResult
+    public mutating func completePendingResume(generation: UInt) -> Bool {
+        guard acceptsPendingResume(generation: generation) else { return false }
+        pendingSystemResume = false
+        return true
+    }
+
+    public mutating func cancelPendingResume() {
+        pendingSystemResume = false
+        generation &+= 1
     }
 
     /// Recovers from an interruption whose matching `.ended` notification was
@@ -102,6 +153,8 @@ public struct AudioInterruptionStateMachine: Sendable {
         generation &+= 1
         isHandling = false
         wasPlaying = false
+        userWantsPlayback = true
+        pendingSystemResume = false
         return .rebuildGraphAndResume
     }
 
@@ -111,16 +164,21 @@ public struct AudioInterruptionStateMachine: Sendable {
     public mutating func userPaused() {
         generation &+= 1
         wasPlaying = false
+        userWantsPlayback = false
+        pendingSystemResume = false
         wasPlayingBeforeMediaServicesLoss = false
     }
 
-    public mutating func routeBecameUnavailable() -> Action {
+    public mutating func routeBecameUnavailable(wasPlaying: Bool = false) -> Action {
         generation &+= 1
-        wasPlaying = false
+        self.wasPlaying = false
+        pendingSystemResume = false
+        if wasPlaying { userWantsPlayback = true }
         return .pauseAndYield
     }
 
     public mutating func routeBecameAvailable() -> Action {
+        guard !isHandling, !pendingSystemResume else { return .stayPaused }
         generation &+= 1
         return .stayPaused
     }
@@ -130,6 +188,7 @@ public struct AudioInterruptionStateMachine: Sendable {
         mediaServicesAreLost = true
         wasPlayingBeforeMediaServicesLoss = wasPlaying
         self.wasPlaying = false
+        pendingSystemResume = false
         return .pauseAndYield
     }
 
@@ -138,6 +197,8 @@ public struct AudioInterruptionStateMachine: Sendable {
         guard mediaServicesAreLost else { return .stayPaused }
         mediaServicesAreLost = false
         wasPlayingBeforeMediaServicesLoss = false
+        userWantsPlayback = false
+        pendingSystemResume = false
         return .rebuildGraphAndStayPaused
     }
 
@@ -148,6 +209,8 @@ public struct AudioInterruptionStateMachine: Sendable {
         guard wasPlaying, !playbackAllowed else { return .ignore }
         generation &+= 1
         self.wasPlaying = false
+        userWantsPlayback = false
+        pendingSystemResume = false
         return .stayPaused
     }
 
@@ -157,12 +220,15 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public mutating func invalidatePendingRecovery() {
         generation &+= 1
+        pendingSystemResume = false
     }
 
     public mutating func reset() {
         generation &+= 1
         isHandling = false
         wasPlaying = false
+        userWantsPlayback = false
+        pendingSystemResume = false
         mediaServicesAreLost = false
         wasPlayingBeforeMediaServicesLoss = false
         clearAudioSources()

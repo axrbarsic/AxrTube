@@ -196,6 +196,7 @@ final class WebPlaybackAudioRecoveryController {
                 recoveryGeneration: state.generation
             )
             guard action == .rebuildGraphAndResume else { return }
+            guard state.completePendingResume(generation: state.generation) else { return }
             delegate?.resumeWebPlaybackAfterSystemAudioEvent()
 
         @unknown default:
@@ -211,7 +212,9 @@ final class WebPlaybackAudioRecoveryController {
         let action: AudioInterruptionStateMachine.Action
         switch reason {
         case .oldDeviceUnavailable, .noSuitableRouteForCategory:
-            action = state.routeBecameUnavailable()
+            action = state.routeBecameUnavailable(
+                wasPlaying: delegate?.webAudioPlaybackIsActive == true
+            )
             delegate?.pauseWebPlaybackForSystemAudioEvent()
         case .newDeviceAvailable, .wakeFromSleep, .routeConfigurationChange:
             action = state.routeBecameAvailable()
