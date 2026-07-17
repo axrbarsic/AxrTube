@@ -142,4 +142,35 @@ struct WaveformInteractionPolicyTests {
     func threshold() {
         #expect(WaveformGesturePolicy.intent(horizontal: 3, vertical: 2) == .undecided)
     }
+
+    @Test("Analysis prioritizes a short range around playback")
+    func rangeFirstWindow() {
+        let window = LiveAudioScopePolicy.analysisWindow(around: 600, assetDuration: 1_200)
+        #expect(window.duration == 3)
+        #expect(window.start == 598.5)
+    }
+
+    @Test("Dynamic normalization preserves silence and reveals signal")
+    func dynamicNormalization() {
+        let values = LiveAudioScopePolicy.normalize(
+            [0, 0.0005, 0.01, 0.04, 0.012],
+            peaks: [0, 0.0008, 0.02, 0.08, 0.018]
+        )
+        #expect(values[0] == 0)
+        #expect(values[1] == 0)
+        #expect(values[3] > values[2])
+        #expect(values[3] > 0.45)
+    }
+
+    @Test("Pause freezes the already visible scope")
+    func pauseFreezesScope() {
+        #expect(LiveAudioScopePolicy.displaySamples(current: [0.3, 0.7], incoming: [0.9, 0.1], isPlaying: false) == [0.3, 0.7])
+        #expect(LiveAudioScopePolicy.displaySamples(current: [0.3, 0.7], incoming: [0.9, 0.1], isPlaying: true) == [0.9, 0.1])
+    }
+
+    @Test("Seeking selects a new analysis bucket")
+    func seekSelectsNewWindow() {
+        #expect(LiveAudioScopePolicy.bucket(for: 42.2) != LiveAudioScopePolicy.bucket(for: 812.4))
+        #expect(LiveAudioScopePolicy.analysisWindow(around: 812.4, assetDuration: 1_000).start > 800)
+    }
 }
