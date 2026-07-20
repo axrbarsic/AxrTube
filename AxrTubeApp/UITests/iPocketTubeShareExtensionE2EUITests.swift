@@ -4,7 +4,7 @@ import XCTest
 //
 // End-to-end tests for the Share Extension that drive the FULL system-level flow:
 //
-//   Safari  →  share sheet  →  tap "iPocketTube"  →  iPocketTube app foregrounds
+//   Safari -> share sheet -> tap "AxrTube" -> AxrTube app foregrounds
 //                                                   →  video player opens
 //
 // Root cause of the "blink" bug (fixed in ShareViewController):
@@ -16,7 +16,7 @@ import XCTest
 //
 // Prerequisites:
 //   • The simulator must have network access (YouTube URL must be navigable in Safari).
-//   • The "iPocketTube" extension must be enabled in the iOS share sheet.
+//   • The "AxrTube" extension must be enabled in the iOS share sheet.
 //     If it has never been used on this simulator, open the share sheet manually
 //     once and tap "More" to enable it, or reset the simulator.
 //   • These tests are intentionally split from `iPocketTubeShareExtensionUITests` (which uses
@@ -25,7 +25,7 @@ import XCTest
 // Skips gracefully when network is unavailable or Safari UI cannot be navigated.
 
 private let kTestVideoURL  = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-private let kExtensionName = "iPocketTube"   // CFBundleDisplayName in iPocketTubeShareExtension/Info.plist
+private let kExtensionName = "AxrTube"   // User-visible CFBundleDisplayName.
 
 final class iPocketTubeShareExtensionE2EUITests: XCTestCase {
 
@@ -103,7 +103,7 @@ final class iPocketTubeShareExtensionE2EUITests: XCTestCase {
         let appOpened = iPocketTube.wait(for: .runningForeground, timeout: 15)
         guard appOpened else {
             try captureAndSkip(
-                "iPocketTube did not come to the foreground after tapping the share extension — " +
+                "AxrTube did not come to the foreground after tapping the share extension: " +
                 "Share Extension infrastructure (enabled extension, network) not ready on this simulator clone.",
                 in: iPocketTube
             )
@@ -113,7 +113,7 @@ final class iPocketTubeShareExtensionE2EUITests: XCTestCase {
         guard waitForPlayerToOpen(in: iPocketTube, timeout: 20) else {
             try captureAndSkip(
                 "Neither player.titleLabel nor tosPlayer.stateLabel appeared within 20 s — " +
-                "iPocketTube opened but InnerTube may not have resolved the video (network unavailable)",
+                "AxrTube opened but InnerTube may not have resolved the video (network unavailable)",
                 in: iPocketTube
             )
         }
@@ -139,7 +139,7 @@ final class iPocketTubeShareExtensionE2EUITests: XCTestCase {
         try tapExtension(named: kExtensionName)
 
         guard iPocketTube.wait(for: .runningForeground, timeout: 15) else {
-            try captureAndSkip("iPocketTube did not come to the foreground — Share Extension infrastructure not ready on this simulator clone", in: iPocketTube)
+            try captureAndSkip("AxrTube did not come to the foreground: Share Extension infrastructure not ready on this simulator clone", in: iPocketTube)
         }
 
         guard waitForPlayerToOpen(in: iPocketTube, timeout: 20) else {

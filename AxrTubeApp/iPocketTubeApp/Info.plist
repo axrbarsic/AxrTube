@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>iPocketTube</string>
+	<string>AxrTube</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -39,9 +39,9 @@
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.entertainment</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>iPocketTube uses your local network to find AirPlay-compatible devices for casting videos to your TV.</string>
+	<string>AxrTube uses your local network to find AirPlay-compatible devices for casting videos to your TV.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
-	<string>iPocketTube needs access to save downloaded videos to your Photos library.</string>
+	<string>AxrTube needs access to save downloaded videos to your Photos library.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

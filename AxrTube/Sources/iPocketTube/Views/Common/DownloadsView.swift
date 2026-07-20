@@ -144,7 +144,7 @@ struct DownloadsView: View {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
             }
         } message: {
-            Text("All downloaded video and audio files will be removed from iPocketTube.")
+            Text("All downloaded video and audio files will be removed from AxrTube.")
         }
     }
 

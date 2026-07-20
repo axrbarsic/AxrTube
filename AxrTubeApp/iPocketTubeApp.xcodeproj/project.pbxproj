@@ -971,7 +971,7 @@
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = iPocketTubeApp/Info.plist;
 				"INFOPLIST_FILE[sdk=macosx*]" = "iPocketTubeApp/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";
@@ -1151,7 +1151,7 @@
 					"$(inherited)",
 				);
 				INFOPLIST_FILE = iPocketTubeSafariExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1192,7 +1192,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				INFOPLIST_FILE = iPocketTubeSafariExtension/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -1241,7 +1241,7 @@
 					"$(inherited)",
 				);
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -1282,7 +1282,7 @@
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu17;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -1454,7 +1454,7 @@
 				ENABLE_PREVIEWS = YES;
 				INFOPLIST_FILE = iPocketTubeApp/Info.plist;
 				"INFOPLIST_FILE[sdk=macosx*]" = "iPocketTubeApp/Info-macOS.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = iPocketTube;
+				INFOPLIST_KEY_CFBundleDisplayName = AxrTube;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.entertainment";
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				"LAUNCH_STORYBOARD_NAME[sdk=iphoneos*]" = "Launch Screen";

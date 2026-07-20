@@ -123,7 +123,7 @@ public struct TOSPlayerView: View {
         // RootView.body — `if let video = browseVM.deepLinkedVideo { TOSPlayerView(...) }`),
         // sitting alongside (not replacing) the NavigationSplitView. macOS draws the
         // window's titlebar/toolbar (traffic lights, sidebar toggle, back chevron,
-        // "iPocketTube" title) as OS-level chrome ABOVE the content view's z-order —
+        // "AxrTube" title) as OS-level chrome above the content view's z-order.
         // no amount of SwiftUI overlay/zIndex/.ignoresSafeArea() can cover it, because
         // it isn't part of the content view's layer at all. `safeAreaInsets.top` is
         // exactly the height SwiftUI reserves to avoid drawing under that chrome, so
