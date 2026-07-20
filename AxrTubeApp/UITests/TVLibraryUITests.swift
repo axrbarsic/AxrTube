@@ -8,7 +8,7 @@ import XCTest
 // the Home feed.
 //
 // Run against the "iPocketTube" tvOS scheme:
-//   xcodebuild test -workspace iPocketTube.xcworkspace -scheme "iPocketTube"
+//   xcodebuild test -workspace AxrTube.xcworkspace -scheme "iPocketTube"
 //     -destination "id=30E83929-0C67-4572-82C4-FE0F228EA835"
 //     -only-testing:iPocketTubeTVUITests/TVLibraryUITests
 

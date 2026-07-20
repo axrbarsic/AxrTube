@@ -19,7 +19,7 @@ Swift Package с моделями, YouTube/InnerTube-клиентом, playback/
 ## Проверка пакета
 
 ```bash
-swift test --package-path iPocketTube
+swift test --package-path AxrTube
 ```
 
 YouTube/InnerTube API не является стабильным публичным контрактом: renderer-форматы и доступность медиапотоков могут изменяться. Код не должен логировать подписанные media URL, cookies, query, токены или account IDs.

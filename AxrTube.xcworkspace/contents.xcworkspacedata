@@ -2,9 +2,9 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "group:iPocketTubeApp/iPocketTubeApp.xcodeproj">
+      location = "group:AxrTubeApp/iPocketTubeApp.xcodeproj">
    </FileRef>
    <FileRef
-      location = "group:iPocketTube">
+      location = "group:AxrTube">
    </FileRef>
 </Workspace>

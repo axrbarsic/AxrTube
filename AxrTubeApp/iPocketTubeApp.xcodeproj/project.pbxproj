@@ -245,12 +245,12 @@
 		AE55B486AFD7F51FEF1874FF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		AP000000000000000000001A /* AirPlayUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AirPlayUITests.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* PlayerNavigationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerNavigationUITests.swift; sourceTree = "<group>"; };
-		B7482B081D440A26079AA9BC /* iPocketTube */ = {isa = PBXFileReference; lastKnownFileType = folder; name = iPocketTube; path = ../iPocketTube; sourceTree = SOURCE_ROOT; };
+		B7482B081D440A26079AA9BC /* iPocketTube */ = {isa = PBXFileReference; lastKnownFileType = folder; name = iPocketTube; path = ../AxrTube; sourceTree = SOURCE_ROOT; };
 		C3E4F5A6B7C8D9E0F1A2B3C4 /* SubscriptionsPlaybackUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsPlaybackUITests.swift; sourceTree = "<group>"; };
 		C5D9E4F5A6B7C8D9E0F1A2B3 /* HomeFeedAndSettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeFeedAndSettingsUITests.swift; sourceTree = "<group>"; };
 		CA34C2AD8A70726C11C5F851 /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CA34C2AD8A70726C11C5F852 /* Info-macOS.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "Info-macOS.plist"; sourceTree = "<group>"; };
-		CC2480000000000000000010 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = Localizable.xcstrings; path = ../iPocketTube/Sources/iPocketTube/Localizable.xcstrings; sourceTree = SOURCE_ROOT; };
+		CC2480000000000000000010 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; name = Localizable.xcstrings; path = ../AxrTube/Sources/iPocketTube/Localizable.xcstrings; sourceTree = SOURCE_ROOT; };
 		CC4400000000000000004401 /* VideoCacheUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoCacheUITests.swift; sourceTree = "<group>"; };
 		D5E6F7A8B9C0D1E2F3A4B5C6 /* SubscriptionsScrollRestorationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionsScrollRestorationUITests.swift; sourceTree = "<group>"; };
 		DA3810E40296738F4C5E0B95 /* iPocketTubeUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iPocketTubeUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -721,7 +721,7 @@
 			mainGroup = 10B1F40F599FC1A0781AF6D9;
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
-				644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */,
+				644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../AxrTube" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5EF0B6AF2643BF476B25C7C0 /* Products */;
@@ -1614,26 +1614,26 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */ = {
+		644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../AxrTube" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../iPocketTube;
+			relativePath = ../AxrTube;
 		};
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
 		4D96747315A9E066D09F1F4E /* iPocketTubeCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../AxrTube" */;
 			productName = iPocketTubeCore;
 		};
 		67E6B6862F9535CD00CD372F /* iPocketTube */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../AxrTube" */;
 			productName = iPocketTube;
 		};
 		AA01000000000000000000B1 /* iPocketTubeCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../iPocketTube" */;
+			package = 644EA6428F48EF6B886E4B58 /* XCLocalSwiftPackageReference "../AxrTube" */;
 			productName = iPocketTubeCore;
 		};
 		B8401470D9A590E7F3685830 /* iPocketTube */ = {

@@ -20,7 +20,7 @@ import XCTest
 //
 // Run via:
 //   xcodebuild test \
-//     -workspace iPocketTube.xcworkspace -scheme iPocketTube \
+//     -workspace AxrTube.xcworkspace -scheme iPocketTube \
 //     -destination "platform=macOS" \
 //     -only-testing:iPocketTubeUITests/MacVideoPlaybackBenchmarkUITests \
 //     -parallel-testing-enabled NO \

@@ -25,7 +25,7 @@ import XCTest
 ///
 /// Run via:
 ///   xcodebuild test \
-///     -workspace iPocketTube.xcworkspace -scheme "iPocketTube" \
+///     -workspace AxrTube.xcworkspace -scheme "iPocketTube" \
 ///     -destination 'id=E16182A3-794A-43DD-B349-A1FFBE744AF8' \
 ///     -only-testing:iPocketTubeTVUITests/TVVideoPlaybackBenchmarkUITests \
 ///     -parallel-testing-enabled NO \

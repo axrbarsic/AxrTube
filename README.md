@@ -48,29 +48,29 @@ Open-source аудио-комбайн вокруг YouTube для iPhone. Обы
 ```bash
 git clone https://github.com/axrbarsic/AxrTube.git
 cd AxrTube
-open iPocketTube.xcworkspace
+open AxrTube.xcworkspace
 ```
 
 1. Выберите схему `iPocketTube` и свой iPhone.
 2. В `Signing & Capabilities` назначьте собственную Team и включите automatic signing для приложения и пользовательских extensions.
 3. Соберите и запустите приложение из Xcode.
 
-Схема, Swift modules, bundle identifiers, App Group, URL schemes и часть путей всё ещё используют историческое техническое имя `iPocketTube`. Эти идентификаторы намеренно сохранены для совместимости с подписью, extensions, deep links, кэшем и существующими данными приложения. Пользовательский продукт и публичный репозиторий называются AxrTube.
+Схема, Swift modules, bundle identifiers, App Group, URL schemes и внутренние target paths всё ещё используют историческое техническое имя `iPocketTube`. Эти идентификаторы намеренно сохранены для совместимости с подписью, extensions, deep links, кэшем и существующими данными приложения. Пользовательский продукт, публичные корневые каталоги и репозиторий называются AxrTube.
 
 Не коммитьте Team ID, provisioning profiles, сертификаты, токены и приватные конфиги. Firebase не обязателен для персональной сборки; если вы подключаете Firebase/Crashlytics самостоятельно, используйте собственный игнорируемый `GoogleService-Info.plist`.
 
 ## Структура проекта
 
 ```text
-iPocketTube/          Swift Package: модели, InnerTube, playback/download state, SwiftUI
-iPocketTubeApp/       Xcode project: iOS app, Share/Safari extensions, Live Activity
-iPocketTube.xcworkspace/ Рабочее пространство Xcode
+AxrTube/              Swift Package: модели, InnerTube, playback/download state, SwiftUI
+AxrTubeApp/           Xcode project: iOS app, Share/Safari extensions, Live Activity
+AxrTube.xcworkspace/  Рабочее пространство Xcode
 ```
 
 Адресные тесты Swift Package:
 
 ```bash
-swift test --package-path iPocketTube
+swift test --package-path AxrTube
 ```
 
 ## Происхождение и лицензия
