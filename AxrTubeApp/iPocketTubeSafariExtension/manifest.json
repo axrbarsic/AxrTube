@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "iPocketTube for YouTube",
+  "name": "AxrTube for YouTube",
   "version": "1.0",
-  "description": "Opens YouTube videos automatically in iPocketTube.",
+  "description": "Opens YouTube videos automatically in AxrTube.",
   "icons": {
     "16":  "icons/Icon-16.png",
     "48":  "icons/Icon-48.png",

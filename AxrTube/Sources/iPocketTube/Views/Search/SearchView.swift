@@ -94,7 +94,7 @@ public struct SearchView: View {
     // MARK: - Search bar
 
     private var compactSearchTitle: some View {
-        Text("iPocketTube", bundle: .module)
+        Text("AxrTube", bundle: .module)
             .font(.system(.title2, design: .rounded, weight: .heavy))
             .foregroundStyle(iPocketTubeVisualTokens.primaryText)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)

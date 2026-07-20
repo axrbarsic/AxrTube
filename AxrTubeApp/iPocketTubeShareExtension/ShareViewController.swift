@@ -30,7 +30,7 @@ private enum ShareTheme {
 
 // MARK: - ShareViewController
 //
-// Presents a compact sheet with an "Open in iPocketTube" button. The button tap
+// Presents a compact sheet with an "Open in AxrTube" button. The button tap
 // is user-initiated, which is required for `extensionContext?.open(_:)` to
 // reliably launch the containing app from a Share Extension in modern iOS —
 // programmatic (non-user-initiated) calls are not honoured when the host is a
@@ -62,7 +62,7 @@ final class ShareViewController: UIViewController {
 
     private let openButton: UIButton = {
         var config = UIButton.Configuration.filled()
-        config.title = String(localized: "Open in iPocketTube")
+        config.title = String(localized: "Open in AxrTube")
         config.cornerStyle = .large
         config.baseBackgroundColor = ShareTheme.accent
         config.baseForegroundColor = ShareTheme.accentForeground
@@ -138,7 +138,7 @@ final class ShareViewController: UIViewController {
 
     private let titleLabel: UILabel = {
         let l = UILabel()
-        l.text = "iPocketTube"
+        l.text = "AxrTube"
         l.font = .systemFont(ofSize: 17, weight: .semibold)
         l.textColor = .label
         l.translatesAutoresizingMaskIntoConstraints = false
@@ -403,7 +403,7 @@ final class ShareViewController: UIViewController {
         }
 
         logEntry("❌ No UIApplication in chain (depth \(depth))")
-        logEntry("App Group written — open iPocketTube manually")
+        logEntry("App Group written: open AxrTube manually")
         shareLog.error("no UIApplication found after \(depth) hops — App Group fallback")
         extensionContext?.completeRequest(returningItems: nil)
     }

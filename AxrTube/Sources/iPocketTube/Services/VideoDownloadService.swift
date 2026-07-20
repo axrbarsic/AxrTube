@@ -328,7 +328,7 @@ public final class VideoDownloadService {
             downloadLog.error("[download] ❌ failed: domain=\(nsErr.domain) code=\(nsErr.code) desc=\(nsErr.localizedDescription)")
             let userMessage: String
             if nsErr.domain == "PHPhotosErrorDomain" {
-                userMessage = "Could not save to Photos. Please check Settings → Privacy & Security → Photos and allow iPocketTube to add photos."
+                userMessage = "Could not save to Photos. Please check Settings > Privacy & Security > Photos and allow AxrTube to add photos."
             } else if let urlErr = error as? URLError, urlErr.code == .fileDoesNotExist {
                 userMessage = "Download failed — the video file was removed before saving. Please try again."
             } else {
@@ -886,7 +886,7 @@ public final class VideoDownloadService {
                     continuation.resume()
                 } else {
                     // success=false, error=nil means permission was denied or restricted at save time
-                    let desc = "Could not save to Photos. Please check Settings → Privacy & Security → Photos and allow iPocketTube to add photos."
+                    let desc = "Could not save to Photos. Please check Settings > Privacy & Security > Photos and allow AxrTube to add photos."
                     downloadLog.error("[download] ❌ PHPhotoLibrary performChanges returned success=false with no error — likely permission denied")
                     let permissionError = NSError(
                         domain: "PHPhotosErrorDomain",

@@ -129,7 +129,7 @@ public struct SignInView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(iPocketTubeVisualTokens.redAccent)
 
-                    Text("Sign in to iPocketTube")
+                    Text("Sign in to AxrTube")
                         .font(.largeTitle).fontWeight(.bold)
 
                     Text("On any device, open the link below and enter the code.")
@@ -237,7 +237,7 @@ public struct SignInView: View {
                     .foregroundStyle(iPocketTubeVisualTokens.redAccent)
 
                 VStack(spacing: 6) {
-                    Text("Activate iPocketTube")
+                    Text("Activate AxrTube")
                         .font(.title2).fontWeight(.bold)
                     Text("On this device, tap the button below — the sign-in page opens with your code already filled in.")
                         .font(.subheadline)

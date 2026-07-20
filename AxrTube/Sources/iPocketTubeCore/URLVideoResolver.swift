@@ -93,7 +93,7 @@ public actor URLVideoResolver {
 
             var request = URLRequest(url: current)
             request.httpMethod = "HEAD"
-            request.setValue("iPocketTube/1.0", forHTTPHeaderField: "User-Agent")
+            request.setValue("AxrTube/1.0", forHTTPHeaderField: "User-Agent")
 
             guard let (_, response) = try? await session.data(for: request) else {
                 resolverLog.notice("hop\(hop, privacy: .public) request failed")
@@ -132,7 +132,7 @@ public actor URLVideoResolver {
         guard isHTTP(url) else { return nil }
 
         var request = URLRequest(url: url)
-        request.setValue("iPocketTube/1.0", forHTTPHeaderField: "User-Agent")
+        request.setValue("AxrTube/1.0", forHTTPHeaderField: "User-Agent")
 
         guard let (data, response) = try? await session.data(for: request),
               let http = response as? HTTPURLResponse

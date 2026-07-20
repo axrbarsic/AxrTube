@@ -141,7 +141,7 @@ private struct DownloadPlaceholderWidget: Widget {
             EmptyView()
                 .containerBackground(.fill.tertiary, for: .widget)
         }
-        .configurationDisplayName(String(localized: "iPocketTube Download"))
+        .configurationDisplayName(String(localized: "AxrTube Download"))
         .description(String(localized: "Shows download progress in the Dynamic Island."))
         .supportedFamilies([.systemSmall, .systemMedium, .systemLarge])
     }

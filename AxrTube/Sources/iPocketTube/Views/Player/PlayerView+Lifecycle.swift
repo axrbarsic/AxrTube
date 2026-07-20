@@ -789,7 +789,7 @@ extension PlayerView {
             isPresented: $showDownloadFormatPicker,
             titleVisibility: .visible
         ) {
-            Button("Video — iPocketTube + Photos") {
+            Button("Video: AxrTube + Photos") {
                 downloadService.download(
                     video: vm.playerInfo?.video ?? video,
                     kind: .video,
@@ -797,7 +797,7 @@ extension PlayerView {
                     storageLimitMB: store.settings.offlineStorageLimitMB
                 )
             }
-            Button("Audio — iPocketTube") {
+            Button("Audio: AxrTube") {
                 downloadService.download(
                     video: vm.playerInfo?.video ?? video,
                     kind: .audio,

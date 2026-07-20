@@ -5,20 +5,20 @@ import iPocketTubeCore
 
 // MARK: - OpenYouTubeVideoIntent
 
-/// Opens a YouTube video directly in iPocketTube from Siri or the Shortcuts app.
+/// Opens a YouTube video directly in AxrTube from Siri or the Shortcuts app.
 ///
 /// Siri phrases (registered via ``iPocketTubeShortcuts``):
-///   - "Watch on iPocketTube"
-///   - "Open YouTube video in iPocketTube"
-///   - "Play in iPocketTube"
+///   - "Watch on AxrTube"
+///   - "Open YouTube video in AxrTube"
+///   - "Play in AxrTube"
 ///
 /// The intent extracts the video ID using ``YouTubeLinkHandler`` and fires the
 /// existing `ipockettube://video/<id>` deep link, which ``AppEntry.handleOpenURL``
 /// already handles — no new playback wiring required.
 struct OpenYouTubeVideoIntent: AppIntent {
-    static let title: LocalizedStringResource = "Open YouTube Video in iPocketTube"
+    static let title: LocalizedStringResource = "Open YouTube Video in AxrTube"
     static let description = IntentDescription(
-        "Opens a YouTube video or Short URL directly in iPocketTube."
+        "Opens a YouTube video or Short URL directly in AxrTube."
     )
     static let openAppWhenRun: Bool = true
 
@@ -51,7 +51,7 @@ struct iPocketTubeShortcuts: AppShortcutsProvider {
                 "Watch on \(.applicationName)",
                 "Play in \(.applicationName)"
             ],
-            shortTitle: "Open in iPocketTube",
+            shortTitle: "Open in AxrTube",
             systemImageName: "play.rectangle"
         )
     }
@@ -65,7 +65,7 @@ enum iPocketTubeIntentError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: "Could not build an iPocketTube deep link."
+        case .invalidURL: "Could not build an AxrTube deep link."
         case .notYouTubeURL: "The URL doesn't appear to be a YouTube video link."
         }
     }

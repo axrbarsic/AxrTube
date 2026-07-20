@@ -51,7 +51,7 @@ public struct SettingsView: View {
             Button("Clear All", role: .destructive) { downloadStore.clearAll() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("All downloaded video and audio files will be removed from iPocketTube.")
+            Text("All downloaded video and audio files will be removed from AxrTube.")
         }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
             Button("OK", role: .cancel) {}
@@ -689,7 +689,7 @@ private struct GitHubQRView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(.white)
 
-                    Text("iPocketTube on GitHub")
+                    Text("AxrTube on GitHub")
                         .font(.largeTitle).fontWeight(.bold)
 
                     Text("Scan the QR code with your phone to view the project on GitHub.")

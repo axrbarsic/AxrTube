@@ -2247,80 +2247,80 @@
         }
       }
     },
-    "Activate iPocketTube": {
+    "Activate AxrTube": {
       "comment": "Sign-in activation screen heading (iOS)",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تفعيل iPocketTube"
+            "value": "تفعيل AxrTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube aktivieren"
+            "value": "AxrTube aktivieren"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Activar iPocketTube"
+            "value": "Activar AxrTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Activer iPocketTube"
+            "value": "Activer AxrTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube सक्रिय करें"
+            "value": "AxrTube सक्रिय करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktivirajte iPocketTube"
+            "value": "Aktivirajte AxrTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aktifkan iPocketTube"
+            "value": "Aktifkan AxrTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Attiva iPocketTube"
+            "value": "Attiva AxrTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTubeを有効化"
+            "value": "AxrTubeを有効化"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube 활성화"
+            "value": "AxrTube 활성화"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ativar iPocketTube"
+            "value": "Ativar AxrTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Активировать iPocketTube"
+            "value": "Активировать AxrTube"
           }
         },
         "sr": {
@@ -2332,13 +2332,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube'yu Etkinleştir"
+            "value": "AxrTube'yu Etkinleştir"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "激活 iPocketTube"
+            "value": "激活 AxrTube"
           }
         }
       }
@@ -21297,80 +21297,80 @@
         }
       }
     },
-    "Sign in to iPocketTube": {
+    "Sign in to AxrTube": {
       "comment": "tvOS activation screen heading",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "تسجيل الدخول إلى iPocketTube"
+            "value": "تسجيل الدخول إلى AxrTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bei iPocketTube anmelden"
+            "value": "Bei AxrTube anmelden"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Iniciar sesión en iPocketTube"
+            "value": "Iniciar sesión en AxrTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Se connecter à iPocketTube"
+            "value": "Se connecter à AxrTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube में साइन इन करें"
+            "value": "AxrTube में साइन इन करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Prijavite se na iPocketTube"
+            "value": "Prijavite se na AxrTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Masuk ke iPocketTube"
+            "value": "Masuk ke AxrTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Accedi a iPocketTube"
+            "value": "Accedi a AxrTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTubeにサインイン"
+            "value": "AxrTubeにサインイン"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube에 로그인"
+            "value": "AxrTube에 로그인"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Entrar no iPocketTube"
+            "value": "Entrar no AxrTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Вход в iPocketTube"
+            "value": "Вход в AxrTube"
           }
         },
         "sr": {
@@ -21382,13 +21382,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube'ya Oturum Aç"
+            "value": "AxrTube'ya Oturum Aç"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "登录 iPocketTube"
+            "value": "登录 AxrTube"
           }
         }
       }
@@ -22077,80 +22077,80 @@
         }
       }
     },
-    "iPocketTube": {
+    "AxrTube": {
       "comment": "App name shown in macOS sidebar navigation title — do not translate",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "sr": {
@@ -22162,91 +22162,91 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube"
+            "value": "AxrTube"
           }
         }
       }
     },
-    "iPocketTube on GitHub": {
+    "AxrTube on GitHub": {
       "comment": "tvOS GitHub QR sheet title",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube على GitHub"
+            "value": "AxrTube على GitHub"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube auf GitHub"
+            "value": "AxrTube auf GitHub"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube en GitHub"
+            "value": "AxrTube en GitHub"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube sur GitHub"
+            "value": "AxrTube sur GitHub"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub पर iPocketTube"
+            "value": "GitHub पर AxrTube"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube na GitHubu"
+            "value": "AxrTube na GitHubu"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube di GitHub"
+            "value": "AxrTube di GitHub"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube su GitHub"
+            "value": "AxrTube su GitHub"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHubのiPocketTube"
+            "value": "GitHubのAxrTube"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub의 iPocketTube"
+            "value": "GitHub의 AxrTube"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube no GitHub"
+            "value": "AxrTube no GitHub"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube на GitHub"
+            "value": "AxrTube на GitHub"
           }
         },
         "sr": {
@@ -22258,13 +22258,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "GitHub'da iPocketTube"
+            "value": "GitHub'da AxrTube"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube on GitHub"
+            "value": "AxrTube on GitHub"
           }
         }
       }
@@ -23223,80 +23223,80 @@
         }
       }
     },
-    "Support iPocketTube on Ko-fi": {
+    "Support AxrTube on Ko-fi": {
       "comment": "tvOS Ko-fi QR sheet title",
       "extractionState": "manual",
       "localizations": {
         "ar": {
           "stringUnit": {
             "state": "translated",
-            "value": "دعم iPocketTube على Ko-fi"
+            "value": "دعم AxrTube على Ko-fi"
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPocketTube auf Ko-fi unterstützen"
+            "value": "AxrTube auf Ko-fi unterstützen"
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoyar iPocketTube en Ko-fi"
+            "value": "Apoyar AxrTube en Ko-fi"
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Soutenir iPocketTube sur Ko-fi"
+            "value": "Soutenir AxrTube sur Ko-fi"
           }
         },
         "hi": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi पर iPocketTube का समर्थन करें"
+            "value": "Ko-fi पर AxrTube का समर्थन करें"
           }
         },
         "hr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Podržite iPocketTube na Ko-fi"
+            "value": "Podržite AxrTube na Ko-fi"
           }
         },
         "id": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dukung iPocketTube di Ko-fi"
+            "value": "Dukung AxrTube di Ko-fi"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Supporta iPocketTube su Ko-fi"
+            "value": "Supporta AxrTube su Ko-fi"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fiでiPocketTubeをサポート"
+            "value": "Ko-fiでAxrTubeをサポート"
           }
         },
         "ko": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi에서 iPocketTube 후원"
+            "value": "Ko-fi에서 AxrTube 후원"
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Apoiar iPocketTube no Ko-fi"
+            "value": "Apoiar AxrTube no Ko-fi"
           }
         },
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Поддержите iPocketTube на Ko-fi"
+            "value": "Поддержите AxrTube на Ko-fi"
           }
         },
         "sr": {
@@ -23308,13 +23308,13 @@
         "tr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ko-fi'de iPocketTube'yu Destekle"
+            "value": "Ko-fi'de AxrTube'yu Destekle"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "在 Ko-fi 上支持 iPocketTube"
+            "value": "在 Ko-fi 上支持 AxrTube"
           }
         }
       }
@@ -26545,12 +26545,12 @@
         }
       }
     },
-    "Open in iPocketTube": {
+    "Open in AxrTube": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Открыть в iPocketTube"
+            "value": "Открыть в AxrTube"
           }
         }
       }
@@ -26595,12 +26595,12 @@
         }
       }
     },
-    "iPocketTube Download": {
+    "AxrTube Download": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
-            "value": "Загрузка iPocketTube"
+            "value": "Загрузка AxrTube"
           }
         }
       }
@@ -26786,11 +26786,11 @@
     "Save Offline": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сохранить офлайн" } } }
     },
-    "Video — iPocketTube + Photos": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео — iPocketTube и «Фото»" } } }
+    "Video — AxrTube + Photos": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео — AxrTube и «Фото»" } } }
     },
-    "Audio — iPocketTube": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио — iPocketTube" } } }
+    "Audio — AxrTube": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио — AxrTube" } } }
     },
     "Choose what to save in the offline collection.": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Выберите, что сохранить в офлайн-коллекции." } } }
@@ -26822,8 +26822,8 @@
     "The local copy will be removed from this device.": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Локальная копия будет удалена с этого устройства." } } }
     },
-    "All downloaded video and audio files will be removed from iPocketTube.": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Все скачанные видео и аудиофайлы будут удалены из iPocketTube." } } }
+    "All downloaded video and audio files will be removed from AxrTube.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Все скачанные видео и аудиофайлы будут удалены из AxrTube." } } }
     },
     "No Offline Media": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Нет офлайн-медиа" } } }
@@ -26846,11 +26846,11 @@
     "Video Saved": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео сохранено" } } }
     },
-    "The video is in Photos and iPocketTube's offline collection.": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео сохранено в приложении «Фото» и офлайн-коллекции iPocketTube." } } }
+    "The video is in Photos and AxrTube's offline collection.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео сохранено в приложении «Фото» и офлайн-коллекции AxrTube." } } }
     },
-    "The item is available in iPocketTube's offline collection.": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Материал доступен в офлайн-коллекции iPocketTube." } } }
+    "The item is available in AxrTube's offline collection.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Материал доступен в офлайн-коллекции AxrTube." } } }
     },
     "Offline collection storage limit reached. Delete items or raise the limit in Settings.": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Достигнут лимит офлайн-коллекции. Удалите материалы или увеличьте лимит в настройках." } } }
@@ -26897,14 +26897,14 @@
     "EDR press glow targets supported displays. The IFrame player uses YouTube's official embedded player; quality selection and downloads are unavailable.": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "EDR-свечение рассчитано на поддерживаемые дисплеи. IFrame-плеер использует официальный встроенный плеер YouTube; выбор качества и загрузки недоступны." } } }
     },
-    "Open YouTube Video in iPocketTube": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открыть видео YouTube в iPocketTube" } } }
+    "Open YouTube Video in AxrTube": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открыть видео YouTube в AxrTube" } } }
     },
-    "Opens a YouTube video or Short URL directly in iPocketTube.": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открывает видео YouTube или ссылку на Shorts непосредственно в iPocketTube." } } }
+    "Opens a YouTube video or Short URL directly in AxrTube.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Открывает видео YouTube или ссылку на Shorts непосредственно в AxrTube." } } }
     },
-    "Could not build an iPocketTube deep link.": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не удалось создать внутреннюю ссылку iPocketTube." } } }
+    "Could not build an AxrTube deep link.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Не удалось создать внутреннюю ссылку AxrTube." } } }
     },
     "Audio Quality": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Качество аудио" } } }

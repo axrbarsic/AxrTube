@@ -51,8 +51,8 @@ public struct RootView: View {
                 cardDownloadAlertItem = DownloadAlertItem(
                     title: String(localized: isAudio ? "Audio Saved" : "Video Saved", bundle: .module),
                     message: cardDownloadService.lastSavedToPhotos
-                        ? String(localized: "The video is in Photos and iPocketTube's offline collection.", bundle: .module)
-                        : String(localized: "The item is available in iPocketTube's offline collection.", bundle: .module)
+                        ? String(localized: "The video is in Photos and AxrTube's offline collection.", bundle: .module)
+                        : String(localized: "The item is available in AxrTube's offline collection.", bundle: .module)
                 )
                 iPocketTubeHaptics.shared.perform(.operationSucceeded)
                 cardDownloadService.reset()
@@ -382,7 +382,7 @@ struct MainSidebarView: View {
                     Label(section.localizedTitle, systemImage: section.icon)
                         .tag(section)
                 }
-                .navigationTitle("iPocketTube")
+                .navigationTitle("AxrTube")
                 if auth.isSignedIn {
                     Divider()
                     HStack {
