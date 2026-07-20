@@ -278,8 +278,7 @@ public struct ChannelView: View {
         #if os(iOS)
         VideoCardLayoutPolicy.variant(
             for: catalogContext,
-            compactSearchCards: store.settings.compactSearchCards,
-            compactMediaLibraryCards: store.settings.compactMediaLibraryCards
+            compactCards: store.settings.compactSearchCards
         ) == .compact
         #else
         store.settings.compactThumbnails

@@ -27,6 +27,10 @@ public final class PlaybackViewModel {
     let captionsManager: CaptionsManager
     let audioManager: AudioTrackManager
     let qualityManager: PlaybackQualityManager
+    #if os(iOS)
+    let localDubbingManager: LocalDubbingManager
+    public let russianTranscriptTranslation: RussianTranscriptTranslationService
+    #endif
 
     // MARK: - State
 
@@ -294,6 +298,12 @@ public final class PlaybackViewModel {
     var itemObserverTask: Task<Void, Never>?
     var endObserverTask: Task<Void, Never>?
     var stallObserverTask: Task<Void, Never>?
+    #if canImport(UIKit)
+    /// Installs the one decoded-PCM tap used by the Downloads live scope. The
+    /// task is cancelled on item replacement so a late track load cannot attach
+    /// a stale signal identity to a newer playback session.
+    @ObservationIgnored var audioScopeInstallationTask: Task<Void, Never>?
+    #endif
     /// Observes `AVPlayerItem.duration` via KVO after `.readyToPlay` for HLS streams
     /// where the duration is `.invalid` at ready-time and arrives later. Cancelled in `stop()`.
     var durationObserverTask: Task<Void, Never>?
@@ -471,6 +481,8 @@ public final class PlaybackViewModel {
     // causes EXC_BREAKPOINT. Mirror the dict locally instead.
     @ObservationIgnored var nowPlayingInfoCache: [String: Any] = [:]
     @ObservationIgnored var nowPlayingSourceState = NowPlayingSourceState()
+    @ObservationIgnored var nowPlayingSummaryVideoID: String?
+    @ObservationIgnored var nowPlayingSummaryText: String?
     // Cached thumbnail for MPMediaItemArtwork. Written from a background URLSession task;
     // read from MediaPlayer's internal artwork-closure thread. nonisolated(unsafe) is
     // intentional: UIImage is immutable after creation and the worst-case race is that
@@ -505,11 +517,39 @@ public final class PlaybackViewModel {
 
         // Create managers before any other setup (they hold no back-references yet).
         let sbm = SponsorBlockSkipManager()
+        #if os(iOS)
+        let russianTranscriptTranslation = RussianTranscriptTranslationService()
+        let transcriptBookService = TranscriptBookService()
+        let cam = CaptionsManager(
+            russianTranscriptLoader: { request, progress in
+                try await russianTranscriptTranslation.translate(
+                    request: request,
+                    progress: progress
+                )
+            },
+            russianTranscriptPriorityUpdater: { playbackTime in
+                russianTranscriptTranslation.updatePriority(playbackTime: playbackTime)
+            },
+            transcriptBookLoader: { request in
+                try await transcriptBookService.prepare(request)
+            }
+        )
+        let localDubbing = LocalDubbingManager(service: LocalDubbingService(
+            transcriptLoader: { _, _ in
+                throw LocalTranscriptFailure.onDeviceRecognitionUnavailable
+            }
+        ))
+        #else
         let cam = CaptionsManager()
+        #endif
         let aqm = PlaybackQualityManager(player: player)
         let atm = AudioTrackManager(player: player)
         self.sponsorBlockManager = sbm
         self.captionsManager = cam
+        #if os(iOS)
+        self.localDubbingManager = localDubbing
+        self.russianTranscriptTranslation = russianTranscriptTranslation
+        #endif
         self.qualityManager = aqm
         self.audioManager = atm
         self.likeDislike = LikeDislikeController(
@@ -536,6 +576,11 @@ public final class PlaybackViewModel {
         sbm.player = player
         aqm.delegate = self
         atm.delegate = self
+        #if os(iOS)
+        localDubbing.configureAudioOwnership { [weak self] in
+            self?.performUserPause(reason: "Local Russian dubbing owns audio")
+        }
+        #endif
 
         // Auto-enable Stats for Nerds during UI test runs so tests don't need to
         // navigate the more menu manually. Activated by `--uitesting-stats-for-nerds`.
@@ -555,6 +600,7 @@ public final class PlaybackViewModel {
         if let obs = secondaryAudioHintObserver { NotificationCenter.default.removeObserver(obs) }
         audioRecoveryVerificationTask?.cancel()
         #if canImport(UIKit)
+        audioScopeInstallationTask?.cancel()
         audioInterruptionResumeTask?.cancel()
         remotePauseClassificationTask?.cancel()
         #endif

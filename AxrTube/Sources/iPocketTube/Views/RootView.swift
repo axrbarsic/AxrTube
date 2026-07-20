@@ -1,6 +1,9 @@
 import SwiftUI
 import iPocketTubeCore
 import OSLog
+#if os(iOS)
+@preconcurrency import Translation
+#endif
 
 private let rootLog = Logger(subsystem: "com.void.ipockettube.app", category: "RootView")
 
@@ -256,6 +259,9 @@ struct MainTabView: View {
         }
         #if os(iOS)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsCompactNowPlayingAccessory)
+        .translationTask(playerState.vm.russianTranscriptTranslation.configuration) { session in
+            await playerState.vm.russianTranscriptTranslation.prepareTranslation(using: session)
+        }
         .landscapePlayerCover(item: fullScreenBinding, dismissStore: playerState) { video in
             PlayerView(video: video, api: api)
         }

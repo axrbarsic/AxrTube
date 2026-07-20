@@ -256,10 +256,12 @@ public enum APIError: LocalizedError {
     /// the source IP address (VPN, proxy, shared datacenter IP). The associated value is
     /// the raw `playabilityStatus.reason` string from the response.
     case ipBlocked(String)
-    /// Thrown when the video is age-restricted or otherwise requires the user to sign in
-    /// before it can be played. Unlike `unavailable`, retrying with the same credentials
-    /// will not succeed — the user must authenticate first.
+    /// Thrown only when YouTube explicitly requires an authenticated account.
     case signInRequired
+    /// Thrown only for an explicit age gate or age-verification status.
+    case ageRestricted
+    /// Thrown when YouTube explicitly says the content is unavailable in this region.
+    case regionRestricted(String)
 
     public var errorDescription: String? {
         switch self {
@@ -271,8 +273,56 @@ public enum APIError: LocalizedError {
         case .ipBlocked:
             return "YouTube is temporarily blocking this network. Disable your VPN, try a different VPN server, or wait a few minutes and retry."
         case .signInRequired:
-            return "This video is age-restricted or requires sign in to watch."
+            return "This video requires sign in to watch."
+        case .ageRestricted:
+            return "This video requires age verification."
+        case .regionRestricted(let reason):
+            return reason
         }
+    }
+}
+
+/// Converts a YouTube player status into a semantic error without treating every
+/// LOGIN_REQUIRED response as an age restriction. YouTube also returns that status
+/// for bot checks, so reason signatures must be evaluated before the generic status.
+public enum PlayerPlayabilityFailureClassifier {
+    public static func error(status: String, reason: String?) -> APIError {
+        let normalizedStatus = status.uppercased()
+        let rawReason = reason ?? "This video is unavailable (\(status))"
+        let value = rawReason.lowercased()
+
+        let ageStatuses: Set<String> = ["AGE_VERIFICATION_REQUIRED", "AGE_CHECK_REQUIRED"]
+        let ageMarkers = ["age-restricted", "age restricted", "age verification", "confirm your age", "18+"]
+        if ageStatuses.contains(normalizedStatus)
+            || ageMarkers.contains(where: value.contains) {
+            return .ageRestricted
+        }
+
+        let botMarkers = [
+            "not a bot",
+            "confirm you're not",
+            "confirm you are not",
+            "automated traffic",
+            "automated requests",
+            "your ip",
+            "ip address",
+            "vpn",
+            "proxy",
+        ]
+        if botMarkers.contains(where: value.contains) {
+            return .ipBlocked(rawReason)
+        }
+
+        let regionMarkers = ["not available in your country", "not available in your region", "unavailable in your country", "unavailable in your region", "country restriction", "region restriction"]
+        if regionMarkers.contains(where: value.contains) {
+            return .regionRestricted(rawReason)
+        }
+
+        if normalizedStatus == "LOGIN_REQUIRED" || value.contains("sign in") {
+            return .signInRequired
+        }
+
+        return .unavailable(rawReason)
     }
 }
 

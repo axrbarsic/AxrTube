@@ -38,6 +38,7 @@ public struct PlayerView: View {
     @State var moreMenuContentHeight: CGFloat = 0
     @State var showDescriptionSheet = false
     @State var showCommentsSheet = false
+    @State var showTranscript = false
     @State var slideOffset: CGFloat = 0
     @State var isTransitioning = false
     @State var channelDestination: ChannelDestination?

@@ -648,27 +648,10 @@ extension InnerTubeAPI {
         if streamingData == nil, playabilityStatus != "OK" {
             let reason = playabilityReason ?? "This video is unavailable (\(playabilityStatus))"
             tubeLog.error("❌ parsePlayerInfo: unplayable — \(reason, privacy: .public)")
-            // Sign-in / age-gate: checked before IP-block so the caller shows "Sign In" not "Try Again".
-            // Covers both explicit playabilityStatus values and reason-string keywords.
-            let signInStatuses: Set<String> = ["LOGIN_REQUIRED", "AGE_VERIFICATION_REQUIRED", "AGE_CHECK_REQUIRED"]
-            if signInStatuses.contains(playabilityStatus) {
-                throw APIError.signInRequired
-            }
-            let lowerReason = reason.lowercased()
-            let signInKeywords = ["sign in", "age-restricted", "age restricted", "18+", "age verification"]
-            if signInKeywords.contains(where: { lowerReason.contains($0) }) {
-                throw APIError.signInRequired
-            }
-            // Check for IP-block signals before throwing the generic unavailable error.
-            // These keywords indicate YouTube is rejecting the request based on the source
-            // IP (VPN/proxy/shared datacenter). Throwing a distinct error type lets callers
-            // short-circuit the retry chain and show a targeted message.
-            let lower = lowerReason
-            let ipBlockKeywords = ["your ip", "ip address", "vpn", "proxy", "bot", "sign in to confirm"]
-            if ipBlockKeywords.contains(where: { lower.contains($0) }) {
-                throw APIError.ipBlocked(reason)
-            }
-            throw APIError.unavailable(reason)
+            throw PlayerPlayabilityFailureClassifier.error(
+                status: playabilityStatus,
+                reason: playabilityReason
+            )
         }
         var formats: [VideoFormat] = []
 

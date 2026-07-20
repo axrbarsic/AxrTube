@@ -1,179 +1,52 @@
 #if os(iOS)
-import AVFoundation
-import CryptoKit
 import Observation
 import SwiftUI
 import UIKit
 import iPocketTubeCore
 
-fileprivate struct AudioScopeSnapshot: Codable, Sendable {
-    let sourceSignature: String
-    let start: TimeInterval
-    let duration: TimeInterval
-    let samples: [Float]
-}
-
-fileprivate struct AudioScopeFrame: Sendable {
-    let window: LiveAudioScopeWindow
-    let samples: [Float]
-}
-
-actor AudioWaveformRepository {
-    static let shared = AudioWaveformRepository()
-
-    private var memoryCache: [String: AudioScopeFrame] = [:]
-
-    fileprivate func scopeWindow(
-        videoID: String,
-        fileURL: URL,
-        centerTime: TimeInterval,
-        assetDuration: TimeInterval,
-        sampleCount: Int = 240
-    ) async throws -> AudioScopeFrame {
-        let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-        let signature = "\(videoID)|\(values.fileSize ?? 0)|\(values.contentModificationDate?.timeIntervalSince1970 ?? 0)"
-        let bucket = LiveAudioScopePolicy.bucket(for: centerTime)
-        let key = "\(signature)|\(bucket)|\(sampleCount)"
-        if let cached = memoryCache[key] { return cached }
-
-        let digest = SHA256.hash(data: Data(key.utf8)).map { String(format: "%02x", $0) }.joined()
-        let directory = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("iPocketTubeLiveScopes", isDirectory: true)
-        let cacheURL = directory.appendingPathComponent("\(digest).json")
-        if let data = try? Data(contentsOf: cacheURL),
-           let cached = try? JSONDecoder().decode(AudioScopeSnapshot.self, from: data),
-           cached.sourceSignature == signature {
-            let frame = AudioScopeFrame(
-                window: LiveAudioScopeWindow(start: cached.start, duration: cached.duration),
-                samples: cached.samples
-            )
-            memoryCache[key] = frame
-            return frame
-        }
-
-        let window = LiveAudioScopePolicy.analysisWindow(
-            around: centerTime,
-            assetDuration: assetDuration
-        )
-        let samples = try await Self.extractScope(
-            fileURL: fileURL,
-            window: window,
-            sampleCount: sampleCount
-        )
-        let frame = AudioScopeFrame(window: window, samples: samples)
-        memoryCache[key] = frame
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let snapshot = AudioScopeSnapshot(
-            sourceSignature: signature,
-            start: window.start,
-            duration: window.duration,
-            samples: samples
-        )
-        try JSONEncoder().encode(snapshot).write(to: cacheURL, options: .atomic)
-        return frame
-    }
-
-    nonisolated private static func extractScope(
-        fileURL: URL,
-        window: LiveAudioScopeWindow,
-        sampleCount: Int
-    ) async throws -> [Float] {
-        let asset = AVURLAsset(url: fileURL)
-        guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
-            throw NSError(domain: "iPocketTubeLiveScope", code: 1)
-        }
-        let formats = try await track.load(.formatDescriptions)
-        guard let format = formats.first,
-              let description = CMAudioFormatDescriptionGetStreamBasicDescription(format) else {
-            throw NSError(domain: "iPocketTubeLiveScope", code: 2)
-        }
-        let sampleRate = max(1, description.pointee.mSampleRate)
-        let channels = max(1, Int(description.pointee.mChannelsPerFrame))
-        let bins = max(64, sampleCount)
-        let totalFrames = max(1, Int64(window.duration * sampleRate))
-        let reader = try AVAssetReader(asset: asset)
-        reader.timeRange = CMTimeRange(
-            start: CMTime(seconds: window.start, preferredTimescale: 600),
-            duration: CMTime(seconds: window.duration, preferredTimescale: 600)
-        )
-        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsNonInterleaved: false,
-            AVLinearPCMIsBigEndianKey: false,
-        ])
-        output.alwaysCopiesSampleData = false
-        guard reader.canAdd(output) else { throw NSError(domain: "iPocketTubeLiveScope", code: 3) }
-        reader.add(output)
-        guard reader.startReading() else {
-            throw reader.error ?? NSError(domain: "iPocketTubeLiveScope", code: 4)
-        }
-
-        var squareSums = Array(repeating: Double.zero, count: bins)
-        var counts = Array(repeating: 0, count: bins)
-        var peaks = Array(repeating: Float.zero, count: bins)
-        var frameOffset: Int64 = 0
-        while reader.status == .reading, let sampleBuffer = output.copyNextSampleBuffer() {
-            if Task.isCancelled {
-                reader.cancelReading()
-                throw CancellationError()
-            }
-            autoreleasepool {
-                guard let block = CMSampleBufferGetDataBuffer(sampleBuffer) else { return }
-                var length = 0
-                var pointer: UnsafeMutablePointer<Int8>?
-                guard CMBlockBufferGetDataPointer(
-                    block,
-                    atOffset: 0,
-                    lengthAtOffsetOut: nil,
-                    totalLengthOut: &length,
-                    dataPointerOut: &pointer
-                ) == kCMBlockBufferNoErr, let pointer else { return }
-                let scalarCount = length / MemoryLayout<Float>.size
-                let values = UnsafeRawPointer(pointer).bindMemory(to: Float.self, capacity: scalarCount)
-                let frameCount = scalarCount / channels
-                for frame in 0..<frameCount {
-                    var amplitude: Float = 0
-                    for channel in 0..<channels {
-                        amplitude = max(amplitude, abs(values[frame * channels + channel]))
-                    }
-                    let absoluteFrame = frameOffset + Int64(frame)
-                    let bin = min(bins - 1, Int(absoluteFrame * Int64(bins) / totalFrames))
-                    let bounded = min(max(amplitude, 0), 1)
-                    squareSums[bin] += Double(bounded * bounded)
-                    counts[bin] += 1
-                    peaks[bin] = max(peaks[bin], bounded)
-                }
-                frameOffset += Int64(frameCount)
-            }
-        }
-        if reader.status == .failed {
-            throw reader.error ?? NSError(domain: "iPocketTubeLiveScope", code: 5)
-        }
-        let rms = squareSums.indices.map { index -> Float in
-            guard counts[index] > 0 else { return 0 }
-            return Float(sqrt(squareSums[index] / Double(counts[index])))
-        }
-        return LiveAudioScopePolicy.normalize(rms, peaks: peaks)
-    }
-}
-
 @MainActor
 @Observable
 private final class WaveformFrameDriver {
     private(set) var displayedTime: TimeInterval = 0
+    private(set) var scopeState = ProgressiveAudioScopeState()
+    private(set) var displayedSamples: [Float] = []
     private var displayLink: CADisplayLink?
+    private var videoID = ""
     private var anchorTime: TimeInterval = 0
     private var anchorTimestamp: CFTimeInterval = 0
     private var duration: TimeInterval = 0
+    private var lastSnapshotSequence: UInt64 = 0
+    private var previousSamples: [Float] = []
+    private var targetSamples: [Float] = []
+    private var transitionStartedAt: CFTimeInterval = 0
+    private var lastTargetUpdateAt: CFTimeInterval = 0
+    private var transitionDuration: CFTimeInterval = 1.0 / 30.0
+    private var reduceMotion = false
+    private var reportedFirstEnvelope = false
 
-    func synchronize(time: TimeInterval, duration: TimeInterval, running: Bool, reduceMotion: Bool) {
+    func synchronize(
+        videoID: String,
+        time: TimeInterval,
+        duration: TimeInterval,
+        running: Bool,
+        reduceMotion: Bool
+    ) {
+        if self.videoID != videoID {
+            self.videoID = videoID
+            scopeState = ProgressiveAudioScopeState()
+            displayedSamples = []
+            previousSamples = []
+            targetSamples = []
+            lastSnapshotSequence = 0
+            reportedFirstEnvelope = false
+        }
         displayedTime = min(max(time, 0), max(duration, 0))
         anchorTime = displayedTime
         self.duration = duration
+        self.reduceMotion = reduceMotion
         guard running, duration > 0 else { stop(); return }
         anchorTimestamp = CACurrentMediaTime()
+        updateScope(at: anchorTimestamp, force: true)
         if displayLink == nil {
             let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
             let constrained = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -182,6 +55,7 @@ private final class WaveformFrameDriver {
             link.preferredFrameRateRange = constrained
                 ? CAFrameRateRange(minimum: 20, maximum: 60, preferred: 30)
                 : CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+            transitionDuration = constrained ? 1.0 / 20.0 : 1.0 / 30.0
             link.add(to: .main, forMode: .common)
             displayLink = link
         }
@@ -194,13 +68,52 @@ private final class WaveformFrameDriver {
 
     @objc private func tick(_ link: CADisplayLink) {
         displayedTime = min(duration, anchorTime + max(0, link.timestamp - anchorTimestamp))
+        updateScope(at: link.timestamp, force: false)
+    }
+
+    private func updateScope(at timestamp: CFTimeInterval, force: Bool) {
+        if let snapshot = RealtimeAudioScopeRegistry.shared.snapshot(videoID: videoID),
+           snapshot.sequence != lastSnapshotSequence,
+           force || timestamp - lastTargetUpdateAt >= transitionDuration {
+            let identityChanged = scopeState.identity != snapshot.identity
+            scopeState.accept(identity: snapshot.identity, samples: snapshot.samples)
+            let incoming = AudioScopeCadencePolicy.resample(scopeState.samples)
+            if identityChanged || displayedSamples.isEmpty {
+                previousSamples = incoming
+                displayedSamples = incoming
+            } else {
+                previousSamples = displayedSamples
+            }
+            targetSamples = incoming
+            transitionStartedAt = timestamp
+            lastTargetUpdateAt = timestamp
+            lastSnapshotSequence = snapshot.sequence
+            if !reportedFirstEnvelope {
+                reportedFirstEnvelope = true
+                let progress = DownloadStore.shared.entry(videoId: videoID, kind: .audio)?.progress ?? 0
+                AudioDiagnostics.shared.record(
+                    source: "audio-scope",
+                    event: "pcm-tap.first-envelope",
+                    decision: "download-percent=\(Int((progress * 100).rounded()))",
+                    itemID: videoID
+                )
+            }
+        }
+        guard !targetSamples.isEmpty else { return }
+        let progress = reduceMotion
+            ? 1
+            : min(1, max(0, (timestamp - transitionStartedAt) / transitionDuration))
+        let interpolated = AudioScopeCadencePolicy.interpolate(
+            from: previousSamples,
+            to: targetSamples,
+            progress: progress
+        )
+        if interpolated != displayedSamples { displayedSamples = interpolated }
     }
 }
 
 struct AudioWaveformView: View {
     let videoID: String
-    let fileURL: URL
-    let fileVersion: Int64
     let playbackTime: TimeInterval
     let duration: TimeInterval
     let bufferedProgress: Double
@@ -212,16 +125,10 @@ struct AudioWaveformView: View {
 
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var scope: AudioScopeFrame?
-    @State private var isLoading = false
     @State private var frameDriver = WaveformFrameDriver()
 
     private var displayedTime: TimeInterval {
         isScrubbing ? playbackTime : frameDriver.displayedTime
-    }
-
-    private var scopeBucket: Int {
-        LiveAudioScopePolicy.bucket(for: displayedTime)
     }
 
     var body: some View {
@@ -236,16 +143,10 @@ struct AudioWaveformView: View {
                 onScrubEnded: onScrubEnded
             )
         }
-        .task(id: "\(videoID)|\(fileVersion)|\(scopeBucket)|\(isPlaying)") {
-            await loadScopeWindow()
-        }
         .onAppear { synchronizeDriver() }
         .onDisappear { frameDriver.stop() }
         .onChange(of: playbackTime) { _, _ in synchronizeDriver() }
-        .onChange(of: isPlaying) { _, playing in
-            if !playing { isLoading = false }
-            synchronizeDriver()
-        }
+        .onChange(of: isPlaying) { _, _ in synchronizeDriver() }
         .onChange(of: isScrubbing) { _, _ in synchronizeDriver() }
         .onChange(of: scenePhase) { _, _ in synchronizeDriver() }
         .onReceive(NotificationCenter.default.publisher(for: .NSProcessInfoPowerStateDidChange)) { _ in synchronizeDriver() }
@@ -255,15 +156,10 @@ struct AudioWaveformView: View {
 
     private var liveScope: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(iPocketTubeVisualTokens.panelElevated.opacity(0.6))
-            if let scope {
+            if frameDriver.scopeState.phase == .realEnvelope,
+               !frameDriver.displayedSamples.isEmpty {
                 Canvas { context, size in
-                    let bars = LiveAudioScopePolicy.visibleSamples(
-                        from: scope.samples,
-                        window: scope.window,
-                        currentTime: displayedTime
-                    )
+                    let bars = frameDriver.displayedSamples
                     let spacing: CGFloat = 2
                     let barWidth = max(2, (size.width - CGFloat(bars.count - 1) * spacing) / CGFloat(max(1, bars.count)))
                     let gradient = Gradient(colors: [
@@ -285,54 +181,31 @@ struct AudioWaveformView: View {
                     }
                 }
                 .padding(.horizontal, 8)
+                .transition(.opacity)
             } else {
                 HStack(spacing: 7) {
-                    if isLoading { ProgressView().controlSize(.mini) }
+                    ProgressView().controlSize(.mini)
                     Image(systemName: "waveform")
-                    Text(isLoading ? "Анализ сигнала" : "Сигнал появится при воспроизведении")
+                    Text(isPlaying ? "Подготовка сигнала" : "Сигнал появится при воспроизведении")
                 }
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .transition(.opacity)
             }
         }
         .frame(height: 76)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: frameDriver.scopeState.phase)
         .allowsHitTesting(false)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Живой сигнал аудио")
-        .accessibilityValue(scope == nil ? "Подготовка" : "Отображается")
-    }
-
-    private func loadScopeWindow() async {
-        guard isPlaying, scenePhase == .active,
-              duration.isFinite, duration > 0,
-              FileManager.default.isReadableFile(atPath: fileURL.path) else { return }
-        isLoading = scope == nil
-        let requestedTime = displayedTime
-        do {
-            let frame = try await AudioWaveformRepository.shared.scopeWindow(
-                videoID: videoID,
-                fileURL: fileURL,
-                centerTime: requestedTime,
-                assetDuration: duration
-            )
-            try Task.checkCancellation()
-            scope = frame
-            isLoading = false
-            _ = try? await AudioWaveformRepository.shared.scopeWindow(
-                videoID: videoID,
-                fileURL: fileURL,
-                centerTime: min(duration, requestedTime + LiveAudioScopePolicy.bucketDuration),
-                assetDuration: duration
-            )
-        } catch is CancellationError {
-            return
-        } catch {
-            isLoading = false
-        }
+        .accessibilityValue(
+            frameDriver.scopeState.phase == .realEnvelope ? "Отображается" : "Подготовка"
+        )
     }
 
     private func synchronizeDriver() {
         frameDriver.synchronize(
+            videoID: videoID,
             time: playbackTime,
             duration: duration,
             running: isPlaying && !isScrubbing && scenePhase == .active,

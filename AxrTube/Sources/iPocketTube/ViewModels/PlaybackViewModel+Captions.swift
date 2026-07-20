@@ -5,6 +5,15 @@ import iPocketTubeCore
 
 extension PlaybackViewModel {
 
+    func transcriptBookMetadata(for video: Video) -> TranscriptBookMetadata {
+        TranscriptBookMetadata(
+            videoID: video.id,
+            title: video.title,
+            channelTitle: video.channelTitle,
+            duration: video.duration
+        )
+    }
+
     public func selectCaption(_ track: CaptionTrack?) {
         captionsManager.selectCaption(track, currentTime: currentTime)
         // Persist the user's choice so it can be re-applied to the next video.
@@ -17,18 +26,18 @@ extension PlaybackViewModel {
     }
 
     /// Applies the saved caption language preference to the available tracks.
-    /// Call this after `availableCaptions` is populated on video load.
-    /// Does nothing when `preferredCaptionLanguage` is nil (captions stay off).
+    /// The same owner also loads one automatic transcript track when the overlay
+    /// is off, so opening the transcript never starts a second captions fetch.
     func autoApplyCaptionPreference(tracks: [CaptionTrack]) {
-        guard let code = settings.preferredCaptionLanguage, !code.isEmpty, !tracks.isEmpty else {
+        guard let identity = captionsManager.activePlaybackIdentity else {
+            captionsManager.availableCaptions = tracks
             return
         }
-        // Exact match first, then BCP-47 prefix match (e.g. "en" matches "en-US").
-        let base = code.components(separatedBy: "-").first ?? code
-        if let match = tracks.first(where: { $0.languageCode == code })
-            ?? tracks.first(where: { $0.languageCode.hasPrefix(base) }) {
-            captionsManager.selectCaption(match, currentTime: currentTime)
-        }
-        // No match: leave captions off rather than forcing a wrong language.
+        _ = captionsManager.applyAvailableCaptions(
+            tracks,
+            for: identity,
+            preferredLanguage: settings.preferredCaptionLanguage,
+            currentTime: currentTime
+        )
     }
 }

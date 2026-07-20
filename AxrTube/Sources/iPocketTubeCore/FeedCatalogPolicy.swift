@@ -75,13 +75,13 @@ public enum SubscribedChannelCatalogPolicy {
 public enum VideoCardCatalogContext: Sendable, Equatable {
     case search
     case mediaLibrary
+    case downloads
     case standard
 }
 
 /// Every production video-card route owned by the Media Library. Keeping this
 /// list in core makes parity testable without coupling tests to SwiftUI view
-/// internals. All of these routes must resolve through the same persisted
-/// `compactMediaLibraryCards` preference.
+/// internals. All routes resolve through the shared compact-card preference.
 public enum MediaLibraryVideoRoute: String, CaseIterable, Sendable {
     case subscriptions
     case history
@@ -103,16 +103,55 @@ public enum VideoCardLayoutVariant: Sendable, Equatable {
 public enum VideoCardLayoutPolicy {
     public static func variant(
         for context: VideoCardCatalogContext,
-        compactSearchCards: Bool,
-        compactMediaLibraryCards: Bool
+        compactCards: Bool,
+        isActiveNowPlaying: Bool = false
     ) -> VideoCardLayoutVariant {
-        switch context {
-        case .search:
-            compactSearchCards ? .compact : .regular
-        case .mediaLibrary:
-            compactMediaLibraryCards ? .compact : .regular
+        if context == .downloads, isActiveNowPlaying {
+            return .regular
+        }
+        return switch context {
+        case .search, .mediaLibrary, .downloads:
+            compactCards ? .compact : .regular
         case .standard:
             .regular
+        }
+    }
+}
+
+public enum DownloadCardStatusPresentation: Sendable, Equatable {
+    case none
+    case paused(showsContinue: Bool)
+    case finalizationRetry
+    case waitingForWiFi
+    case reconnecting
+    case failure(showsRetry: Bool)
+    case progressAndCancel
+}
+
+/// Keeps download status controls independent from compact/regular geometry.
+/// The row uses this same result in both sizes, so reducing height never hides
+/// progress, error, retry, continue, or cancel actions.
+public enum DownloadCardPresentationPolicy {
+    public static func statusPresentation(
+        status: OfflineDownloadStatus,
+        resumePolicy: DownloadResumePolicy,
+        failureReason: OfflineFailureReason?
+    ) -> DownloadCardStatusPresentation {
+        switch status {
+        case .completed:
+            .none
+        case .paused:
+            .paused(showsContinue: resumePolicy == .manual)
+        case .finalizationPending:
+            .finalizationRetry
+        case .waitingForWiFi:
+            .waitingForWiFi
+        case .reconnecting:
+            .reconnecting
+        case .failed, .cancelled:
+            .failure(showsRetry: OfflineFailurePresentationPolicy.allowsManualRetry(for: failureReason))
+        case .queued, .fetching, .downloading, .saving:
+            .progressAndCancel
         }
     }
 }

@@ -48,6 +48,8 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
     var searchResult: VideoGroup = VideoGroup(title: "Search", videos: [])
     var searchPageHandler: ((String?) -> VideoGroup)? = nil
     var languageEvidenceByVideoID: [String: VideoLanguageEvidence] = [:]
+    var exactPublicationDatesByVideoID: [String: Date] = [:]
+    var exactPublicationDelayMillisecondsByVideoID: [String: Int] = [:]
     var suggestionsResult: [String] = []
     var playlistVideosResult: VideoGroup = VideoGroup(title: "Playlist", videos: [])
     var errorToThrow: Error? = nil
@@ -197,6 +199,15 @@ final class MockInnerTubeAPI: InnerTubeAPIProtocol {
         calls.append(Call(method: "fetchVideoLanguageEvidence", args: [videoId]))
         if let e = errorToThrow { throw e }
         return languageEvidenceByVideoID[videoId] ?? VideoLanguageEvidence(defaultAudioLanguage: "ru")
+    }
+
+    func fetchExactPublicationDate(videoId: String) async throws -> Date? {
+        calls.append(Call(method: "fetchExactPublicationDate", args: [videoId]))
+        if let e = errorToThrow { throw e }
+        if let delay = exactPublicationDelayMillisecondsByVideoID[videoId], delay > 0 {
+            try? await Task.sleep(for: .milliseconds(delay))
+        }
+        return exactPublicationDatesByVideoID[videoId]
     }
 
     func fetchSearchSuggestions(query: String) async throws -> [String] {
@@ -414,6 +425,135 @@ struct HomeViewModelTests {
 
         let recs = vm.sections.first { $0.section.type == .home }?.videos ?? []
         #expect(vm.mergedVideos == recs)
+    }
+
+    @Test("Exact publication enrichment atomically changes Home order")
+    func exactPublicationEnrichmentResortsHome() async {
+        let token = UUID().uuidString
+        let oldID = "old-\(token)"
+        let newID = "new-\(token)"
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo(oldID), makeVideo(newID)]
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+        mock.exactPublicationDatesByVideoID = [
+            oldID: Date(timeIntervalSince1970: 100),
+            newID: Date(timeIntervalSince1970: 300),
+        ]
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: {
+            vm.mergedVideos.map(\.id) == [newID, oldID]
+                && vm.mergedVideos.allSatisfy { $0.publishedAt != nil }
+        })
+
+        #expect(vm.mergedVideos.map(\.id) == [newID, oldID])
+        #expect(vm.mergedVideos.map(\.publicationDateStatus) == [.exact, .exact])
+    }
+
+    @Test("Unknown and equal relative dates retain stable Home order")
+    func failedPublicationEnrichmentKeepsStableHomeTies() async {
+        let token = UUID().uuidString
+        var relativeB = makeVideo("relative-b-\(token)")
+        relativeB.publishedTimeText = "3 days ago"
+        var relativeA = makeVideo("relative-a-\(token)")
+        relativeA.publishedTimeText = "3 days ago"
+        let unknownB = makeVideo("unknown-b-\(token)")
+        let unknownA = makeVideo("unknown-a-\(token)")
+        let expected = [relativeB.id, relativeA.id, unknownB.id, unknownA.id]
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [relativeB, relativeA, unknownB, unknownA]
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: {
+            vm.mergedVideos.count == expected.count
+                && vm.mergedVideos.allSatisfy { $0.publicationDateStatus == .unavailable }
+        })
+
+        #expect(vm.mergedVideos.map(\.id) == expected)
+    }
+
+    @Test("Stale publication enrichment cannot reorder a refreshed Home snapshot")
+    func stalePublicationEnrichmentIsIgnored() async {
+        let token = UUID().uuidString
+        let staleA = "stale-a-\(token)"
+        let staleB = "stale-b-\(token)"
+        let freshA = "fresh-a-\(token)"
+        let freshB = "fresh-b-\(token)"
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Stale",
+            videos: [makeVideo(staleA), makeVideo(staleB)]
+        )]
+        mock.subscriptionsResult = VideoGroup(title: "Subs", videos: [])
+        mock.exactPublicationDatesByVideoID = [
+            staleA: Date(timeIntervalSince1970: 100),
+            staleB: Date(timeIntervalSince1970: 300),
+            freshA: Date(timeIntervalSince1970: 500),
+            freshB: Date(timeIntervalSince1970: 400),
+        ]
+        mock.exactPublicationDelayMillisecondsByVideoID = [staleA: 180, staleB: 180]
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: {
+            mock.calls.contains { $0.method == "fetchExactPublicationDate" && $0.args == [staleA] }
+        })
+
+        mock.homeRowsResult = [VideoGroup(
+            title: "Fresh",
+            videos: [makeVideo(freshA), makeVideo(freshB)]
+        )]
+        await vm.refresh()
+        await waitForTasks(until: {
+            vm.mergedVideos.map(\.id) == [freshA, freshB]
+                && vm.mergedVideos.allSatisfy { $0.publishedAt != nil }
+        })
+        try? await Task.sleep(for: .milliseconds(220))
+
+        #expect(vm.mergedVideos.map(\.id) == [freshA, freshB])
+        #expect(!vm.mergedVideos.contains { $0.id == staleA || $0.id == staleB })
+    }
+
+    @Test("Home exact-date commit keeps duplicate IDs collapsed")
+    func publicationEnrichmentDoesNotCreateDuplicateIDs() async {
+        let duplicateID = "duplicate-\(UUID().uuidString)"
+        var richerDuplicate = makeVideo(duplicateID)
+        richerDuplicate.publishedTimeText = "yesterday"
+        let mock = MockInnerTubeAPI()
+        mock.homeRowsResult = [VideoGroup(
+            title: "Home",
+            videos: [makeVideo(duplicateID), richerDuplicate]
+        )]
+        mock.subscriptionsResult = VideoGroup(
+            title: "Subs",
+            videos: [makeVideo(duplicateID)]
+        )
+        mock.exactPublicationDatesByVideoID[duplicateID] = Date(timeIntervalSince1970: 300)
+
+        let vm = HomeViewModel(api: mock)
+        defer { vm.cancel() }
+        vm.load()
+        await waitForTasks(until: {
+            vm.mergedVideos.count == 1 && vm.mergedVideos[0].publishedAt != nil
+        })
+
+        #expect(vm.mergedVideos.map(\.id) == [duplicateID])
+        #expect(Set(vm.mergedVideos.map(\.id)).count == vm.mergedVideos.count)
+        #expect(mock.calls.filter {
+            $0.method == "fetchExactPublicationDate" && $0.args == [duplicateID]
+        }.count == 1)
     }
 
     @Test("Refresh preserves the visible snapshot until one atomic commit")

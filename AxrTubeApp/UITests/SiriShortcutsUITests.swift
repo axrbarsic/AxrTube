@@ -115,4 +115,56 @@ final class SiriShortcutsUITests: XCTestCase {
             "consumeDeepLinkFromLaunchArgs must not fire more than once per session"
         )
     }
+
+    func testRussianDubbingPhysicalSmoke() throws {
+        let englishLocalVideoID = "YcqisGLvGwo"
+        app.launchArguments = [
+            "--uitesting",
+            "--uitesting-disable-tos-player-on-ios",
+            "--uitesting-deeplink-video=\(englishLocalVideoID)",
+            "--uitesting-dubbing-smoke-seconds=60",
+        ]
+        app.launch()
+
+        XCTAssertTrue(playerTitleLabel.waitForExistence(timeout: 30))
+        let transcript = app.buttons["player.quickAccess.transcript"].firstMatch
+        if !transcript.waitForExistence(timeout: 5) {
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        }
+        XCTAssertTrue(transcript.waitForExistence(timeout: 8))
+        transcript.tap()
+
+        let panel = app.otherElements["player.transcript.panel"].firstMatch
+        XCTAssertTrue(panel.waitForExistence(timeout: 8))
+        let start = app.buttons["player.dubbing.start"].firstMatch
+        XCTAssertTrue(start.waitForExistence(timeout: 8))
+        start.tap()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let play = app.buttons["player.dubbing.play"].firstMatch
+        let deadline = Date().addingTimeInterval(2_700)
+        while Date() < deadline, !play.exists {
+            for label in ["Загрузить", "Download", "Продолжить", "Continue", "Разрешить", "Allow", "ОК", "OK"] {
+                let systemButton = springboard.buttons[label].firstMatch
+                if systemButton.exists && systemButton.isHittable {
+                    systemButton.tap()
+                    break
+                }
+            }
+            if app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH 'Не удалось'")).firstMatch.exists {
+                break
+            }
+            Thread.sleep(forTimeInterval: 2)
+        }
+
+        captureState("Russian dubbing physical result", in: app)
+        XCTAssertTrue(play.exists, "60-second local English to Russian pipeline did not reach ready state")
+        XCTAssertTrue(app.buttons["player.dubbing.transcript"].firstMatch.exists)
+        XCTAssertTrue(app.buttons["player.dubbing.export"].firstMatch.exists)
+
+        play.tap()
+        Thread.sleep(forTimeInterval: 3)
+        XCTAssertTrue(play.exists, "Generated M4A playback control disappeared")
+        play.tap()
+    }
 }

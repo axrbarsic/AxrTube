@@ -128,6 +128,38 @@ final class RecommendedChipUITests: XCTestCase {
                        "An 'Error' alert appeared while loading the Recommended feed")
     }
 
+    /// Regression for the progressive audio scope crash introduced when the
+    /// MTAudioProcessingTap callbacks inherited MainActor isolation. Tapping a
+    /// card creates the production AVPlayerItem and starts the offline download;
+    /// CoreMedia must be able to prepare the PCM tap on its own audio queue.
+    func testProgressiveAudioScopeTapDoesNotCrashOnFirstItem() throws {
+        tapTab(named: "Home")
+
+        let chipBar = app.scrollViews["home.chipBar"]
+        guard chipBar.waitForExistence(timeout: 10) else {
+            try captureAndSkip("home.chipBar did not appear", in: app)
+        }
+        let chip = chipBar.buttons["Recommended"]
+        guard chip.waitForExistence(timeout: 5) else {
+            try captureAndSkip("Recommended chip not found", in: app)
+        }
+        scrollChipIntoView(chip, in: chipBar)
+        chip.tap()
+
+        let card = app.descendants(matching: .any)["video.card.dQw4w9WgXcQ"]
+        guard card.waitForExistence(timeout: 10) else {
+            try captureAndSkip("Injected audio test card did not appear", in: app)
+        }
+        card.tap()
+        Thread.sleep(forTimeInterval: 5)
+
+        XCTAssertEqual(
+            app.state,
+            .runningForeground,
+            "Preparing the progressive PCM tap must not terminate the app"
+        )
+    }
+
     /// Tapping the Recommended chip must select it (toggle its selected state)
     /// and the Home chip must become deselected.
     func testRecommendedChipSelectionState() throws {

@@ -94,6 +94,18 @@ struct AppEntry: App {
         ProcessInfo.processInfo.arguments.contains("--uitesting-shorts")
     }
 
+    #if DEBUG && os(iOS)
+    private var isDynamicIslandGalleryTesting: Bool {
+        ProcessInfo.processInfo.arguments.contains("--uitesting-dynamic-island-gallery")
+    }
+
+    private var transcriptBookSmokeLanguage: String? {
+        ProcessInfo.processInfo.arguments
+            .first(where: { $0.hasPrefix("--uitesting-transcript-book=") })
+            .map { String($0.dropFirst("--uitesting-transcript-book=".count)) }
+    }
+    #endif
+
     /// When launched with `--uitesting-enable-shorts`, ensure the Shorts section
     /// is present in `enabledSections` so Shorts chip tests can run without
     /// requiring the user to manually toggle it in Settings.
@@ -198,6 +210,23 @@ struct AppEntry: App {
         }
         #else
         WindowGroup {
+            #if DEBUG && os(iOS)
+            if let transcriptBookSmokeLanguage {
+                TranscriptBookSmokeView(languageCode: transcriptBookSmokeLanguage)
+                    .environment(playerRouter)
+            } else if isDynamicIslandGalleryTesting {
+                DynamicIslandModeGallery()
+            } else if isShortsUITesting {
+                ShortsPlayerView(videos: AppEntry.shortsForUITesting(), startIndex: 0, api: api)
+                    .environment(authService)
+                    .environment(settingsStore)
+                    .environment(\.innerTubeAPI, api)
+                    .environment(playerStateStore)
+                    .environment(cardDownloadService)
+            } else {
+                mainRootView
+            }
+            #else
             if isShortsUITesting {
                 ShortsPlayerView(videos: AppEntry.shortsForUITesting(), startIndex: 0, api: api)
                     .environment(authService)
@@ -206,7 +235,16 @@ struct AppEntry: App {
                     .environment(playerStateStore)
                     .environment(cardDownloadService)
             } else {
-                RootView()
+                mainRootView
+            }
+            #endif
+        }
+        #endif
+    }
+
+    #if os(iOS)
+    private var mainRootView: some View {
+        RootView()
                     .environment(authService)
                     .environment(browseViewModel)
                     .environment(settingsStore)
@@ -237,6 +275,9 @@ struct AppEntry: App {
                             if !enabled { await api.resetVisitorData() }
                             browseViewModel.loadContent(refresh: true, source: "perDeviceRecommendationsChanged")
                         }
+                    }
+                    .onChange(of: settingsStore.settings.dynamicIslandMode, initial: true) { _, _ in
+                        playerRouter.playbackLiveActivity.settingDidChange()
                     }
                     .onOpenURL { url in handleOpenURL(url) }
                     .onChange(of: scenePhase, initial: true) { _, phase in
@@ -286,10 +327,8 @@ struct AppEntry: App {
                         )
                     }
                     #endif
-            }
-        }
-        #endif
     }
+    #endif
 
     // MARK: - URL handling
 

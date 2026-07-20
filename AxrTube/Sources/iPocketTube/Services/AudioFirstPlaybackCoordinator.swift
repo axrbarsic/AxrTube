@@ -39,10 +39,16 @@ public final class AudioFirstPlaybackCoordinator {
     private let api: InnerTubeAPI
     private let playerState: PlayerStateStore
     private let settingsStore: SettingsStore
+    private let playbackLiveActivity: PlaybackLiveActivityController
+    private let transcriptSummary: TranscriptSummaryManager
     private let fallbackService: VideoDownloadService
     private var workTask: Task<Void, Never>?
     private var timelineTask: Task<Void, Never>?
     private var positionHydrationTask: Task<Void, Never>?
+    private var captionMetadataTask: Task<Void, Never>?
+    private var captionIdentity: CaptionPlaybackIdentity?
+    private var pendingDubbingVideoID: String?
+    private var pendingDubbingSourceLanguageOverride: String?
     private var resourceLoader: ProgressiveAudioResourceLoader?
     private var playbackState = ProgressiveAudioStateMachine()
     private var milestones = InstantAudioMilestones()
@@ -67,10 +73,18 @@ public final class AudioFirstPlaybackCoordinator {
     private let signposter = OSSignposter(logger: instantAudioLog)
     private var ttfaSignpostState: OSSignpostIntervalState?
 
-    public init(api: InnerTubeAPI, playerState: PlayerStateStore, settingsStore: SettingsStore) {
+    public init(
+        api: InnerTubeAPI,
+        playerState: PlayerStateStore,
+        settingsStore: SettingsStore,
+        playbackLiveActivity: PlaybackLiveActivityController,
+        transcriptSummary: TranscriptSummaryManager
+    ) {
         self.api = api
         self.playerState = playerState
         self.settingsStore = settingsStore
+        self.playbackLiveActivity = playbackLiveActivity
+        self.transcriptSummary = transcriptSummary
         self.fallbackService = VideoDownloadService(api: api)
     }
 
@@ -108,9 +122,17 @@ public final class AudioFirstPlaybackCoordinator {
             }
         }
 
+        if currentVideo?.id != video.id {
+            transcriptSummary.reset()
+            pendingDubbingVideoID = nil
+            pendingDubbingSourceLanguageOverride = nil
+            playerState.vm.localDubbingManager.cancel(clearResult: true)
+        }
         let generation = commandGate.advance()
+        playbackLiveActivity.stop()
         cancelActiveWork(markCancelled: false, stopPlayer: false)
         currentVideo = video
+        captionIdentity = playerState.vm.beginPreparedAudioCaptions(video: video)
         lastPositionCheckpointAt = nil
         pendingHistoryActivation = (
             videoID: video.id,
@@ -170,12 +192,40 @@ public final class AudioFirstPlaybackCoordinator {
         close(markCancelled: true)
     }
 
+    public func requestRussianDubbing(sourceLanguageOverride: String? = nil) {
+        guard let video = currentVideo else { return }
+        if let audioURL = completedLocalAudioURL(for: video.id) {
+            startRussianDubbing(
+                video: video,
+                audioURL: audioURL,
+                sourceLanguageOverride: sourceLanguageOverride
+            )
+        } else {
+            pendingDubbingVideoID = video.id
+            pendingDubbingSourceLanguageOverride = sourceLanguageOverride
+            playerState.vm.localDubbingManager.waitForAudio(videoID: video.id)
+        }
+    }
+
+    public func cancelRussianDubbing() {
+        pendingDubbingVideoID = nil
+        pendingDubbingSourceLanguageOverride = nil
+        playerState.vm.localDubbingManager.cancel()
+    }
+
+    public func resumeRussianDubbingIfNeeded() {
+        guard let video = currentVideo,
+              let audioURL = completedLocalAudioURL(for: video.id) else { return }
+        resumeRussianDubbingIfNeeded(video: video, audioURL: audioURL)
+    }
+
     /// UI-originated play/pause. Only a user Play activation advances history;
     /// Pause, remote commands, interruption recovery, and lifecycle callbacks do not.
     public func togglePlayPauseByUser() {
         guard let video = currentVideo, playerState.vm.player.currentItem != nil else { return }
         let wasPlaying = playerState.vm.isPlaying
         playerState.vm.togglePlayPause()
+        synchronizeLiveActivity(force: true)
         if wasPlaying { persistCurrentPosition(force: true) }
         if !wasPlaying {
             pendingHistoryActivation = (
@@ -263,6 +313,13 @@ public final class AudioFirstPlaybackCoordinator {
         playerState.vm.updateScrub(to: clampedSeekTime(time))
     }
 
+    public func seek(to time: TimeInterval) {
+        let target = clampedSeekTime(time)
+        apply(.userSeek(generation: commandGate.generation, position: target))
+        playerState.vm.seek(to: target)
+        persistCurrentPosition(force: true, position: target)
+    }
+
     public func commitScrubbing() {
         let resume = wasPlayingBeforeScrub
         let target = playerState.vm.scrubTime
@@ -308,6 +365,8 @@ public final class AudioFirstPlaybackCoordinator {
             guard commandGate.isCurrent(generation), currentVideo?.id == entry.videoId,
                   !Task.isCancelled else { return }
             playerState.playAudioFirstLocal(video: entry.video, item: item)
+            loadLocalCaptionMetadata(video: entry.video, generation: generation)
+            synchronizeLiveActivity(force: true)
             apply(.playbackInstalled(generation: generation))
             apply(.completed(generation: generation))
             bufferedProgress = 1
@@ -345,28 +404,33 @@ public final class AudioFirstPlaybackCoordinator {
 
     private func resolveAndStart(video: Video, generation: UInt64) async {
         do {
-            let (plan, userAgent) = try await resolveDownloadPlan(for: video)
+            let resolved = try await resolveDownloadPlan(for: video)
             markTiming("metadata-resolved")
             guard commandGate.isCurrent(generation), currentVideo?.id == video.id, !Task.isCancelled else { return }
-            if OfflineAudioFormatSelector.supportsInstantPlayback(plan),
-               let url = plan.format.url {
+            if OfflineAudioFormatSelector.supportsInstantPlayback(resolved.plan),
+               let url = resolved.plan.format.url {
                 try startSparsePlayback(
                     video: video,
-                    plan: plan,
+                    plan: resolved.plan,
                     source: .init(
                         url: url,
-                        userAgent: userAgent,
+                        userAgent: resolved.userAgent,
                         fingerprint: SparseSourceFingerprint(
                             videoID: video.id,
-                            profile: Self.representationProfile(plan: plan, format: plan.format),
-                            mimeType: plan.format.mimeType
+                            profile: Self.representationProfile(plan: resolved.plan, format: resolved.plan.format),
+                            mimeType: resolved.plan.format.mimeType
                         ),
-                        legacyProfile: Self.legacyRepresentationProfile(plan: plan, format: plan.format)
+                        legacyProfile: Self.legacyRepresentationProfile(plan: resolved.plan, format: resolved.plan.format)
                     ),
+                    captionTracks: resolved.captionTracks,
                     generation: generation
                 )
             } else {
-                await runFullPreparationFallback(video: video, generation: generation)
+                await runFullPreparationFallback(
+                    video: video,
+                    captionTracks: resolved.captionTracks,
+                    generation: generation
+                )
             }
         } catch is CancellationError {
             return
@@ -375,33 +439,120 @@ public final class AudioFirstPlaybackCoordinator {
         }
     }
 
-    private func resolveDownloadPlan(for video: Video) async throws -> (OfflineAudioDownloadPlan, String) {
-        let android = try await api.fetchPlayerInfoAndroid(videoId: video.id)
-        if let plan = OfflineAudioFormatSelector.select(from: android.formats) {
-            return (plan, InnerTubeClients.Android.userAgent)
-        }
-        var resolvedFormats = android.formats
+    private struct ResolvedAudioPlan {
+        let plan: OfflineAudioDownloadPlan
+        let userAgent: String
+        let captionTracks: [CaptionTrack]
+    }
+
+    private func resolveDownloadPlan(for video: Video) async throws -> ResolvedAudioPlan {
+        var resolvedFormats: [VideoFormat] = []
+        var resolvedCaptionTracks: [CaptionTrack] = []
+        var resolutionErrors: [Error] = []
+        var androidFormatCount = 0
         var vrFormatCount = 0
-        if let vr = try? await api.fetchPlayerInfoAndroidVR(videoId: video.id) {
+
+        do {
+            let android = try await api.fetchPlayerInfoAndroid(videoId: video.id)
+            androidFormatCount = android.formats.count
+            resolvedFormats.append(contentsOf: android.formats)
+            resolvedCaptionTracks = Self.mergedCaptionTracks(
+                resolvedCaptionTracks,
+                android.captionTracks
+            )
+            if let plan = OfflineAudioFormatSelector.select(from: android.formats) {
+                return ResolvedAudioPlan(
+                    plan: plan,
+                    userAgent: InnerTubeClients.Android.userAgent,
+                    captionTracks: resolvedCaptionTracks
+                )
+            }
+        } catch {
+            resolutionErrors.append(error)
+            AudioDiagnostics.shared.record(
+                source: "audio-source-resolution",
+                event: "client.failed",
+                decision: "client=android class=\(OfflineFailurePresentationPolicy.reason(for: error)?.rawValue ?? "unknown")",
+                player: playerState.vm.player,
+                itemID: video.id,
+                commandGeneration: commandGate.generation,
+                error: error
+            )
+        }
+
+        // A LOGIN_REQUIRED response from the Android client is frequently a bot check,
+        // not a content restriction. Always let the independent AndroidVR client try
+        // before presenting a terminal error.
+        do {
+            let vr = try await api.fetchPlayerInfoAndroidVR(videoId: video.id)
             resolvedFormats.append(contentsOf: vr.formats)
+            resolvedCaptionTracks = Self.mergedCaptionTracks(
+                resolvedCaptionTracks,
+                vr.captionTracks
+            )
             vrFormatCount = vr.formats.count
             if let plan = OfflineAudioFormatSelector.select(from: vr.formats) {
-                return (plan, InnerTubeClients.AndroidVR.userAgent)
+                return ResolvedAudioPlan(
+                    plan: plan,
+                    userAgent: InnerTubeClients.AndroidVR.userAgent,
+                    captionTracks: resolvedCaptionTracks
+                )
             }
+        } catch {
+            resolutionErrors.append(error)
+            AudioDiagnostics.shared.record(
+                source: "audio-source-resolution",
+                event: "client.failed",
+                decision: "client=android-vr class=\(OfflineFailurePresentationPolicy.reason(for: error)?.rawValue ?? "unknown")",
+                player: playerState.vm.player,
+                itemID: video.id,
+                commandGeneration: commandGate.generation,
+                error: error
+            )
         }
+
+        if resolvedFormats.isEmpty, !resolutionErrors.isEmpty {
+            let priority: [OfflineFailureReason] = [
+                .ageRestricted,
+                .regionRestricted,
+                .botChallenge,
+                .transientNetwork,
+                .resolverFailure,
+                .loginRequired,
+                .unavailable,
+                .signInRequired,
+            ]
+            for reason in priority {
+                if let error = resolutionErrors.first(where: {
+                    OfflineFailurePresentationPolicy.reason(for: $0) == reason
+                }) {
+                    throw error
+                }
+            }
+            throw resolutionErrors[0]
+        }
+
         let reason = OfflineAudioFormatSelector.unsupportedReason(for: resolvedFormats)
         let failure = AudioSourceResolutionFailure.unsupportedFormats
         let error = Self.sourceResolutionError(failure, reason: reason)
         AudioDiagnostics.shared.record(
             source: "audio-source-resolution",
             event: "format.unsupported",
-            decision: "code=\(failure.diagnosticCode) android=\(android.formats.count) vr=\(vrFormatCount)",
+            decision: "code=\(failure.diagnosticCode) android=\(androidFormatCount) vr=\(vrFormatCount)",
             player: playerState.vm.player,
             itemID: video.id,
             commandGeneration: commandGate.generation,
             error: error
         )
         throw error
+    }
+
+    nonisolated private static func mergedCaptionTracks(
+        _ existing: [CaptionTrack],
+        _ additional: [CaptionTrack]
+    ) -> [CaptionTrack] {
+        var seen = Set(existing.map(\.id))
+        return existing + additional.filter { seen.insert($0.id).inserted }
     }
 
     nonisolated private static func sourceResolutionError(
@@ -437,6 +588,7 @@ public final class AudioFirstPlaybackCoordinator {
         video: Video,
         plan: OfflineAudioDownloadPlan,
         source: ProgressiveAudioResourceLoader.Source,
+        captionTracks: [CaptionTrack],
         generation: UInt64
     ) throws {
         apply(.buffering(generation: generation))
@@ -524,6 +676,12 @@ public final class AudioFirstPlaybackCoordinator {
         // play here is essential: waiting for an arbitrary prefix recreates the
         // old full-download behavior for files whose index is at the tail.
         playerState.startPreparedAudioPlayback()
+        applyPreparedAudioCaptions(
+            captionTracks,
+            video: video,
+            generation: generation
+        )
+        synchronizeLiveActivity(force: true)
         loader.start()
         loader.startBackgroundFill()
         monitorTimelineAdvance(for: video, generation: generation)
@@ -647,7 +805,8 @@ public final class AudioFirstPlaybackCoordinator {
               entry.videoId != currentVideo?.id else { return }
         do {
             let video = entry.video
-            let (plan, userAgent) = try await resolveDownloadPlan(for: video)
+            let resolved = try await resolveDownloadPlan(for: video)
+            let plan = resolved.plan
             try Task.checkCancellation()
             guard applicationIsActive,
                   reconciliationGeneration == generation,
@@ -665,7 +824,7 @@ public final class AudioFirstPlaybackCoordinator {
 
             let source = ProgressiveAudioResourceLoader.Source(
                 url: url,
-                userAgent: userAgent,
+                userAgent: resolved.userAgent,
                 fingerprint: SparseSourceFingerprint(
                     videoID: video.id,
                     profile: Self.representationProfile(plan: plan, format: plan.format),
@@ -863,12 +1022,16 @@ public final class AudioFirstPlaybackCoordinator {
                 await MainActor.run { self?.reconcileDownloads(trigger: "bounded-retry") }
             }
         } else {
+            let failureReason = OfflineFailurePresentationPolicy.reason(for: error)
+            let message = failureReason.map(OfflineFailurePresentationPolicy.message(for:))
+                ?? error.localizedDescription
             DownloadStore.shared.update(
                 videoId: video.id,
                 kind: .audio,
                 status: .failed,
                 progress: entry?.progress ?? 0,
-                errorMessage: error.localizedDescription,
+                errorMessage: message,
+                failureReason: failureReason,
                 retryCount: nextRetry,
                 resumePolicy: .manual
             )
@@ -939,7 +1102,11 @@ public final class AudioFirstPlaybackCoordinator {
             || code == .dataNotAllowed
     }
 
-    private func runFullPreparationFallback(video: Video, generation: UInt64) async {
+    private func runFullPreparationFallback(
+        video: Video,
+        captionTracks: [CaptionTrack],
+        generation: UInt64
+    ) async {
         apply(.finalizationStarted(generation: generation))
         // The coordinator owns the progressive placeholder. The legacy fallback
         // owns its own lifecycle and must re-register the same logical item so it
@@ -967,6 +1134,12 @@ public final class AudioFirstPlaybackCoordinator {
                     let item = try await playerState.validatedLocalAudioItem(for: entry.video)
                     guard commandGate.isCurrent(generation) else { return }
                     playerState.playAudioFirstLocal(video: entry.video, item: item)
+                    applyPreparedAudioCaptions(
+                        captionTracks,
+                        video: video,
+                        generation: generation
+                    )
+                    synchronizeLiveActivity(force: true)
                     apply(.playbackInstalled(generation: generation))
                     apply(.completed(generation: generation))
                     bufferedProgress = 1
@@ -1047,7 +1220,10 @@ public final class AudioFirstPlaybackCoordinator {
 
     private func fail(video: Video, error: Error, generation: UInt64) {
         guard commandGate.isCurrent(generation), currentVideo?.id == video.id else { return }
-        guard apply(.exhaustedFailure(generation: generation, message: error.localizedDescription)) else { return }
+        let failureReason = OfflineFailurePresentationPolicy.reason(for: error)
+        let message = failureReason.map(OfflineFailurePresentationPolicy.message(for:))
+            ?? error.localizedDescription
+        guard apply(.exhaustedFailure(generation: generation, message: message)) else { return }
         if let state = ttfaSignpostState {
             signposter.endInterval("TapToFirstTimeline", state)
             ttfaSignpostState = nil
@@ -1059,7 +1235,9 @@ public final class AudioFirstPlaybackCoordinator {
             kind: .audio,
             status: remainsPlayable ? .paused : .failed,
             progress: preservedProgress,
-            errorMessage: error.localizedDescription
+            errorMessage: message,
+            failureReason: failureReason,
+            resumePolicy: .manual
         )
         AudioDiagnostics.shared.record(
             source: "audio-first",
@@ -1086,6 +1264,7 @@ public final class AudioFirstPlaybackCoordinator {
             commandGeneration: generation
         )
         pendingHistoryActivation = nil
+        playbackLiveActivity.stop()
         cancelActiveWork(markCancelled: false, stopPlayer: true)
         _ = commandGate.advance()
         currentVideo = nil
@@ -1124,6 +1303,11 @@ public final class AudioFirstPlaybackCoordinator {
         persistCurrentPosition(force: true)
         _ = commandGate.advance()
         pendingHistoryActivation = nil
+        pendingDubbingVideoID = nil
+        pendingDubbingSourceLanguageOverride = nil
+        playerState.vm.localDubbingManager.cancel(clearResult: true)
+        transcriptSummary.reset()
+        playbackLiveActivity.stop()
         cancelActiveWork(markCancelled: markCancelled, stopPlayer: true)
         currentVideo = nil
         apply(.close)
@@ -1142,6 +1326,10 @@ public final class AudioFirstPlaybackCoordinator {
         timelineTask = nil
         positionHydrationTask?.cancel()
         positionHydrationTask = nil
+        captionMetadataTask?.cancel()
+        captionMetadataTask = nil
+        captionIdentity = nil
+        playerState.vm.captionsManager.cancel()
         let completedCurrentAudio = video.flatMap {
             DownloadStore.shared.entry(videoId: $0.id, kind: .audio)
         }?.status == .completed
@@ -1183,6 +1371,7 @@ public final class AudioFirstPlaybackCoordinator {
                 guard let self, self.commandGate.isCurrent(generation),
                       self.currentVideo?.id == video.id else { return }
                 let seconds = self.playerState.vm.player.currentTime().seconds
+                self.synchronizeLiveActivity(force: false)
                 if seconds.isFinite, seconds >= 0.05 {
                     self.apply(.timeline(generation: generation, position: seconds))
                     self.persistCurrentPosition(force: false, position: seconds)
@@ -1218,6 +1407,236 @@ public final class AudioFirstPlaybackCoordinator {
                 }
                 try? await Task.sleep(for: .milliseconds(recordedFirstAdvance ? 200 : 50))
             }
+        }
+    }
+
+    private func synchronizeLiveActivity(force: Bool) {
+        guard let video = currentVideo, playerState.vm.player.currentItem != nil else { return }
+        if let book = playerState.vm.captionsManager.transcriptBookResult?.document {
+            transcriptSummary.prepareIfNeeded(document: book)
+        }
+        playbackLiveActivity.update(
+            video: video,
+            isPlaying: playerState.vm.isPlaying,
+            elapsed: playerState.vm.currentTime,
+            duration: playerState.vm.duration > 0 ? playerState.vm.duration : (video.duration ?? 0),
+            transcriptLine: playerState.vm.currentCaptionCue?.text,
+            force: force
+        )
+    }
+
+    private func applyPreparedAudioCaptions(
+        _ tracks: [CaptionTrack],
+        video: Video,
+        generation: UInt64
+    ) {
+        guard commandGate.isCurrent(generation),
+              currentVideo?.id == video.id,
+              let captionIdentity,
+              captionIdentity.itemID == video.id else { return }
+        _ = playerState.vm.applyPreparedAudioCaptions(
+            tracks,
+            identity: captionIdentity
+        )
+    }
+
+    public func refreshLocalTranscriptionSetting() {
+        // Local ASR is no longer a product path. YouTube captions and the
+        // on-device EN to RU Translation owner are wired through CaptionsManager.
+    }
+
+    private func prepareLocalTranscriptionFallback(
+        video: Video,
+        generation: UInt64,
+        identity: CaptionPlaybackIdentity
+    ) {
+        guard commandGate.isCurrent(generation), currentVideo?.id == video.id else { return }
+        let eligibility = localTranscriptionEligibility()
+        guard playerState.vm.prepareLocalTranscriptFallback(
+            identity: identity,
+            eligibility: eligibility
+        ), eligibility == .allowed else { return }
+        guard let audioURL = completedLocalAudioURL(for: video.id) else { return }
+        startLocalTranscriptionIfReady(
+            video: video,
+            audioURL: audioURL,
+            generation: generation
+        )
+    }
+
+    private func startLocalTranscriptionIfReady(
+        video: Video,
+        audioURL: URL,
+        generation: UInt64
+    ) {
+        guard commandGate.isCurrent(generation),
+              currentVideo?.id == video.id,
+              let captionIdentity,
+              captionIdentity.itemID == video.id,
+              FileManager.default.fileExists(atPath: audioURL.path) else { return }
+        let localeIdentifier = settingsStore.settings.preferredCaptionLanguage
+            ?? settingsStore.settings.preferredAudioLanguage
+            ?? Locale.preferredLanguages.first
+            ?? "ru-RU"
+        _ = playerState.vm.startLocalTranscriptFallback(
+            request: LocalTranscriptRequest(
+                videoID: video.id,
+                audioURL: audioURL,
+                localeIdentifier: localeIdentifier
+            ),
+            identity: captionIdentity
+        )
+    }
+
+    private func startRussianDubbing(
+        video: Video,
+        audioURL: URL,
+        sourceLanguageOverride: String? = nil
+    ) {
+        guard currentVideo?.id == video.id,
+              FileManager.default.fileExists(atPath: audioURL.path) else { return }
+        pendingDubbingVideoID = nil
+        pendingDubbingSourceLanguageOverride = nil
+        playerState.vm.localDubbingManager.start(
+            request: russianDubbingRequest(
+                video: video,
+                audioURL: audioURL,
+                sourceLanguageOverride: sourceLanguageOverride
+            )
+        )
+    }
+
+    private func resumeRussianDubbingIfNeeded(video: Video, audioURL: URL) {
+        let request = russianDubbingRequest(video: video, audioURL: audioURL)
+        Task { [weak self] in
+            guard let self, self.currentVideo?.id == video.id else { return }
+            await self.playerState.vm.localDubbingManager.resumeIfAvailable(request: request)
+        }
+    }
+
+    private func russianDubbingRequest(
+        video: Video,
+        audioURL: URL,
+        sourceLanguageOverride: String? = nil
+    ) -> LocalDubbingRequest {
+        let captions = playerState.vm.captionsManager
+        let smokeDuration = Self.dubbingSmokeDuration
+        let russianFixture = Self.dubbingRussianFixture
+        let requestVideoID = smokeDuration.map {
+            "\(video.id)-physical-smoke-\(Int($0))\(russianFixture ? "-ru-fixture" : "")"
+        } ?? video.id
+        let selectedLanguage = captions.selectedCaption?.languageCode
+        let effectiveOverride = sourceLanguageOverride
+            ?? (russianFixture ? "ru" : nil)
+        let sourceOrigin: LocalDubbingTranscriptOrigin? = switch captions.transcriptSource {
+        case .youtubeCaptions: .youtubeCaptions
+        case .localSpeech:
+            captions.localTranscriptEngine == .speechAnalyzer ? .speechAnalyzer : .parakeet
+        default: nil
+        }
+        return LocalDubbingRequest(
+            videoID: requestVideoID,
+            title: video.title,
+            sourceAudioURL: audioURL,
+            availableSourceCues: russianFixture
+                ? Self.russianDubbingFixtureCues
+                : (captions.transcriptState == .ready ? captions.captionCues : []),
+            availableSourceOrigin: russianFixture ? .youtubeCaptions : sourceOrigin,
+            sourceCaptionLanguageCode: russianFixture
+                ? "ru"
+                : (captions.transcriptSource == .youtubeCaptions ? selectedLanguage : nil),
+            sourceLanguageOverride: effectiveOverride,
+            maximumSourceDuration: smokeDuration
+        )
+    }
+
+    private static var dubbingSmokeDuration: TimeInterval? {
+        let prefix = "--uitesting-dubbing-smoke-seconds="
+        guard let argument = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix(prefix) }),
+              let seconds = TimeInterval(argument.dropFirst(prefix.count)),
+              (10...120).contains(seconds) else { return nil }
+        return seconds
+    }
+
+    private static var dubbingAutoStart: Bool {
+        ProcessInfo.processInfo.arguments.contains("--uitesting-dubbing-auto-start")
+    }
+
+    private static var dubbingRussianFixture: Bool {
+        ProcessInfo.processInfo.arguments.contains("--uitesting-dubbing-russian-fixture")
+    }
+
+    private static let russianDubbingFixtureCues: [CaptionCue] = (0..<15).map { index in
+        let start = TimeInterval(index * 4)
+        return CaptionCue(
+            startTime: start,
+            endTime: start + 3.5,
+            text: "Проверочная русская реплика номер \(index + 1), она сохраняет абсолютный временной код и готовый сегмент."
+        )
+    }
+
+    private func completedLocalAudioURL(for videoID: String) -> URL? {
+        if let audio = DownloadStore.shared.entry(videoId: videoID, kind: .audio),
+           audio.status == .completed,
+           FileManager.default.fileExists(atPath: audio.fileURL.path) {
+            return audio.fileURL
+        }
+        if let video = DownloadStore.shared.entry(videoId: videoID, kind: .video),
+           video.status == .completed,
+           FileManager.default.fileExists(atPath: video.fileURL.path) {
+            return video.fileURL
+        }
+        return nil
+    }
+
+    private func localTranscriptionEligibility() -> LocalTranscriptionEligibility {
+        guard settingsStore.settings.autoGenerateLocalTranscripts else { return .disabled }
+        guard !ProcessInfo.processInfo.isLowPowerModeEnabled else { return .lowPowerMode }
+        let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let capacity = try? documents.resourceValues(
+            forKeys: [.volumeAvailableCapacityForImportantUsageKey]
+        ).volumeAvailableCapacityForImportantUsage
+        guard (capacity ?? Int64.max) >= LocalTranscriptionPolicy.minimumFreeBytes else {
+            return .insufficientStorage
+        }
+        return .allowed
+    }
+
+    /// Local playback starts first. Caption metadata then reuses the existing
+    /// cache and in-flight coalescing path without becoming a playback gate.
+    private func loadLocalCaptionMetadata(video: Video, generation: UInt64) {
+        captionMetadataTask?.cancel()
+        captionMetadataTask = Task { [weak self] in
+            guard let self else { return }
+            let cached = await VideoPreloadCache.shared.consume(videoId: video.id).playerInfo
+            let info: PlayerInfo?
+            if let cached {
+                info = cached
+            } else {
+                let sharedFetch = await VideoPreloadCache.shared.getOrFetchPlayerInfo(
+                    videoId: video.id
+                )
+                info = await sharedFetch.value
+                if let info {
+                    await VideoPreloadCache.shared.store(playerInfo: info, for: video.id)
+                }
+            }
+            guard !Task.isCancelled,
+                  self.commandGate.isCurrent(generation),
+                  self.currentVideo?.id == video.id,
+                  let captionIdentity = self.captionIdentity,
+                  captionIdentity.itemID == video.id else { return }
+            guard let info else {
+                _ = self.playerState.vm.failPreparedAudioCaptionMetadata(
+                    identity: captionIdentity
+                )
+                return
+            }
+            self.applyPreparedAudioCaptions(
+                info.captionTracks,
+                video: video,
+                generation: generation
+            )
         }
     }
 

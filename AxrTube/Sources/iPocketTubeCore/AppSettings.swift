@@ -45,9 +45,10 @@ public struct AppSettings: Codable {
     // MARK: UI
     public var defaultSection: String
     public var compactThumbnails: Bool
-    /// Full-width horizontal cards in Search/Home/Recommended feeds.
+    /// Shared compact-card preference for Search, Media Library, and Downloads.
     public var compactSearchCards: Bool
-    /// Full-width horizontal cards in Media Library catalogues.
+    /// Legacy persisted compatibility field. Production layout reads
+    /// `compactSearchCards` as its single source of truth.
     public var compactMediaLibraryCards: Bool
     /// Strict explicit-search filter backed by YouTube audio/caption metadata.
     public var russianOnlySearchEnabled: Bool
@@ -127,6 +128,9 @@ public struct AppSettings: Codable {
     /// `nil` means captions are off. Set implicitly when the user picks a caption track in the player.
     /// Applied automatically to each new video on load.
     public var preferredCaptionLanguage: String?
+    /// Automatically creates an on-device transcript from the already saved audio
+    /// when YouTube does not provide timed captions.
+    public var autoGenerateLocalTranscripts: Bool
 
     // MARK: DeArrow
     public var deArrowEnabled: Bool
@@ -176,6 +180,9 @@ public struct AppSettings: Codable {
     /// Enables local EDR-capable press pulses on selected dark-mode controls.
     /// Unsupported displays and Simulator use a restrained SDR outline fallback.
     public var experimentalEDRPressGlowEnabled: Bool
+    /// User-selected playback Live Activity experiment. `.off` preserves the
+    /// system Now Playing experience without adding a Dynamic Island activity.
+    public var dynamicIslandMode: PlaybackLiveActivityMode
 
     // Note: there is no user-facing `useTOSPlayerOnIOS` setting. iOS uses the
     // native AVPlayer pipeline by default because WKWebView media is suspended by
@@ -293,6 +300,7 @@ public struct AppSettings: Codable {
         blockedChannels                = [:]
         preferredAudioLanguage = nil
         preferredCaptionLanguage = nil
+        autoGenerateLocalTranscripts = false
         deArrowEnabled       = false
         poTokenServiceURL    = nil
         audioOnlyMode        = false
@@ -307,6 +315,7 @@ public struct AppSettings: Codable {
         useTOSPlayerOnMac    = false
         #endif
         experimentalEDRPressGlowEnabled = true
+        dynamicIslandMode     = .off
         settingsVersion      = 5
     }
 }
@@ -368,6 +377,7 @@ extension AppSettings {
         case blockedChannels
         case preferredAudioLanguage
         case preferredCaptionLanguage
+        case autoGenerateLocalTranscripts
         case deArrowEnabled
         case poTokenServiceURL
         case audioOnlyMode
@@ -378,6 +388,7 @@ extension AppSettings {
         case iCloudSyncEnabled
         case useTOSPlayerOnMac
         case experimentalEDRPressGlowEnabled
+        case dynamicIslandMode
     }
 
     public init(from decoder: Decoder) throws {
@@ -418,6 +429,7 @@ extension AppSettings {
         blockedChannels              = c.safeDecode([String: String].self,  forKey: .blockedChannels,              default: d.blockedChannels)
         preferredAudioLanguage       = c.safeDecode(String?.self,           forKey: .preferredAudioLanguage,       default: d.preferredAudioLanguage)
         preferredCaptionLanguage     = c.safeDecode(String?.self,           forKey: .preferredCaptionLanguage,     default: d.preferredCaptionLanguage)
+        autoGenerateLocalTranscripts = c.safeDecode(Bool.self,              forKey: .autoGenerateLocalTranscripts, default: d.autoGenerateLocalTranscripts)
         deArrowEnabled               = c.safeDecode(Bool.self,              forKey: .deArrowEnabled,               default: d.deArrowEnabled)
         poTokenServiceURL            = c.safeDecode(URL?.self,              forKey: .poTokenServiceURL,            default: d.poTokenServiceURL)
         audioOnlyMode                = c.safeDecode(Bool.self,              forKey: .audioOnlyMode,                default: d.audioOnlyMode)
@@ -428,5 +440,6 @@ extension AppSettings {
         iCloudSyncEnabled            = c.safeDecode(Bool.self,              forKey: .iCloudSyncEnabled,            default: d.iCloudSyncEnabled)
         useTOSPlayerOnMac            = c.safeDecode(Bool.self,              forKey: .useTOSPlayerOnMac,            default: d.useTOSPlayerOnMac)
         experimentalEDRPressGlowEnabled = c.safeDecode(Bool.self,           forKey: .experimentalEDRPressGlowEnabled, default: d.experimentalEDRPressGlowEnabled)
+        dynamicIslandMode             = c.safeDecode(PlaybackLiveActivityMode.self, forKey: .dynamicIslandMode, default: d.dynamicIslandMode)
     }
 }

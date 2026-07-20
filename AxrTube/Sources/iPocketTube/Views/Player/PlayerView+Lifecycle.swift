@@ -264,7 +264,7 @@ extension PlayerView {
 
                 // Caption cue overlay — shown when a track is selected and a cue is active
                 #if !os(tvOS)
-                if let cue = vm.currentCaptionCue {
+                if vm.selectedCaption != nil, let cue = vm.currentCaptionCue {
                     VStack(spacing: 0) {
                         Spacer()
                         CaptionCueView(text: cue.text)
@@ -841,7 +841,8 @@ extension PlayerView {
             showQualityPicker: $showQualityPicker,
             showSpeedPicker: $showSpeedPicker,
             showAudioTrackPicker: $showAudioTrackPicker,
-            showSleepTimerPicker: $showSleepTimerPicker
+            showSleepTimerPicker: $showSleepTimerPicker,
+            showTranscript: $showTranscript
         )
         #elseif os(tvOS)
         PlayerControlsOverlay(
@@ -866,7 +867,8 @@ extension PlayerView {
             showQualityPicker: $showQualityPicker,
             showSpeedPicker: $showSpeedPicker,
             showAudioTrackPicker: $showAudioTrackPicker,
-            showSleepTimerPicker: $showSleepTimerPicker
+            showSleepTimerPicker: $showSleepTimerPicker,
+            showTranscript: $showTranscript
         )
         #endif
     }

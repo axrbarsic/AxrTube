@@ -5,10 +5,67 @@ import iPocketTubeCore
 import UIKit
 
 extension PlaybackViewModel {
+    @discardableResult
+    func beginPreparedAudioCaptions(video: Video) -> CaptionPlaybackIdentity {
+        captionsManager.beginPlaybackItem(
+            video.id,
+            bookMetadata: transcriptBookMetadata(for: video)
+        )
+    }
+
+    @discardableResult
+    func applyPreparedAudioCaptions(
+        _ tracks: [CaptionTrack],
+        identity: CaptionPlaybackIdentity
+    ) -> Bool {
+        captionsManager.applyAvailableCaptions(
+            tracks,
+            for: identity,
+            preferredLanguage: settings.preferredCaptionLanguage,
+            currentTime: currentTime
+        )
+    }
+
+    @discardableResult
+    func failPreparedAudioCaptionMetadata(
+        identity: CaptionPlaybackIdentity
+    ) -> Bool {
+        captionsManager.failCaptionMetadata(for: identity)
+    }
+
+    @discardableResult
+    func prepareLocalTranscriptFallback(
+        identity: CaptionPlaybackIdentity,
+        eligibility: LocalTranscriptionEligibility
+    ) -> Bool {
+        captionsManager.prepareLocalFallback(
+            for: identity,
+            eligibility: eligibility
+        )
+    }
+
+    @discardableResult
+    func startLocalTranscriptFallback(
+        request: LocalTranscriptRequest,
+        identity: CaptionPlaybackIdentity
+    ) -> Bool {
+        captionsManager.startLocalTranscription(
+            request: request,
+            for: identity,
+            currentTime: currentTime
+        )
+    }
+
     /// Installs a direct audio item supplied by the progressive offline cache.
     /// This bypasses every video/HLS/IFrame/end-card/ad path while retaining the
     /// proven AVAudioSession, interruption, remote-command, and recovery graph.
     func loadPreparedAudio(item: AVPlayerItem, video: Video, startImmediately: Bool) {
+        if captionsManager.activePlaybackIdentity?.itemID != video.id {
+            _ = captionsManager.beginPlaybackItem(
+                video.id,
+                bookMetadata: transcriptBookMetadata(for: video)
+            )
+        }
         let previousPosition = currentTime
         let previousDuration = duration
         if settings.historyState == .enabled, previousDuration > 0 {
@@ -33,6 +90,7 @@ extension PlaybackViewModel {
         itemObserverTask?.cancel()
         endObserverTask?.cancel()
         stallObserverTask?.cancel()
+        audioScopeInstallationTask?.cancel()
         player.pause()
         player.replaceCurrentItem(with: nil)
 
@@ -110,6 +168,29 @@ extension PlaybackViewModel {
 
         player.automaticallyWaitsToMinimizeStalling = true
         player.replaceCurrentItem(with: item)
+        audioScopeInstallationTask = Task { [weak self, weak item] in
+            guard let self, let item else { return }
+            do {
+                let attachment = try await RealtimeAudioScopeCapture.makeAttachment(
+                    on: item,
+                    videoID: video.id
+                )
+                guard !Task.isCancelled, self.player.currentItem === item else { return }
+                RealtimeAudioScopeRegistry.shared.activate(attachment.context)
+                item.audioMix = attachment.mix
+            } catch is CancellationError {
+                return
+            } catch {
+                AudioDiagnostics.shared.record(
+                    source: "audio-scope",
+                    event: "pcm-tap.unavailable",
+                    decision: "preparing-fallback",
+                    player: self.player,
+                    itemID: video.id,
+                    error: error
+                )
+            }
+        }
         UIApplication.shared.isIdleTimerDisabled = false
     }
 

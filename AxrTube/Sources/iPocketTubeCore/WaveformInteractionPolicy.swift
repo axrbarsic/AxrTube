@@ -109,3 +109,74 @@ public enum LiveAudioScopePolicy {
         }
     }
 }
+
+public struct AudioScopeRenderIdentity: Equatable, Hashable, Sendable {
+    public let videoID: String
+    public let generation: UInt64
+
+    public init(videoID: String, generation: UInt64) {
+        self.videoID = videoID
+        self.generation = generation
+    }
+}
+
+public enum ProgressiveAudioScopePhase: Equatable, Sendable {
+    case preparing
+    case realEnvelope
+}
+
+/// Pure render state shared by the live PCM capture and the SwiftUI display
+/// driver. Download byte counts are deliberately absent from the identity, so
+/// verified range updates cannot recreate or blank the visualizer.
+public struct ProgressiveAudioScopeState: Equatable, Sendable {
+    public private(set) var identity: AudioScopeRenderIdentity?
+    public private(set) var phase: ProgressiveAudioScopePhase = .preparing
+    public private(set) var samples: [Float] = []
+
+    public init() {}
+
+    public mutating func accept(
+        identity: AudioScopeRenderIdentity,
+        samples incoming: [Float]
+    ) {
+        if self.identity != identity {
+            self.identity = identity
+            phase = .preparing
+            samples = []
+        }
+        guard !incoming.isEmpty else { return }
+        phase = .realEnvelope
+        samples = incoming
+    }
+}
+
+public enum AudioScopeCadencePolicy {
+    public static let barCount = 56
+    public static let rollingWindow: TimeInterval = 2
+
+    public static func interpolate(
+        from previous: [Float],
+        to target: [Float],
+        progress: Double
+    ) -> [Float] {
+        guard !target.isEmpty else { return previous }
+        guard previous.count == target.count else { return target }
+        let amount = Float(min(max(progress, 0), 1))
+        return zip(previous, target).map { old, new in
+            old + (new - old) * amount
+        }
+    }
+
+    public static func resample(_ samples: [Float], count: Int = barCount) -> [Float] {
+        guard count > 0, !samples.isEmpty else { return [] }
+        guard samples.count != count else { return samples }
+        if samples.count == 1 { return Array(repeating: samples[0], count: count) }
+        return (0..<count).map { index in
+            let position = Double(index) * Double(samples.count - 1) / Double(max(1, count - 1))
+            let lower = min(samples.count - 1, Int(floor(position)))
+            let upper = min(samples.count - 1, lower + 1)
+            let fraction = Float(position - Double(lower))
+            return samples[lower] + (samples[upper] - samples[lower]) * fraction
+        }
+    }
+}

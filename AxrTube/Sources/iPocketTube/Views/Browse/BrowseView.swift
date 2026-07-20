@@ -199,8 +199,7 @@ struct VideoGridSection: View {
         #if os(iOS)
         let compact = VideoCardLayoutPolicy.variant(
             for: catalogContext,
-            compactSearchCards: store.settings.compactSearchCards,
-            compactMediaLibraryCards: store.settings.compactMediaLibraryCards
+            compactCards: store.settings.compactSearchCards
         ) == .compact
         #else
         let compact = store.settings.compactThumbnails

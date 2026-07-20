@@ -13,10 +13,31 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
     let openDetails: () -> Void
     let togglePlayback: () -> Void
     let close: () -> Void
+    let openTranscript: (() -> Void)?
     @ViewBuilder let artwork: () -> Artwork
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
+
+    init(
+        title: String,
+        isPlaying: Bool,
+        canTogglePlayback: Bool,
+        openDetails: @escaping () -> Void,
+        togglePlayback: @escaping () -> Void,
+        close: @escaping () -> Void,
+        openTranscript: (() -> Void)? = nil,
+        @ViewBuilder artwork: @escaping () -> Artwork
+    ) {
+        self.title = title
+        self.isPlaying = isPlaying
+        self.canTogglePlayback = canTogglePlayback
+        self.openDetails = openDetails
+        self.togglePlayback = togglePlayback
+        self.close = close
+        self.openTranscript = openTranscript
+        self.artwork = artwork
+    }
 
     var body: some View {
         HStack(spacing: 6) {
@@ -52,6 +73,21 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
             .disabled(!canTogglePlayback)
             .accessibilityLabel(isPlaying ? "Пауза" : "Воспроизвести")
             .accessibilityIdentifier("nowPlayingAccessory.playPauseButton")
+
+            if let openTranscript {
+                Button(action: openTranscript) {
+                    Text("Стенограмма")
+                        .font(.caption.weight(.semibold))
+                        .lineLimit(1)
+                        .padding(.horizontal, 6)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.red)
+                .accessibilityLabel("Открыть стенограмму")
+                .accessibilityIdentifier("nowPlayingAccessory.transcriptButton")
+            }
 
             Button(action: close) {
                 Image(systemName: "xmark")
@@ -109,6 +145,7 @@ struct MiniPlayerView: View {
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(PlayerRouter.self) private var playerRouter
     let openDetails: () -> Void
+    @State private var showTranscript = false
 
     var body: some View {
         NowPlayingAccessoryChrome(
@@ -123,6 +160,10 @@ struct MiniPlayerView: View {
             close: {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
                 playerRouter.closeAudioFirst()
+            },
+            openTranscript: {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
+                showTranscript = true
             }
         ) {
             ZStack {
@@ -137,6 +178,11 @@ struct MiniPlayerView: View {
                         }
                     }
                 }
+            }
+        }
+        .fullScreenCover(isPresented: $showTranscript) {
+            CurrentPlaybackTranscriptPanel {
+                showTranscript = false
             }
         }
     }

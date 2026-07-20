@@ -36,6 +36,7 @@ struct PlayerControlsOverlay: View {
     @Binding var showSpeedPicker: Bool
     @Binding var showAudioTrackPicker: Bool
     @Binding var showSleepTimerPicker: Bool
+    @Binding var showTranscript: Bool
     #endif
     #if os(tvOS)
     @Binding var highlightedControl: PlayerView.TVPlayerControl?
@@ -733,37 +734,46 @@ extension PlayerView {
 extension PlayerControlsOverlay {
 
     @ViewBuilder var quickAccessButtonRow: some View {
-        HStack(spacing: 8) {
-            quickAccessButton(
-                systemImage: "speedometer",
-                label: speedLabel,
-                accessibilityId: "player.quickAccess.speed"
-            ) { showSpeedPicker = true }
-
-            if !vm.isAudioOnlyMode {
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
                 quickAccessButton(
-                    systemImage: "film.stack",
-                    label: qualityLabel,
-                    accessibilityId: "player.quickAccess.quality"
-                ) { showQualityPicker = true }
-                .disabled(vm.availableFormats.isEmpty)
-                .opacity(vm.availableFormats.isEmpty ? 0.4 : 1)
-            }
+                    systemImage: "book.closed",
+                    label: "Книга",
+                    accessibilityId: "player.quickAccess.transcript"
+                ) { showTranscript = true }
 
-            if vm.availableAudioTracks.count > 1 {
                 quickAccessButton(
-                    systemImage: "waveform",
-                    label: audioTrackLabel,
-                    accessibilityId: "player.quickAccess.audioTrack"
-                ) { showAudioTrackPicker = true }
-            }
+                    systemImage: "speedometer",
+                    label: speedLabel,
+                    accessibilityId: "player.quickAccess.speed"
+                ) { showSpeedPicker = true }
 
-            quickAccessButton(
-                systemImage: "moon.zzz",
-                label: sleepTimerLabel,
-                accessibilityId: "player.quickAccess.sleepTimer"
-            ) { showSleepTimerPicker = true }
+                if !vm.isAudioOnlyMode {
+                    quickAccessButton(
+                        systemImage: "film.stack",
+                        label: qualityLabel,
+                        accessibilityId: "player.quickAccess.quality"
+                    ) { showQualityPicker = true }
+                    .disabled(vm.availableFormats.isEmpty)
+                    .opacity(vm.availableFormats.isEmpty ? 0.4 : 1)
+                }
+
+                if vm.availableAudioTracks.count > 1 {
+                    quickAccessButton(
+                        systemImage: "waveform",
+                        label: audioTrackLabel,
+                        accessibilityId: "player.quickAccess.audioTrack"
+                    ) { showAudioTrackPicker = true }
+                }
+
+                quickAccessButton(
+                    systemImage: "moon.zzz",
+                    label: sleepTimerLabel,
+                    accessibilityId: "player.quickAccess.sleepTimer"
+                ) { showSleepTimerPicker = true }
+            }
         }
+        .scrollIndicators(.hidden)
         .padding(.horizontal, 20)
         .padding(.top, 4)
         .accessibilityElement(children: .contain)

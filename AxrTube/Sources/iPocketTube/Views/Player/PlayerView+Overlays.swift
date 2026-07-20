@@ -66,6 +66,19 @@ extension PlayerView {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showSleepTimerPicker)
         }
+        #if !os(tvOS)
+        if showTranscript {
+            PlayerTranscriptPanel(
+                captions: vm.captionsManager,
+                videoTitle: vm.playerInfo?.video.title ?? video.title,
+                onSeek: { vm.seek(to: $0) },
+                onRetry: { vm.retryLoad() },
+                onDismiss: { showTranscript = false }
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .animation(.easeOut(duration: 0.2), value: showTranscript)
+        }
+        #endif
         if showDescriptionSheet {
             descriptionOverlay
                 .transition(.move(edge: .bottom).combined(with: .opacity))

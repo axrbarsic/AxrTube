@@ -1,6 +1,9 @@
 import SwiftUI
 import AuthenticationServices
 import iPocketTubeCore
+#if os(iOS)
+import UIKit
+#endif
 
 // MARK: - SettingsView
 //
@@ -15,6 +18,16 @@ public struct SettingsView: View {
     @State private var reportSent = false
     @State private var showClearOfflineConfirmation = false
     @State private var showSignOutFailure = false
+    #if os(iOS)
+    @Environment(PlayerRouter.self) private var playerRouter
+    @State private var appIconStyle: AppIconStyle = .red
+    @State private var isChangingAppIcon = false
+    @State private var appIconChangeError: String?
+    @State private var summaryAPIKey = ""
+    @State private var summaryKeyMessage: String?
+    @State private var isEditingSummaryKey = false
+    @FocusState private var isSummaryAPIKeyFocused: Bool
+    #endif
     #if os(tvOS)
     @State private var showGithubQR = false
     #endif
@@ -80,6 +93,10 @@ public struct SettingsView: View {
                     matrixAudioContent
                 }
 
+                iPocketTubeMatrixSection("Экран блокировки", systemImage: "lock.iphone") {
+                    matrixLockScreenContent
+                }
+
                 iPocketTubeMatrixSection("Content", systemImage: "rectangle.stack") {
                     matrixContentContent
                 }
@@ -98,13 +115,31 @@ public struct SettingsView: View {
             .padding(.horizontal, iPocketTubeVisualTokens.horizontalPadding)
             .padding(.bottom, 20)
         }
+        .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .iPocketTubeScreenSurface()
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Готово") {
+                    isSummaryAPIKeyFocused = false
+                }
+                .fontWeight(.semibold)
+            }
+        }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
             Button("OK", role: .cancel) {}
         } message: {
             Text("Secure credentials could not be removed. Sign out was not completed.")
+        }
+        .alert("App Icon", isPresented: Binding(
+            get: { appIconChangeError != nil },
+            set: { if !$0 { appIconChangeError = nil } }
+        )) {
+            Button("OK", role: .cancel) { appIconChangeError = nil }
+        } message: {
+            Text(appIconChangeError ?? "")
         }
     }
 
@@ -151,20 +186,69 @@ public struct SettingsView: View {
 
     private var matrixAppearanceContent: some View {
         @Bindable var store = store
-        return Picker("Theme", selection: Binding(
-            get: { store.settings.themeName },
-            set: { newValue in
-                guard newValue != store.settings.themeName else { return }
-                iPocketTubeHaptics.shared.perform(.settingsPicker)
-                store.settings.themeName = newValue
+        return VStack(spacing: 0) {
+            Picker("Theme", selection: Binding(
+                get: { store.settings.themeName },
+                set: { newValue in
+                    guard newValue != store.settings.themeName else { return }
+                    iPocketTubeHaptics.shared.perform(.settingsPicker)
+                    store.settings.themeName = newValue
+                }
+            )) {
+                ForEach(AppSettings.ThemeName.allCases, id: \.self) { theme in
+                    Text(LocalizedStringKey(theme.rawValue), bundle: .module).tag(theme)
+                }
             }
-        )) {
-            ForEach(AppSettings.ThemeName.allCases, id: \.self) { theme in
-                Text(LocalizedStringKey(theme.rawValue), bundle: .module).tag(theme)
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.themePicker")
+
+            Divider()
+                .overlay(iPocketTubeVisualTokens.stroke)
+                .padding(.vertical, 10)
+
+            Toggle(isOn: Binding(
+                get: { appIconStyle == .green },
+                set: { setGreenAppIconEnabled($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Green App Icon", systemImage: "app.badge.fill")
+                    Text("Red is the default. Switch to the green AXR icon anytime.")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(iPocketTubeVisualTokens.mint)
+            .frame(minHeight: 58)
+            .disabled(isChangingAppIcon || !UIApplication.shared.supportsAlternateIcons)
+            .accessibilityIdentifier("settings.greenAppIconToggle")
+        }
+        .task {
+            appIconStyle = AppIconStyle(alternateIconName: UIApplication.shared.alternateIconName)
+        }
+    }
+
+    private func setGreenAppIconEnabled(_ isEnabled: Bool) {
+        let requestedStyle: AppIconStyle = isEnabled ? .green : .red
+        guard requestedStyle != appIconStyle, !isChangingAppIcon else { return }
+        guard UIApplication.shared.supportsAlternateIcons else {
+            appIconChangeError = String(localized: "Alternate app icons are unavailable on this device.", bundle: .module)
+            return
+        }
+
+        isChangingAppIcon = true
+        iPocketTubeHaptics.shared.perform(.settingsToggle)
+        UIApplication.shared.setAlternateIconName(requestedStyle.alternateIconName) { error in
+            Task { @MainActor in
+                isChangingAppIcon = false
+                if let error {
+                    appIconStyle = AppIconStyle(alternateIconName: UIApplication.shared.alternateIconName)
+                    appIconChangeError = error.localizedDescription
+                } else {
+                    appIconStyle = requestedStyle
+                }
             }
         }
-        .pickerStyle(.segmented)
-        .accessibilityIdentifier("settings.themePicker")
     }
 
     private var matrixAudioContent: some View {
@@ -190,13 +274,297 @@ public struct SettingsView: View {
         }
     }
 
+    private var matrixLockScreenContent: some View {
+        return VStack(alignment: .leading, spacing: 8) {
+            Label("Одна системная карточка", systemImage: "checkmark.seal.fill")
+                .font(.headline)
+                .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
+
+            Text("AxrTube использует надежный системный плеер iPhone. Отдельная playback-карточка больше не дублирует его.")
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Divider().overlay(iPocketTubeVisualTokens.stroke).padding(.vertical, 4)
+
+            Label("Краткая выжимка", systemImage: "text.quote")
+                .font(.headline)
+
+            Text("После готовности стенограммы одна короткая русская фраза появится под названием ролика.")
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+
+            Picker("Провайдер", selection: Binding(
+                get: { playerRouter.transcriptSummary.selectedProvider },
+                set: { provider in
+                    summaryAPIKey = ""
+                    isEditingSummaryKey = false
+                    summaryKeyMessage = nil
+                    playerRouter.transcriptSummary.selectProvider(provider)
+                }
+            )) {
+                ForEach(TranscriptAIProvider.allCases, id: \.self) { provider in
+                    Text(provider.displayName).tag(provider)
+                }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.transcriptAIProvider")
+
+            Picker("Модель", selection: Binding(
+                get: { playerRouter.transcriptSummary.selectedModel.id },
+                set: { playerRouter.transcriptSummary.selectModel(id: $0) }
+            )) {
+                ForEach(
+                    TranscriptSummaryPolicy.models(for: playerRouter.transcriptSummary.selectedProvider)
+                ) { model in
+                    Text(model.displayName).tag(model.id)
+                }
+            }
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .accessibilityIdentifier("settings.transcriptAIModel")
+
+            if playerRouter.transcriptSummary.hasAPIKey && !isEditingSummaryKey {
+                summaryKeyConnectedCard
+            } else {
+                SecureField(
+                    playerRouter.transcriptSummary.hasAPIKey
+                        ? "Новый ключ \(playerRouter.transcriptSummary.selectedProvider.displayName)"
+                        : "Вставьте ключ \(playerRouter.transcriptSummary.selectedProvider.displayName)",
+                    text: $summaryAPIKey
+                )
+                    .focused($isSummaryAPIKeyFocused)
+                    .textContentType(.password)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit {
+                        isSummaryAPIKeyFocused = false
+                    }
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 50)
+                    .background(iPocketTubeVisualTokens.panelElevated, in: RoundedRectangle(cornerRadius: 12))
+                    .privacySensitive()
+                    .accessibilityLabel(
+                        "Ключ \(playerRouter.transcriptSummary.selectedProvider.displayName) для AI-выжимки"
+                    )
+                    .accessibilityHint("После ввода нажмите Готово над клавиатурой, затем сохраните ключ")
+                    .accessibilityIdentifier("settings.transcriptSummaryAPIKey")
+
+                HStack(spacing: 10) {
+                    Button {
+                        saveTranscriptSummaryKey()
+                    } label: {
+                        Label(
+                            playerRouter.transcriptSummary.hasAPIKey ? "Сохранить новый" : "Сохранить ключ",
+                            systemImage: "key.fill"
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                    }
+                    .iPocketTubeLiquidButtonStyle(prominent: true)
+                    .disabled(summaryAPIKey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+
+                    if playerRouter.transcriptSummary.hasAPIKey {
+                        Button("Отмена") {
+                            summaryAPIKey = ""
+                            isEditingSummaryKey = false
+                            isSummaryAPIKeyFocused = false
+                            summaryKeyMessage = nil
+                        }
+                        .frame(minHeight: 44)
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("settings.cancelTranscriptSummaryKeyReplacement")
+                    }
+                }
+            }
+
+            summaryStatusView
+
+            Link(destination: playerRouter.transcriptSummary.selectedProvider.keyURL) {
+                Label(
+                    "Получить ключ \(playerRouter.transcriptSummary.selectedProvider.displayName)",
+                    systemImage: "arrow.up.right.square"
+                )
+                    .font(.caption.weight(.semibold))
+                    .frame(minHeight: 44, alignment: .leading)
+            }
+            .accessibilityHint("Откроется официальный сайт провайдера")
+        }
+    }
+
+    private var summaryKeyConnectedCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "checkmark.shield.fill")
+                    .font(.title2)
+                    .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("\(playerRouter.transcriptSummary.selectedProvider.displayName) подключён")
+                        .font(.headline)
+                    Text("\(playerRouter.transcriptSummary.selectedModel.displayName) • Keychain")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("Активен")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(iPocketTubeVisualTokens.mint.opacity(0.14), in: Capsule())
+            }
+
+            HStack(spacing: 10) {
+                Button {
+                    isEditingSummaryKey = true
+                    summaryKeyMessage = nil
+                    Task { @MainActor in
+                        isSummaryAPIKeyFocused = true
+                    }
+                } label: {
+                    Label("Заменить", systemImage: "arrow.triangle.2.circlepath")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.replaceTranscriptSummaryKey")
+
+                Button(role: .destructive) {
+                    removeTranscriptSummaryKey()
+                } label: {
+                    Label("Удалить", systemImage: "trash")
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.removeTranscriptSummaryKey")
+            }
+        }
+        .padding(12)
+        .background(iPocketTubeVisualTokens.mint.opacity(0.08), in: RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(iPocketTubeVisualTokens.mint.opacity(0.3), lineWidth: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("settings.transcriptSummaryKeyConnectedCard")
+    }
+
+    @ViewBuilder private var summaryStatusView: some View {
+        if let summaryKeyMessage {
+            Text(summaryKeyMessage)
+                .font(.caption)
+                .foregroundStyle(.red)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+
+        switch playerRouter.transcriptSummary.state {
+        case .needsAPIKey:
+            Text("Добавьте ключ \(playerRouter.transcriptSummary.selectedProvider.displayName). Без него AxrTube покажет локальный фрагмент готовой стенограммы.")
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        case .idle:
+            Label(
+                "\(playerRouter.transcriptSummary.selectedModel.displayName) готова к работе",
+                systemImage: "text.badge.clock"
+            )
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+        case .preparing:
+            VStack(alignment: .leading, spacing: 3) {
+                Label("Фрагмент уже показан на Lock Screen", systemImage: "lock.open.display")
+                    .font(.caption.weight(.semibold))
+                Text("\(playerRouter.transcriptSummary.selectedModel.displayName) создаёт AI-выжимку.")
+                    .font(.caption)
+                    .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+        case .ready:
+            Label(
+                "Выжимка \(playerRouter.transcriptSummary.selectedModel.displayName) добавлена в системную карточку",
+                systemImage: "checkmark.circle.fill"
+            )
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
+                .fixedSize(horizontal: false, vertical: true)
+        case .failed(let message):
+            VStack(alignment: .leading, spacing: 8) {
+                Label(
+                    message,
+                    systemImage: playerRouter.transcriptSummary.isRateLimited
+                        ? "clock.badge.exclamationmark"
+                        : "exclamationmark.triangle.fill"
+                )
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(
+                        playerRouter.transcriptSummary.isRateLimited
+                            ? iPocketTubeVisualTokens.secondaryText
+                            : Color.red
+                    )
+                    .fixedSize(horizontal: false, vertical: true)
+                if playerRouter.transcriptSummary.isShowingLocalFallback {
+                    Text("На экране блокировки уже показан локальный фрагмент стенограммы.")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                Button {
+                    playerRouter.transcriptSummary.retry()
+                } label: {
+                    Label(
+                        playerRouter.transcriptSummary.isRateLimited ? "Повторить позже" : "Повторить",
+                        systemImage: "arrow.clockwise"
+                    )
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.retryTranscriptSummary")
+            }
+        }
+    }
+
+    private func saveTranscriptSummaryKey() {
+        do {
+            try playerRouter.transcriptSummary.saveAPIKey(
+                summaryAPIKey,
+                provider: playerRouter.transcriptSummary.selectedProvider
+            )
+            summaryAPIKey = ""
+            isEditingSummaryKey = false
+            isSummaryAPIKeyFocused = false
+            summaryKeyMessage = nil
+            iPocketTubeHaptics.shared.perform(.settingsToggle)
+        } catch {
+            summaryKeyMessage = "Не удалось сохранить ключ: \(error.localizedDescription)"
+        }
+    }
+
+    private func removeTranscriptSummaryKey() {
+        do {
+            try playerRouter.transcriptSummary.removeAPIKey(
+                provider: playerRouter.transcriptSummary.selectedProvider
+            )
+            summaryAPIKey = ""
+            isEditingSummaryKey = false
+            isSummaryAPIKeyFocused = false
+            summaryKeyMessage = nil
+            iPocketTubeHaptics.shared.perform(.settingsToggle)
+        } catch {
+            summaryKeyMessage = "Не удалось удалить ключ: \(error.localizedDescription)"
+        }
+    }
+
     private var matrixContentContent: some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
             Toggle(isOn: hapticBinding($store.settings.compactSearchCards)) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Compact Search Cards", systemImage: "rectangle.compress.vertical")
-                    Text("Half the vertical height")
+                    Label("Compact Cards", systemImage: "rectangle.compress.vertical")
+                    Text("Search, Media Library, and inactive Downloads")
                         .font(.caption)
                         .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 }
@@ -204,20 +572,6 @@ public struct SettingsView: View {
             .tint(iPocketTubeVisualTokens.mint)
             .frame(minHeight: 56)
             .accessibilityIdentifier("settings.compactSearchCardsToggle")
-
-            Divider().overlay(iPocketTubeVisualTokens.stroke)
-
-            Toggle(isOn: hapticBinding($store.settings.compactMediaLibraryCards)) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Compact Media Library Cards", systemImage: "rectangle.stack")
-                    Text("Half the vertical height")
-                        .font(.caption)
-                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                }
-            }
-            .tint(iPocketTubeVisualTokens.mint)
-            .frame(minHeight: 56)
-            .accessibilityIdentifier("settings.compactMediaLibraryCardsToggle")
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
@@ -670,6 +1024,43 @@ public struct SettingsView: View {
         )
     }
 }
+
+#if os(iOS)
+private extension PlaybackLiveActivityMode {
+    var displayName: String {
+        switch self {
+        case .off: "Off"
+        case .minimal: "Minimal"
+        case .progress: "Progress"
+        case .waveform: "Wave"
+        case .line: "Line"
+        case .automatic: "Auto"
+        }
+    }
+
+    var detail: String {
+        switch self {
+        case .off: "Uses only the standard system Now Playing controls."
+        case .minimal: "AxrTube, play state, and a short title."
+        case .progress: "Playback position, remaining time, and compact progress."
+        case .waveform: "A lightweight snapshot pattern updated at Live Activity cadence."
+        case .line: "The current available caption, with title and author fallback."
+        case .automatic: "Chooses line, progress, or minimal from currently available data."
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .off: "circle.slash"
+        case .minimal: "play.circle"
+        case .progress: "gauge.with.dots.needle.33percent"
+        case .waveform: "waveform"
+        case .line: "captions.bubble"
+        case .automatic: "wand.and.stars"
+        }
+    }
+}
+#endif
 
 // MARK: - GitHubQRView (tvOS)
 

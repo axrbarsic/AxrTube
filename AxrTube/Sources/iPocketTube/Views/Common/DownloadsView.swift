@@ -15,6 +15,9 @@ struct DownloadsView: View {
 
     @State private var deleteConfirmationEntry: DownloadedVideo?
     @State private var showClearConfirmation = false
+    #if os(iOS)
+    @State private var showTranscript = false
+    #endif
 
     var body: some View {
         #if os(iOS)
@@ -35,6 +38,11 @@ struct DownloadsView: View {
                     ForEach(sortedEntries) { entry in
                         let isCurrent = entry.videoId == playerRouter.audioFirst.currentVideo?.id
                             && entry.kind == (playerRouter.audioFirst.currentVideo?.localMediaKind ?? .audio)
+                        let layoutVariant = VideoCardLayoutPolicy.variant(
+                            for: .downloads,
+                            compactCards: settingsStore.settings.compactSearchCards,
+                            isActiveNowPlaying: isCurrent
+                        )
                         Group {
                             if isCurrent {
                                 DownloadedNowPlayingCard(
@@ -56,12 +64,17 @@ struct DownloadsView: View {
                                         iPocketTubeHaptics.shared.perform(.seekCommit)
                                         playerRouter.audioFirst.commitScrubbing()
                                     },
+                                    onTranscript: {
+                                        iPocketTubeHaptics.shared.perform(.contentSelection)
+                                        showTranscript = true
+                                    },
                                     onRetry: { retry(entry) },
                                     onDelete: { deleteConfirmationEntry = entry }
                                 )
                             } else {
                                 DownloadedMediaRow(
                                     entry: entry,
+                                    compact: layoutVariant == .compact,
                                     edrEnabled: settingsStore.settings.experimentalEDRPressGlowEnabled,
                                     onRetry: { retry(entry) },
                                     onCancel: {
@@ -145,6 +158,11 @@ struct DownloadsView: View {
             }
         } message: {
             Text("All downloaded video and audio files will be removed from AxrTube.")
+        }
+        .fullScreenCover(isPresented: $showTranscript) {
+            CurrentPlaybackTranscriptPanel {
+                showTranscript = false
+            }
         }
     }
 
@@ -263,6 +281,7 @@ private struct DownloadedNowPlayingCard: View {
     let onScrubBegan: () -> Void
     let onScrubChanged: (TimeInterval) -> Void
     let onScrubEnded: () -> Void
+    let onTranscript: () -> Void
     let onRetry: () -> Void
     let onDelete: () -> Void
 
@@ -312,17 +331,17 @@ private struct DownloadedNowPlayingCard: View {
                 Text(failureDescription(entry))
                     .font(.caption)
                     .foregroundStyle(iPocketTubeVisualTokens.warning)
-                    .lineLimit(2)
-                Button("Retry", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .tint(iPocketTubeVisualTokens.mint)
-                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
-                    .frame(minHeight: 44)
+                    .fixedSize(horizontal: false, vertical: true)
+                if shouldOfferRetry(entry) {
+                    Button("Retry", action: onRetry)
+                        .buttonStyle(.borderedProminent)
+                        .tint(iPocketTubeVisualTokens.mint)
+                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                        .frame(minHeight: 44)
+                }
             } else {
                 AudioWaveformView(
                     videoID: entry.videoId,
-                    fileURL: entry.fileURL,
-                    fileVersion: entry.fileSizeBytes,
                     playbackTime: playbackTime,
                     duration: playbackDuration,
                     bufferedProgress: bufferedProgress,
@@ -348,6 +367,15 @@ private struct DownloadedNowPlayingCard: View {
                 ProgressView(value: downloadProgress)
                     .tint(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: 1, y: 0.55, anchor: .center)
+                Button(action: onTranscript) {
+                    Label("Стенограмма", systemImage: "text.quote")
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+                .buttonStyle(.bordered)
+                .tint(.red)
+                .accessibilityLabel("Открыть стенограмму")
+                .accessibilityIdentifier("downloads.nowPlaying.transcriptButton")
                 if entry.status == .finalizationPending {
                     Button("Retry Offline Saving", action: onRetry)
                         .buttonStyle(.borderedProminent)
@@ -357,7 +385,7 @@ private struct DownloadedNowPlayingCard: View {
                 }
             }
         }
-        .iPocketTubeCardSurface(cornerRadius: 18, contentPadding: 14)
+        .iPocketTubeActivePlaybackSurface(cornerRadius: 18, contentPadding: 14)
         .overlay(alignment: .topLeading) {
             Text("Now Playing")
                 .font(.caption2.weight(.black))
@@ -375,18 +403,23 @@ private struct DownloadedNowPlayingCard: View {
 
 private struct DownloadedMediaRow: View {
     let entry: DownloadedVideo
+    let compact: Bool
     let edrEnabled: Bool
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onPlay: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            mediaThumbnail(entry: entry, width: 100, height: 56)
-            VStack(alignment: .leading, spacing: 5) {
+        HStack(alignment: .top, spacing: compact ? 10 : 12) {
+            mediaThumbnail(
+                entry: entry,
+                width: compact ? 84 : 100,
+                height: compact ? 47 : 56
+            )
+            VStack(alignment: .leading, spacing: compact ? 3 : 5) {
                 Text(entry.title)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    .lineLimit(compact ? 1 : 2)
                 Text(entry.channelTitle)
                     .font(.caption)
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
@@ -413,27 +446,34 @@ private struct DownloadedMediaRow: View {
                 .accessibilityLabel("Play")
             }
         }
-        .iPocketTubeCardSurface(cornerRadius: 16, contentPadding: 12)
+        .iPocketTubeCardSurface(cornerRadius: 16, contentPadding: compact ? 9 : 12)
+        .animation(.easeInOut(duration: 0.16), value: compact)
+        .accessibilityValue(compact ? "compact" : "regular")
     }
 
     @ViewBuilder private var statusContent: some View {
-        switch entry.status {
-        case .completed:
+        switch DownloadCardPresentationPolicy.statusPresentation(
+            status: entry.status,
+            resumePolicy: entry.resumePolicy,
+            failureReason: effectiveFailureReason(entry)
+        ) {
+        case .none:
             EmptyView()
-        case .paused:
+        case .paused(let showsContinue):
             VStack(alignment: .leading, spacing: 6) {
                 Text(entry.resumePolicy == .manual ? "Download paused by you." : "Resuming automatically…")
                     .font(.caption2)
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                if entry.resumePolicy == .manual {
+                if showsContinue {
                     Button("Continue", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(iPocketTubeVisualTokens.mint)
                         .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                        .accessibilityIdentifier("downloads.continueButton")
                 }
             }
-        case .finalizationPending:
+        case .finalizationRetry:
             VStack(alignment: .leading, spacing: 6) {
                 Text("Playback is available. Offline saving needs retry.")
                     .font(.caption2)
@@ -443,6 +483,7 @@ private struct DownloadedMediaRow: View {
                     .controlSize(.small)
                     .tint(iPocketTubeVisualTokens.mint)
                     .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                    .accessibilityIdentifier("downloads.retryOfflineButton")
             }
         case .waitingForWiFi:
             Label("Waiting for Wi-Fi", systemImage: "wifi")
@@ -452,26 +493,31 @@ private struct DownloadedMediaRow: View {
             Label("Reconnecting…", systemImage: "arrow.triangle.2.circlepath")
                 .font(.caption2)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-        case .failed, .cancelled:
+        case .failure(let showsRetry):
             VStack(alignment: .leading, spacing: 6) {
                 Text(failureDescription(entry))
                     .font(.caption2)
                     .foregroundStyle(iPocketTubeVisualTokens.warning)
-                    .lineLimit(2)
-                Button("Retry", action: onRetry)
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
-                    .tint(iPocketTubeVisualTokens.mint)
-                    .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
-                    .iPocketTubeEDRPressEffect(enabled: edrEnabled, cornerRadius: 8)
+                    .fixedSize(horizontal: false, vertical: true)
+                if showsRetry {
+                    Button("Retry", action: onRetry)
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        .tint(iPocketTubeVisualTokens.mint)
+                        .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
+                        .iPocketTubeEDRPressEffect(enabled: edrEnabled, cornerRadius: 8)
+                        .accessibilityIdentifier("downloads.retryButton")
+                }
             }
-        default:
+        case .progressAndCancel:
             HStack(spacing: 8) {
                 ProgressView(value: entry.progress)
                     .tint(iPocketTubeVisualTokens.mint)
+                    .accessibilityIdentifier("downloads.progress")
                 Button("Cancel", role: .destructive, action: onCancel)
                     .buttonStyle(.borderless)
                     .font(.caption)
+                    .accessibilityIdentifier("downloads.cancelButton")
             }
         }
     }
@@ -556,13 +602,25 @@ private func mediaThumbnail(entry: DownloadedVideo, width: CGFloat, height: CGFl
 }
 
 private func failureDescription(_ entry: DownloadedVideo) -> String {
+    if let reason = effectiveFailureReason(entry) {
+        return OfflineFailurePresentationPolicy.message(for: reason)
+    }
     if entry.status == .cancelled {
         return String(localized: "Download cancelled.", bundle: .module)
     }
     if entry.errorMessage == "Download was interrupted. Tap Retry." {
         return String(localized: "Download was interrupted. Tap Retry.", bundle: .module)
     }
-    return entry.errorMessage ?? String(localized: "Download failed.", bundle: .module)
+    return "Не удалось открыть ролик. Повторите попытку."
+}
+
+private func shouldOfferRetry(_ entry: DownloadedVideo) -> Bool {
+    OfflineFailurePresentationPolicy.allowsManualRetry(for: effectiveFailureReason(entry))
+}
+
+private func effectiveFailureReason(_ entry: DownloadedVideo) -> OfflineFailureReason? {
+    entry.failureReason
+        ?? OfflineFailurePresentationPolicy.inferredReason(from: entry.errorMessage)
 }
 #endif
 

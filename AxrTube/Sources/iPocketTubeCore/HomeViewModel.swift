@@ -60,8 +60,8 @@ public final class HomeViewModel {
     /// Timestamp of the last successful load. Used for staleness checks.
     public private(set) var loadedAt: Date? = nil
     /// Frozen snapshot of the interleaved home feed. Updated once both sections
-    /// finish loading (avoiding mid-load rearrangement). Appended to during
-    /// pagination without ever reordering existing items.
+    /// finish loading (avoiding mid-load rearrangement). Pagination appends one
+    /// stable batch; a completed exact-date enrichment may atomically re-sort it.
     public private(set) var mergedVideos: [Video] = []
 
     // MARK: - Shelf definitions (in display order)
@@ -411,6 +411,7 @@ public final class HomeViewModel {
         let sectionSnapshots = sections.map(\.videos)
         let sectionIDs = sectionSnapshots.map { $0.map(\.id) }
         let shortsSnapshot = shortsVideos
+        let shortsIDs = shortsSnapshot.map(\.id)
         let mergedIDs = mergedVideos.map(\.id)
         publicationEnrichmentTask = Task { [weak self] in
             guard let self else { return }
@@ -421,21 +422,34 @@ public final class HomeViewModel {
             guard !Task.isCancelled,
                   generation == self.stateGeneration,
                   self.sections.map({ $0.videos.map(\.id) }) == sectionIDs,
+                  self.shortsVideos.map(\.id) == shortsIDs,
                   self.mergedVideos.map(\.id) == mergedIDs else { return }
-            for index in self.sections.indices where index < enrichedSections.count {
-                self.sections[index].videos = enrichedSections[index]
+            var nextSections = self.sections
+            for index in nextSections.indices where index < enrichedSections.count {
+                nextSections[index].videos = enrichedSections[index]
             }
             let metadata = VideoPublicationSortPolicy.metadataByVideoID(
                 enrichedSections.flatMap { $0 } + enrichedShorts
             )
-            self.shortsVideos = self.shortsVideos.map { video in
+            let nextShorts = self.shortsVideos.map { video in
                 guard let candidate = metadata[video.id] else { return video }
                 return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: candidate)
             }
-            self.mergedVideos = self.mergedVideos.map { video in
-                guard let candidate = metadata[video.id] else { return video }
-                return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: candidate)
-            }
+            let nextMerged = VideoPublicationSortPolicy.merging(
+                existing: [],
+                page: self.mergedVideos.map { video in
+                    guard let candidate = metadata[video.id] else { return video }
+                    return VideoPublicationSortPolicy.mergingPublicationMetadata(base: video, candidate: candidate)
+                },
+                for: .home
+            )
+
+            // Every collection is prepared before the first mutation. In particular,
+            // the visible Home snapshot receives exact metadata and final order in one
+            // assignment, so SwiftUI cannot render an enriched but unsorted midpoint.
+            self.sections = nextSections
+            self.shortsVideos = nextShorts
+            self.mergedVideos = nextMerged
         }
     }
 

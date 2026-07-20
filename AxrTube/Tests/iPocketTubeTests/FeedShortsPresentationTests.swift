@@ -63,22 +63,25 @@ struct FeedShortsPresentationTests {
         #expect(Set(visible.map(\.id)).count == visible.count)
     }
 
-    @Test("Search and media compact toggles select independent shared card variants")
-    func independentCompactCardPolicy() {
-        #expect(VideoCardLayoutPolicy.variant(
-            for: .search,
-            compactSearchCards: true,
-            compactMediaLibraryCards: false
-        ) == .compact)
-        #expect(VideoCardLayoutPolicy.variant(
-            for: .mediaLibrary,
-            compactSearchCards: true,
-            compactMediaLibraryCards: false
-        ) == .regular)
+    @Test("One compact setting controls Search, Media Library, and Downloads")
+    func unifiedCompactCardPolicy() {
+        for context in [
+            VideoCardCatalogContext.search,
+            .mediaLibrary,
+            .downloads,
+        ] {
+            #expect(VideoCardLayoutPolicy.variant(
+                for: context,
+                compactCards: true
+            ) == .compact)
+            #expect(VideoCardLayoutPolicy.variant(
+                for: context,
+                compactCards: false
+            ) == .regular)
+        }
         #expect(VideoCardLayoutPolicy.variant(
             for: .standard,
-            compactSearchCards: true,
-            compactMediaLibraryCards: true
+            compactCards: true
         ) == .regular)
     }
 
@@ -92,32 +95,75 @@ struct FeedShortsPresentationTests {
             #expect(route.catalogContext == .mediaLibrary)
             #expect(VideoCardLayoutPolicy.variant(
                 for: route.catalogContext,
-                compactSearchCards: false,
-                compactMediaLibraryCards: true
+                compactCards: true
             ) == .compact)
             #expect(VideoCardLayoutPolicy.variant(
                 for: route.catalogContext,
-                compactSearchCards: true,
-                compactMediaLibraryCards: false
+                compactCards: false
             ) == .regular)
         }
     }
 
-    @Test("Search toggle cannot change Media and Media toggle cannot change Search")
-    func searchAndMediaRemainIndependentInBothDirections() {
-        for searchEnabled in [false, true] {
+    @Test("Active Downloads Now Playing card is always regular")
+    func activeDownloadCardException() {
+        #expect(VideoCardLayoutPolicy.variant(
+            for: .downloads,
+            compactCards: true,
+            isActiveNowPlaying: false
+        ) == .compact)
+        for compactCards in [false, true] {
             #expect(VideoCardLayoutPolicy.variant(
-                for: .mediaLibrary,
-                compactSearchCards: searchEnabled,
-                compactMediaLibraryCards: false
+                for: .downloads,
+                compactCards: compactCards,
+                isActiveNowPlaying: true
             ) == .regular)
         }
-        for mediaEnabled in [false, true] {
-            #expect(VideoCardLayoutPolicy.variant(
-                for: .search,
-                compactSearchCards: false,
-                compactMediaLibraryCards: mediaEnabled
-            ) == .regular)
-        }
+    }
+
+    @Test("Compact setting persists after settings recreation")
+    func compactSettingRoundTrip() throws {
+        var settings = AppSettings()
+        settings.compactSearchCards = false
+        let regular = try JSONDecoder().decode(
+            AppSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+        #expect(!regular.compactSearchCards)
+
+        settings.compactSearchCards = true
+        let compact = try JSONDecoder().decode(
+            AppSettings.self,
+            from: JSONEncoder().encode(settings)
+        )
+        #expect(compact.compactSearchCards)
+    }
+
+    @Test("Compact download rows preserve progress, error, and retry controls")
+    func compactDownloadStatusControls() {
+        #expect(DownloadCardPresentationPolicy.statusPresentation(
+            status: .downloading,
+            resumePolicy: .automatic,
+            failureReason: nil
+        ) == .progressAndCancel)
+        #expect(DownloadCardPresentationPolicy.statusPresentation(
+            status: .failed,
+            resumePolicy: .automatic,
+            failureReason: .transientNetwork
+        ) == .failure(showsRetry: true))
+        #expect(DownloadCardPresentationPolicy.statusPresentation(
+            status: .failed,
+            resumePolicy: .automatic,
+            failureReason: .regionRestricted
+        ) == .failure(showsRetry: false))
+        #expect(DownloadCardPresentationPolicy.statusPresentation(
+            status: .paused,
+            resumePolicy: .manual,
+            failureReason: nil
+        ) == .paused(showsContinue: true))
+        #expect(DownloadCardPresentationPolicy.statusPresentation(
+            status: .finalizationPending,
+            resumePolicy: .automatic,
+            failureReason: nil
+        ) == .finalizationRetry)
     }
 }

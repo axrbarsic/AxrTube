@@ -51,8 +51,9 @@ public final class SettingsStore {
             changed = true
         }
         if migrated.settingsVersion < 5 {
-            // Compact cards are the new install/update default, while remaining
-            // independently reversible by the user after this one-time migration.
+            // Compact cards are the new install/update default. Both historical
+            // fields are initialized for decode compatibility; production layout
+            // uses compactSearchCards as the single persisted preference.
             migrated.compactSearchCards = true
             migrated.compactMediaLibraryCards = true
             changed = true

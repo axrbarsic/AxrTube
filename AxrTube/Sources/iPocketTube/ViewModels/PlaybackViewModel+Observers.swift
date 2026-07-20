@@ -13,7 +13,10 @@ extension PlaybackViewModel {
 
     func setupTimeObserver() {
         guard timeObserver == nil else { return }
-        let interval = CMTime(seconds: 0.5, preferredTimescale: 600)
+        let interval = CMTime(
+            seconds: CaptionTranscriptPolicy.activeCueObserverInterval,
+            preferredTimescale: 600
+        )
         timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: nil) { [weak self] time in
             guard let self else { return }
             let seconds = time.seconds
@@ -73,6 +76,16 @@ extension PlaybackViewModel {
             guard let self, let newRate = change.newValue else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                #if os(iOS)
+                if LocalDubbingAudioOwnershipPolicy.shouldSuppressSourceRate(
+                    localPlaybackIsActive: self.localDubbingManager.isPlaying,
+                    sourceRate: newRate
+                ) {
+                    self.player.pause()
+                    self.isPlaying = false
+                    return
+                }
+                #endif
                 // Ignore rate changes that we ourselves triggered (load/pause/resume/stop)
                 // by only acting when the player goes silent unexpectedly while we
                 // believed it was playing.

@@ -45,6 +45,112 @@ public enum DownloadResumePolicy: String, Codable, Sendable {
     case manual
 }
 
+/// Durable, typed reasons for terminal offline failures whose recovery is not a
+/// blind retry. The optional field keeps older manifests source-compatible.
+public enum OfflineFailureReason: String, Codable, Sendable {
+    /// Compatibility value written by the previous combined age/login classifier.
+    /// It is intentionally retryable because the original evidence was ambiguous.
+    case signInRequired
+    case ageRestricted
+    case loginRequired
+    case botChallenge
+    case regionRestricted
+    case unavailable
+    case transientNetwork
+    case resolverFailure
+}
+
+public enum OfflineFailurePresentationPolicy {
+    public static func reason(for error: Error) -> OfflineFailureReason? {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .ageRestricted:
+                return .ageRestricted
+            case .signInRequired, .notAuthenticated:
+                return .loginRequired
+            case .ipBlocked:
+                return .botChallenge
+            case .regionRestricted:
+                return .regionRestricted
+            case .unavailable:
+                return .unavailable
+            case .httpError(let status):
+                if status == 401 { return .loginRequired }
+                if status == 404 { return .unavailable }
+                return status == 429 ? .botChallenge : .resolverFailure
+            case .decodingError, .invalidURL:
+                return .resolverFailure
+            }
+        }
+
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain {
+            return .transientNetwork
+        }
+        if nsError.domain == AudioSourceResolutionFailure.errorDomain {
+            return .resolverFailure
+        }
+        return inferredReason(from: error.localizedDescription)
+    }
+
+    public static func inferredReason(from message: String?) -> OfflineFailureReason? {
+        guard let message else { return nil }
+        let value = message.lowercased()
+        if value.contains("age-restricted or requires sign in") {
+            return .signInRequired
+        }
+        if ["age-restricted", "age restricted", "age verification", "confirm your age"]
+            .contains(where: value.contains) {
+            return .ageRestricted
+        }
+        if ["not a bot", "confirm you're not", "your ip", "ip address", "vpn", "proxy"]
+            .contains(where: value.contains) {
+            return .botChallenge
+        }
+        if ["not available in your country", "not available in your region", "region restriction"]
+            .contains(where: value.contains) {
+            return .regionRestricted
+        }
+        if value.contains("sign in") || value.contains("not authenticated") {
+            return .loginRequired
+        }
+        if value.contains("video is unavailable") || value.contains("video unavailable") {
+            return .unavailable
+        }
+        return nil
+    }
+
+    public static func message(for reason: OfflineFailureReason) -> String {
+        switch reason {
+        case .signInRequired:
+            return "YouTube не подтвердил доступ. Повторите попытку."
+        case .ageRestricted:
+            return "Нужно подтвердить возраст в YouTube."
+        case .loginRequired:
+            return "Для ролика нужен вход в YouTube."
+        case .botChallenge:
+            return "YouTube просит проверить запрос. Повторите попытку."
+        case .regionRestricted:
+            return "Ролик недоступен в вашем регионе."
+        case .unavailable:
+            return "Ролик недоступен у источника."
+        case .transientNetwork:
+            return "Сеть временно недоступна. Повторите попытку."
+        case .resolverFailure:
+            return "Источник аудио временно недоступен."
+        }
+    }
+
+    public static func allowsManualRetry(for reason: OfflineFailureReason?) -> Bool {
+        switch reason {
+        case .ageRestricted, .loginRequired, .regionRestricted, .unavailable:
+            return false
+        case .signInRequired, .botChallenge, .transientNetwork, .resolverFailure, nil:
+            return true
+        }
+    }
+}
+
 /// One item in iPocketTube's internal offline collection. The historical type name
 /// is retained so existing manifests decode in place, but entries can now contain
 /// either video (MP4) or audio (M4A) and persist download lifecycle state.
@@ -66,6 +172,7 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
     public var progress: Double
     public var fileSizeBytes: Int64
     public var errorMessage: String?
+    public var failureReason: OfflineFailureReason?
     public var retryCount: Int
     public var resumePolicy: DownloadResumePolicy
 
@@ -83,6 +190,7 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
         progress: Double = 1,
         fileSizeBytes: Int64 = 0,
         errorMessage: String? = nil,
+        failureReason: OfflineFailureReason? = nil,
         retryCount: Int = 0,
         resumePolicy: DownloadResumePolicy = .automatic
     ) {
@@ -99,6 +207,7 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
         self.progress = min(max(progress, 0), 1)
         self.fileSizeBytes = fileSizeBytes
         self.errorMessage = errorMessage
+        self.failureReason = failureReason
         self.retryCount = retryCount
         self.resumePolicy = resumePolicy
     }
@@ -123,7 +232,7 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
 
     private enum CodingKeys: String, CodingKey {
         case videoId, title, channelTitle, thumbnailURL, duration, fileURL, downloadedAt, lastPlayedAt
-        case kind, status, progress, fileSizeBytes, errorMessage, retryCount, resumePolicy
+        case kind, status, progress, fileSizeBytes, errorMessage, failureReason, retryCount, resumePolicy
     }
 
     public init(from decoder: Decoder) throws {
@@ -142,6 +251,8 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
         progress = try container.decodeIfPresent(Double.self, forKey: .progress) ?? 1
         fileSizeBytes = try container.decodeIfPresent(Int64.self, forKey: .fileSizeBytes) ?? 0
         errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+        failureReason = try container.decodeIfPresent(OfflineFailureReason.self, forKey: .failureReason)
+            ?? OfflineFailurePresentationPolicy.inferredReason(from: errorMessage)
         retryCount = try container.decodeIfPresent(Int.self, forKey: .retryCount) ?? 0
         resumePolicy = try container.decodeIfPresent(DownloadResumePolicy.self, forKey: .resumePolicy)
             ?? (status == .cancelled ? .manual : .automatic)
@@ -222,6 +333,7 @@ public final class DownloadStore {
             // verified sparse progress. Fresh stream URLs are resolved by the caller.
             entries[index].status = .queued
             entries[index].errorMessage = nil
+            entries[index].failureReason = nil
             entries[index].retryCount += 1
             entries[index].resumePolicy = .automatic
             if kind == .audio, let partial = bestPartialSnapshot(videoID: video.id) {
@@ -260,6 +372,7 @@ public final class DownloadStore {
             guard entries[index].status != .completed else { return false }
             entries[index].status = .queued
             entries[index].errorMessage = nil
+            entries[index].failureReason = nil
             entries[index].resumePolicy = .automatic
             if kind == .audio, let partial = bestPartialSnapshot(videoID: video.id) {
                 entries[index].fileSizeBytes = max(entries[index].fileSizeBytes, partial.verifiedBytes)
@@ -277,6 +390,7 @@ public final class DownloadStore {
         status: OfflineDownloadStatus,
         progress: Double,
         errorMessage: String? = nil,
+        failureReason: OfflineFailureReason? = nil,
         retryCount: Int? = nil,
         fileSizeBytes: Int64? = nil,
         resumePolicy: DownloadResumePolicy? = nil
@@ -289,6 +403,7 @@ public final class DownloadStore {
         // happens only in begin() after proving that no compatible range map exists.
         entries[index].progress = max(entries[index].progress, min(max(progress, 0), 1))
         entries[index].errorMessage = errorMessage
+        entries[index].failureReason = failureReason
         if let retryCount { entries[index].retryCount = retryCount }
         if let fileSizeBytes {
             entries[index].fileSizeBytes = max(entries[index].fileSizeBytes, fileSizeBytes)
@@ -438,6 +553,7 @@ public final class DownloadStore {
                 progress: stored.progress,
                 fileSizeBytes: stored.fileSizeBytes,
                 errorMessage: stored.errorMessage,
+                failureReason: stored.failureReason,
                 retryCount: stored.retryCount,
                 resumePolicy: stored.resumePolicy
             )

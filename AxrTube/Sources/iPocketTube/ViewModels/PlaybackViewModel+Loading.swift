@@ -157,6 +157,10 @@ extension PlaybackViewModel {
             history.append(prev)
         }
         currentVideo = video
+        _ = captionsManager.beginPlaybackItem(
+            video.id,
+            bookMetadata: transcriptBookMetadata(for: video)
+        )
         // fix236: Record the intended video at load() time so checkWrongVideoOnFirstPlay()
         // can detect if a stale task swaps currentVideo before readyToPlay fires.
         intendedVideoId = video.id
@@ -718,7 +722,6 @@ extension PlaybackViewModel {
             playerInfo = info
             availableFormats = Self.deduplicatedVideoFormats(info.formats)
             playerLog.notice("[loadAsync] availableFormats after initial dedup: raw=\(info.formats.count) deduped=\(availableFormats.count) maxH=\(availableFormats.map(\.height).max() ?? 0)")
-            availableCaptions = info.captionTracks
             autoApplyCaptionPreference(tracks: info.captionTracks)
             selectedFormat = nil
 

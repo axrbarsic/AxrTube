@@ -970,7 +970,6 @@ extension PlaybackViewModel {
             availableFormats = newFormats
         }
         playerLog.notice("[\(label)] availableFormats after dedup: input=\(info.formats.count) output=\(newFormats.count) kept=\(availableFormats.count) maxH=\(availableFormats.map(\.height).max() ?? 0)")
-        availableCaptions = info.captionTracks
         autoApplyCaptionPreference(tracks: info.captionTracks)
 
         var effectiveURL = url
@@ -1282,7 +1281,6 @@ extension PlaybackViewModel {
             availableFormats = newFormats
         }
         playerLog.notice("[\(label)/adaptive] availableFormats after dedup: input=\(info.formats.count) output=\(newFormats.count) kept=\(availableFormats.count) maxH=\(availableFormats.map(\.height).max() ?? 0)")
-        availableCaptions = info.captionTracks
         autoApplyCaptionPreference(tracks: info.captionTracks)
 
         // Inject Bearer only for TVAuth (TVHTML5 authenticated) — CDN validates the

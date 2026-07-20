@@ -280,6 +280,111 @@ struct InstantAudioSparseCacheTests {
         #expect(playable.phase == .finalizationPending("offline finalization failed"))
     }
 
+    @Test("Age restriction is a typed non-retryable failure with a Russian presentation")
+    func ageRestrictionDoesNotOfferBlindRetryOrOwnNowPlaying() throws {
+        let reason = OfflineFailurePresentationPolicy.reason(for: APIError.ageRestricted)
+        #expect(reason == .ageRestricted)
+        #expect(!OfflineFailurePresentationPolicy.allowsManualRetry(for: reason))
+        #expect(OfflineFailurePresentationPolicy.message(for: .ageRestricted)
+            == "Нужно подтвердить возраст в YouTube.")
+
+        let legacy = DownloadedVideo(
+            videoId: "restricted-fixture",
+            title: "Restricted",
+            channelTitle: "Fixture",
+            thumbnailURL: nil,
+            duration: 30,
+            fileURL: URL(fileURLWithPath: "/tmp/restricted-fixture.m4a"),
+            downloadedAt: nil,
+            status: .failed,
+            progress: 0,
+            errorMessage: "This video is age-restricted or requires sign in to watch."
+        )
+        let migrated = try JSONDecoder().decode(
+            DownloadedVideo.self,
+            from: JSONEncoder().encode(legacy)
+        )
+        #expect(migrated.failureReason == .signInRequired)
+        #expect(OfflineFailurePresentationPolicy.allowsManualRetry(for: migrated.failureReason))
+        #expect(OfflineFailurePresentationPolicy.message(for: .signInRequired)
+            == "YouTube не подтвердил доступ. Повторите попытку.")
+
+        var state = AudioFirstAuthoritativeState()
+        _ = state.reduce(.begin(generation: 22, durableProgress: 0))
+        _ = state.reduce(.exhaustedFailure(
+            generation: 22,
+            message: OfflineFailurePresentationPolicy.message(for: .ageRestricted)
+        ))
+        #expect(!state.hasPlayableSource)
+        #expect(AudioFirstTerminalPresentationPolicy.shouldDetachNowPlaying(
+            hasPlayableSource: state.hasPlayableSource
+        ))
+    }
+
+    @Test("Playability signatures keep age, login, bot, region, and unavailable distinct")
+    func playerRestrictionSignaturesStayDistinct() {
+        let age = PlayerPlayabilityFailureClassifier.error(
+            status: "AGE_VERIFICATION_REQUIRED",
+            reason: "Sign in to confirm your age"
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: age) == .ageRestricted)
+
+        let login = PlayerPlayabilityFailureClassifier.error(
+            status: "LOGIN_REQUIRED",
+            reason: "Please sign in to watch this video"
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: login) == .loginRequired)
+
+        let bot = PlayerPlayabilityFailureClassifier.error(
+            status: "LOGIN_REQUIRED",
+            reason: "Sign in to confirm you're not a bot"
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: bot) == .botChallenge)
+        #expect(OfflineFailurePresentationPolicy.allowsManualRetry(for: .botChallenge))
+
+        let region = PlayerPlayabilityFailureClassifier.error(
+            status: "UNPLAYABLE",
+            reason: "This video is not available in your country"
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: region) == .regionRestricted)
+        #expect(!OfflineFailurePresentationPolicy.allowsManualRetry(for: .regionRestricted))
+
+        let unavailable = PlayerPlayabilityFailureClassifier.error(
+            status: "ERROR",
+            reason: "This video is unavailable"
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: unavailable) == .unavailable)
+        #expect(!OfflineFailurePresentationPolicy.allowsManualRetry(for: .unavailable))
+    }
+
+    @Test("Generic LOGIN_REQUIRED is never called an age restriction")
+    func loginRequiredDoesNotFalsePositiveAsAgeRestriction() {
+        let error = PlayerPlayabilityFailureClassifier.error(
+            status: "LOGIN_REQUIRED",
+            reason: nil
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: error) == .loginRequired)
+        #expect(OfflineFailurePresentationPolicy.reason(for: error) != .ageRestricted)
+        #expect(OfflineFailurePresentationPolicy.message(for: .loginRequired)
+            == "Для ролика нужен вход в YouTube.")
+    }
+
+    @Test("Network and resolver failures stay retryable and Russian")
+    func transientFailurePresentationPolicy() {
+        let network = OfflineFailurePresentationPolicy.reason(for: URLError(.networkConnectionLost))
+        #expect(network == .transientNetwork)
+        #expect(OfflineFailurePresentationPolicy.allowsManualRetry(for: network))
+        #expect(OfflineFailurePresentationPolicy.message(for: .transientNetwork)
+            == "Сеть временно недоступна. Повторите попытку.")
+
+        let resolver = NSError(
+            domain: AudioSourceResolutionFailure.errorDomain,
+            code: AudioSourceResolutionFailure.unsupportedFormats.rawValue
+        )
+        #expect(OfflineFailurePresentationPolicy.reason(for: resolver) == .resolverFailure)
+        #expect(OfflineFailurePresentationPolicy.allowsManualRetry(for: .resolverFailure))
+    }
+
     @Test("Connection loss preserves verified chunks across manifest round-trip")
     func connectionLossPreservesDurableMissingRanges() throws {
         let fingerprint = SparseSourceFingerprint(

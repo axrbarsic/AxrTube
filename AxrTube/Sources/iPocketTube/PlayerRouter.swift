@@ -26,6 +26,8 @@ public final class PlayerRouter {
     private let playerState: PlayerStateStore
     private let tosState: TOSPlayerStateStore
     public let audioFirst: AudioFirstPlaybackCoordinator
+    public let playbackLiveActivity: PlaybackLiveActivityController
+    public let transcriptSummary: TranscriptSummaryManager
 
     public init(
         playerState: PlayerStateStore,
@@ -35,11 +37,20 @@ public final class PlayerRouter {
     ) {
         self.playerState = playerState
         self.tosState = tosState
+        let transcriptSummary = TranscriptSummaryManager()
+        let playbackLiveActivity = PlaybackLiveActivityController(settingsStore: settingsStore)
+        self.transcriptSummary = transcriptSummary
+        self.playbackLiveActivity = playbackLiveActivity
         self.audioFirst = AudioFirstPlaybackCoordinator(
             api: api,
             playerState: playerState,
-            settingsStore: settingsStore
+            settingsStore: settingsStore,
+            playbackLiveActivity: playbackLiveActivity,
+            transcriptSummary: transcriptSummary
         )
+        transcriptSummary.onSummaryReady = { [weak playerState] videoID, text in
+            playerState?.vm.applyNowPlayingSummary(videoID: videoID, text: text)
+        }
     }
 
     /// The production tap contract is permanently audio-first. It never enters

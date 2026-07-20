@@ -236,6 +236,27 @@ private struct iPocketTubeCardSurfaceModifier: ViewModifier {
     }
 }
 
+/// Solid semantic playback surface. Unlike the general thin-material cards it
+/// does not pick up a grey system cast, so the active card and its transparent
+/// scope remain in the same light or Matrix palette as the page.
+private struct iPocketTubeActivePlaybackSurfaceModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let contentPadding: CGFloat
+
+    func body(content: Content) -> some View {
+        content
+            .padding(contentPadding)
+            .background(
+                iPocketTubeVisualTokens.panel,
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .stroke(iPocketTubeVisualTokens.stroke, lineWidth: 0.8)
+            }
+    }
+}
+
 /// Applies Apple's Liquid Glass only to app chrome and custom controls. Content
 /// cards deliberately use the calmer semantic material surface above.
 private struct iPocketTubeGlassSurfaceModifier: ViewModifier {
@@ -337,6 +358,13 @@ extension View {
 
     func iPocketTubeCardSurface(cornerRadius: CGFloat = 14, contentPadding: CGFloat = 6) -> some View {
         modifier(iPocketTubeCardSurfaceModifier(cornerRadius: cornerRadius, contentPadding: contentPadding))
+    }
+
+    func iPocketTubeActivePlaybackSurface(cornerRadius: CGFloat = 18, contentPadding: CGFloat = 14) -> some View {
+        modifier(iPocketTubeActivePlaybackSurfaceModifier(
+            cornerRadius: cornerRadius,
+            contentPadding: contentPadding
+        ))
     }
 
     func iPocketTubeGlassSurface(cornerRadius: CGFloat = 18, interactive: Bool = false) -> some View {

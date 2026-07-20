@@ -26786,11 +26786,11 @@
     "Save Offline": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Сохранить офлайн" } } }
     },
-    "Video — AxrTube + Photos": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео — AxrTube и «Фото»" } } }
+    "Video: AxrTube + Photos": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Видео: AxrTube и «Фото»" } } }
     },
-    "Audio — AxrTube": {
-      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио — AxrTube" } } }
+    "Audio: AxrTube": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Аудио: AxrTube" } } }
     },
     "Choose what to save in the offline collection.": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Выберите, что сохранить в офлайн-коллекции." } } }
@@ -27046,6 +27046,54 @@
     },
     "Publication date: %@": {
       "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Дата публикации: %@" } } }
+    },
+    "Dynamic Island": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Dynamic Island" } } }
+    },
+    "Green App Icon": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Зелёная иконка приложения" } } }
+    },
+    "Red is the default. Switch to the green AXR icon anytime.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Красная иконка используется по умолчанию. Зелёную AXR можно включить в любой момент." } } }
+    },
+    "Alternate app icons are unavailable on this device.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Смена иконки недоступна на этом устройстве." } } }
+    },
+    "App Icon": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Иконка приложения" } } }
+    },
+    "Mode": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Режим" } } }
+    },
+    "Minimal": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Минимальный" } } }
+    },
+    "Progress": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Прогресс" } } }
+    },
+    "Wave": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Волна" } } }
+    },
+    "Line": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Строка" } } }
+    },
+    "Uses only the standard system Now Playing controls.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Использует только стандартные системные элементы Now Playing." } } }
+    },
+    "AxrTube, play state, and a short title.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "AxrTube, состояние воспроизведения и короткий заголовок." } } }
+    },
+    "Playback position, remaining time, and compact progress.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Позиция, оставшееся время и компактный прогресс." } } }
+    },
+    "A lightweight snapshot pattern updated at Live Activity cadence.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Лёгкий snapshot-паттерн с частотой обновлений Live Activity." } } }
+    },
+    "The current available caption, with title and author fallback.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Текущая доступная строка captions с заменой на название или автора." } } }
+    },
+    "Chooses line, progress, or minimal from currently available data.": {
+      "localizations": { "ru": { "stringUnit": { "state": "translated", "value": "Выбирает строку, прогресс или минимальный режим по доступным данным." } } }
     },
     "System": {
       "localizations": {

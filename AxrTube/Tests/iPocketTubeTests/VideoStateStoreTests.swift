@@ -197,4 +197,57 @@ struct WaveformInteractionPolicyTests {
         #expect(LiveAudioScopePolicy.bucket(for: 42.2) != LiveAudioScopePolicy.bucket(for: 812.4))
         #expect(LiveAudioScopePolicy.analysisWindow(around: 812.4, assetDuration: 1_000).start > 800)
     }
+
+    @Test("Progressive scope becomes real without a completed file")
+    func progressiveScopeTransition() {
+        let identity = AudioScopeRenderIdentity(videoID: "video", generation: 1)
+        var state = ProgressiveAudioScopeState()
+        state.accept(identity: identity, samples: [])
+        #expect(state.phase == .preparing)
+
+        state.accept(identity: identity, samples: [0.1, 0.7, 0.3])
+        #expect(state.phase == .realEnvelope)
+        #expect(state.samples == [0.1, 0.7, 0.3])
+    }
+
+    @Test("Range progress does not recreate the active scope identity")
+    func progressiveScopeIdentityContinuity() {
+        let identity = AudioScopeRenderIdentity(videoID: "video", generation: 7)
+        var state = ProgressiveAudioScopeState()
+        state.accept(identity: identity, samples: [0.2, 0.4])
+        state.accept(identity: identity, samples: [0.3, 0.5])
+        #expect(state.identity == identity)
+        #expect(state.phase == .realEnvelope)
+        #expect(state.samples == [0.3, 0.5])
+    }
+
+    @Test("A newer playback session returns to preparing until its PCM arrives")
+    func newScopeSessionPrepares() {
+        var state = ProgressiveAudioScopeState()
+        state.accept(
+            identity: AudioScopeRenderIdentity(videoID: "video", generation: 1),
+            samples: [0.2, 0.6]
+        )
+        state.accept(
+            identity: AudioScopeRenderIdentity(videoID: "video", generation: 2),
+            samples: []
+        )
+        #expect(state.phase == .preparing)
+        #expect(state.samples.isEmpty)
+    }
+
+    @Test("Envelope updates interpolate instead of replacing all bars")
+    func envelopeInterpolation() {
+        let midpoint = AudioScopeCadencePolicy.interpolate(
+            from: [0, 1, 0.5],
+            to: [1, 0, 0.5],
+            progress: 0.5
+        )
+        #expect(midpoint == [0.5, 0.5, 0.5])
+        #expect(AudioScopeCadencePolicy.interpolate(
+            from: [0, 1],
+            to: [1, 0],
+            progress: 1
+        ) == [1, 0])
+    }
 }

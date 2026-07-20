@@ -121,6 +121,13 @@ extension PlaybackViewModel {
         reason: String,
         countAutomaticResume: Bool = false
     ) -> Bool {
+        #if os(iOS)
+        guard !localDubbingManager.isPlaying else {
+            player.pause()
+            isPlaying = false
+            return false
+        }
+        #endif
         guard player.currentItem != nil,
               !isHandlingAudioInterruption,
               !audioInterruptionState.mediaServicesAreLost else {
@@ -478,6 +485,9 @@ extension PlaybackViewModel {
     }
 
     func performUserPlay(reason: String) {
+        #if os(iOS)
+        localDubbingManager.stopPlayback()
+        #endif
         audioInterruptionResumeTask?.cancel()
         remotePauseClassificationTask?.cancel()
         endInterruptionBackgroundTask()
@@ -962,9 +972,12 @@ extension PlaybackViewModel {
             return
         }
         let sourceGeneration = nowPlayingSourceState.activate(itemKey: video.id)
+        let activeSummary = nowPlayingSummaryVideoID == video.id
+            ? nowPlayingSummaryText.flatMap(TranscriptSummaryPolicy.sanitizedDisplayText)
+            : nil
         var info: [String: Any] = [
             MPMediaItemPropertyTitle: video.title,
-            MPMediaItemPropertyArtist: video.channelTitle,
+            MPMediaItemPropertyArtist: activeSummary.map { "Кратко: \($0)" } ?? video.channelTitle,
             MPNowPlayingInfoPropertyMediaType: NSNumber(
                 value: (audioOnlyItemActive || video.localMediaKind == .audio
                     ? MPNowPlayingInfoMediaType.audio
@@ -974,6 +987,9 @@ extension PlaybackViewModel {
             MPNowPlayingInfoPropertyElapsedPlaybackTime: NSNumber(value: currentTime),
             MPNowPlayingInfoPropertyPlaybackRate: NSNumber(value: isPlaying ? Double(player.rate) : 0.0),
         ]
+        if activeSummary != nil, !video.channelTitle.isEmpty {
+            info[MPMediaItemPropertyAlbumTitle] = video.channelTitle
+        }
         if duration > 0 {
             info[MPMediaItemPropertyPlaybackDuration] = NSNumber(value: duration)
         }
@@ -1049,6 +1065,22 @@ extension PlaybackViewModel {
         setNowPlayingInfo(nowPlayingInfoCache)
     }
 
+    /// Publishes one bounded summary line into the system-owned subtitle slot.
+    /// The title, artwork, progress, remote commands, and AirPods contract remain
+    /// standard Now Playing metadata. A stale summary can never cross video IDs.
+    public func applyNowPlayingSummary(videoID: String, text: String) {
+        guard currentVideo?.id == videoID,
+              let clean = TranscriptSummaryPolicy.sanitizedDisplayText(text),
+              !nowPlayingInfoCache.isEmpty else { return }
+        nowPlayingSummaryVideoID = videoID
+        nowPlayingSummaryText = clean
+        nowPlayingInfoCache[MPMediaItemPropertyArtist] = "Кратко: \(clean)"
+        if let channel = currentVideo?.channelTitle, !channel.isEmpty {
+            nowPlayingInfoCache[MPMediaItemPropertyAlbumTitle] = channel
+        }
+        setNowPlayingInfo(nowPlayingInfoCache)
+    }
+
     func clearNowPlayingInfo(expectedGeneration: UInt64? = nil) {
         let generation = expectedGeneration ?? nowPlayingSourceState.generation
         guard nowPlayingSourceState.clear(generation: generation) else {
@@ -1064,6 +1096,8 @@ extension PlaybackViewModel {
         }
         cachedArtwork = nil
         cachedArtworkVideoID = nil
+        nowPlayingSummaryVideoID = nil
+        nowPlayingSummaryText = nil
         nowPlayingInfoCache = [:]
         setNowPlayingInfo(nil)
     }

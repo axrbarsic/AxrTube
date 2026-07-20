@@ -58,6 +58,22 @@ public final class VideoDownloadService {
     @available(iOS 16.1, *)
     @ObservationIgnored
     private var liveActivity: Activity<DownloadActivityAttributes>?
+
+    @available(iOS 16.1, *)
+    @ObservationIgnored
+    private var liveActivityState = DownloadActivityAttributes.DownloadContentState(
+        progress: 0,
+        phase: .fetching
+    )
+
+    @available(iOS 16.1, *)
+    @ObservationIgnored
+    private var liveActivityLease: LiveActivityArbitrationLease?
+
+    @ObservationIgnored
+    private var liveActivityRegistrationGeneration: UInt64 = 0
+
+    private static var didReconcileLiveActivitiesAfterLaunch = false
     #endif
 
     /// URLSession used for all YouTube CDN downloads.
@@ -86,6 +102,11 @@ public final class VideoDownloadService {
 
     public init(api: InnerTubeAPI = InnerTubeAPI()) {
         self.api = api
+        #if os(iOS)
+        if #available(iOS 16.1, *) {
+            Self.reconcileLiveActivitiesAfterLaunch()
+        }
+        #endif
     }
 
     // MARK: - Public
@@ -120,7 +141,7 @@ public final class VideoDownloadService {
         store.update(videoId: video.id, kind: kind, status: .fetching, progress: 0.05)
         #if os(iOS)
         if #available(iOS 16.1, *) {
-            startLiveActivity(video: video)
+            registerLiveActivity(video: video)
         }
         #endif
         downloadTask = Task { await performDownload(video: video, kind: kind) }
@@ -138,6 +159,11 @@ public final class VideoDownloadService {
 
     public func cancel() {
         downloadTask?.cancel()
+        #if os(iOS)
+        if #available(iOS 16.1, *) {
+            cancelLiveActivityPresentation()
+        }
+        #endif
         if let currentVideo {
             DownloadStore.shared.update(
                 videoId: currentVideo.id,
@@ -152,6 +178,11 @@ public final class VideoDownloadService {
 
     public func reset() {
         downloadTask?.cancel()
+        #if os(iOS)
+        if #available(iOS 16.1, *) {
+            cancelLiveActivityPresentation()
+        }
+        #endif
         downloadTask = nil
         currentVideo = nil
         state = .idle
@@ -163,14 +194,57 @@ public final class VideoDownloadService {
 
     #if os(iOS)
     @available(iOS 16.1, *)
-    private func startLiveActivity(video: Video) {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+    private func registerLiveActivity(video: Video) {
+        liveActivityRegistrationGeneration &+= 1
+        let registrationGeneration = liveActivityRegistrationGeneration
+        liveActivityState = DownloadActivityAttributes.DownloadContentState(
+            progress: 0,
+            phase: .fetching
+        )
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let registration = await LiveActivityArbitrationCenter.shared.registerDownload(
+                itemID: video.id
+            ) { [weak self] directive in
+                guard let self else { return }
+                await self.handleLiveActivityDirective(directive)
+            }
+            guard registrationGeneration == self.liveActivityRegistrationGeneration,
+                  self.currentVideo?.id == video.id,
+                  self.state.isActive else {
+                LiveActivityArbitrationCenter.shared.finishDownload(registration.lease)
+                return
+            }
+            self.liveActivityLease = registration.lease
+            if registration.shouldPresent {
+                await self.presentLiveActivity(video: video, lease: registration.lease)
+            }
+        }
+    }
+
+    @available(iOS 16.1, *)
+    private func presentLiveActivity(
+        video: Video,
+        lease: LiveActivityArbitrationLease
+    ) async {
+        guard liveActivityLease == lease,
+              currentVideo?.id == video.id,
+              state.isActive,
+              LiveActivityArbitrationCenter.shared.allowsDownloadPresentation(lease),
+              ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        let existingActivities = Activity<DownloadActivityAttributes>.activities
+        await Self.sendImmediateActivityEnds(existingActivities)
+        guard liveActivityLease == lease,
+              currentVideo?.id == video.id,
+              state.isActive,
+              LiveActivityArbitrationCenter.shared.allowsDownloadPresentation(lease) else { return }
+
         let attrs = DownloadActivityAttributes(videoTitle: video.title)
-        let state = DownloadActivityAttributes.DownloadContentState(progress: 0, phase: .fetching)
         do {
             liveActivity = try Activity<DownloadActivityAttributes>.request(
                 attributes: attrs,
-                content: .init(state: state, staleDate: nil),
+                content: .init(state: liveActivityState, staleDate: nil),
                 pushType: nil
             )
         } catch {
@@ -179,10 +253,25 @@ public final class VideoDownloadService {
     }
 
     @available(iOS 16.1, *)
+    private func handleLiveActivityDirective(_ directive: LiveActivityDownloadDirective) async {
+        switch directive {
+        case .suppress(let lease):
+            guard liveActivityLease == lease else { return }
+            await suppressLiveActivity()
+        case .restore(let lease):
+            guard liveActivityLease == lease,
+                  let video = currentVideo,
+                  state.isActive else { return }
+            await presentLiveActivity(video: video, lease: lease)
+        }
+    }
+
+    @available(iOS 16.1, *)
     private func updateLiveActivity(phase: DownloadActivityAttributes.DownloadContentState.Phase,
                                     progress: Double = 0) async {
-        guard let activity = liveActivity else { return }
         let newState = DownloadActivityAttributes.DownloadContentState(progress: progress, phase: phase)
+        liveActivityState = newState
+        guard let activity = liveActivity else { return }
         // Activity<T> is a Sendable struct; dispatch the await via a nonisolated helper to
         // satisfy Swift 6 region isolation — the value is safely copied out of the @MainActor region.
         await Self.sendActivityUpdate(activity, state: newState)
@@ -190,10 +279,48 @@ public final class VideoDownloadService {
 
     @available(iOS 16.1, *)
     private func endLiveActivity(phase: DownloadActivityAttributes.DownloadContentState.Phase) async {
+        completeLiveActivityRegistration()
         guard let activity = liveActivity else { return }
         let finalState = DownloadActivityAttributes.DownloadContentState(progress: 1, phase: phase)
+        liveActivityState = finalState
         liveActivity = nil  // nil out on @MainActor before sending the value across the boundary
         await Self.sendActivityEnd(activity, state: finalState)
+    }
+
+    @available(iOS 16.1, *)
+    private func suppressLiveActivity() async {
+        guard let activity = liveActivity else { return }
+        liveActivity = nil
+        await Self.sendImmediateActivityEnd(activity, state: liveActivityState)
+    }
+
+    @available(iOS 16.1, *)
+    private func cancelLiveActivityPresentation() {
+        completeLiveActivityRegistration()
+        guard let activity = liveActivity else { return }
+        let finalState = liveActivityState
+        liveActivity = nil
+        Task {
+            await Self.sendImmediateActivityEnd(activity, state: finalState)
+        }
+    }
+
+    @available(iOS 16.1, *)
+    private func completeLiveActivityRegistration() {
+        liveActivityRegistrationGeneration &+= 1
+        guard let liveActivityLease else { return }
+        self.liveActivityLease = nil
+        LiveActivityArbitrationCenter.shared.finishDownload(liveActivityLease)
+    }
+
+    @available(iOS 16.1, *)
+    private static func reconcileLiveActivitiesAfterLaunch() {
+        guard !didReconcileLiveActivitiesAfterLaunch else { return }
+        didReconcileLiveActivitiesAfterLaunch = true
+        Task { @MainActor in
+            let activities = Activity<DownloadActivityAttributes>.activities
+            await Self.sendImmediateActivityEnds(activities)
+        }
     }
 
     /// Dispatches `Activity.update` from a nonisolated context.
@@ -213,6 +340,23 @@ public final class VideoDownloadService {
         state: DownloadActivityAttributes.DownloadContentState
     ) async {
         await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(.now + 4))
+    }
+
+    @available(iOS 16.1, *)
+    nonisolated private static func sendImmediateActivityEnd(
+        _ activity: sending Activity<DownloadActivityAttributes>,
+        state: DownloadActivityAttributes.DownloadContentState
+    ) async {
+        await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)
+    }
+
+    @available(iOS 16.1, *)
+    nonisolated private static func sendImmediateActivityEnds(
+        _ activities: sending [Activity<DownloadActivityAttributes>]
+    ) async {
+        for activity in activities {
+            await activity.end(nil, dismissalPolicy: .immediate)
+        }
     }
     #endif
 
