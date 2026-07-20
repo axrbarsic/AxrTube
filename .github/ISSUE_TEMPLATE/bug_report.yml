@@ -5,7 +5,7 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to report a bug. Please fill in all required fields.
+        Thanks for taking the time to report an AxrTube bug. Please fill in all required fields.
 
   - type: input
     id: app_version
