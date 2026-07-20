@@ -291,7 +291,7 @@ public struct SettingsView: View {
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
-            Link(destination: URL(string: "https://github.com/axrbarsic/iPocketTube/blob/alex-personal/LICENSE")!) {
+            Link(destination: URL(string: "https://github.com/axrbarsic/AxrTube/blob/alex-personal/LICENSE")!) {
                 Label("Licenses", systemImage: "doc.text")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
@@ -627,7 +627,7 @@ public struct SettingsView: View {
                 Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #else
-            Link(destination: URL(string: "https://github.com/axrbarsic/iPocketTube")!) {
+            Link(destination: URL(string: "https://github.com/axrbarsic/AxrTube")!) {
                 Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #endif
@@ -644,7 +644,7 @@ public struct SettingsView: View {
             }
             .disabled(reportSent)
             .accessibilityIdentifier("settings.sendDiagnosticReportButton")
-            Link("Licenses", destination: URL(string: "https://github.com/axrbarsic/iPocketTube/blob/alex-personal/LICENSE")!)
+            Link("Licenses", destination: URL(string: "https://github.com/axrbarsic/AxrTube/blob/alex-personal/LICENSE")!)
                 .accessibilityIdentifier("settings.licensesLink")
         } header: {
             Text("About")
@@ -677,7 +677,7 @@ public struct SettingsView: View {
 private struct GitHubQRView: View {
     @Environment(\.dismiss) private var dismiss
 
-    private let githubURL = "https://github.com/axrbarsic/iPocketTube"
+    private let githubURL = "https://github.com/axrbarsic/AxrTube"
 
     var body: some View {
         ZStack(alignment: .topTrailing) {

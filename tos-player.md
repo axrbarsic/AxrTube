@@ -93,7 +93,7 @@ iOS simulator produces 0 tests and a false "TEST SUCCEEDED"):
 
 ```bash
 xcodebuild test-without-building \
-  -workspace iPocketTube.xcworkspace \
+  -workspace AxrTube.xcworkspace \
   -scheme iPocketTube \
   -destination "id=00008132-0016591E3CFB801C" \
   -only-testing:iPocketTubeUITests/TOSPlayerUITests/testTOSPlayerPlaysFirstHomeVideo \

@@ -222,7 +222,7 @@ Tasks in dependency order. Each can be implemented and committed independently.
 
 ### Task 1 — `AppSettings`: add `useTOSPlayerOnIOS`
 
-**File**: `iPocketTube/Sources/iPocketTubeCore/AppSettings.swift`
+**File**: `AxrTube/Sources/iPocketTubeCore/AppSettings.swift`
 
 1. Add `public var useTOSPlayerOnIOS: Bool` under the Experimental section (near line 153).
 2. Set default `false` in both `macOS` and `iOS` default factories (`defaultsMac` / `defaultsIOS`).
@@ -283,7 +283,7 @@ config.allowsAirPlayForMediaPlayback = true
 
 ### Task 4 — `TOSPlayerStateStore` (new iOS file)
 
-**New file**: `iPocketTube/Sources/iPocketTube/TOSPlayerStateStore.swift`
+**New file**: `AxrTube/Sources/iPocketTube/TOSPlayerStateStore.swift`
 
 Full implementation as described in §3. Key points:
 
@@ -374,7 +374,7 @@ stays macOS-only. On iOS the view is stateless — the store owns the vm.
 
 ### Task 6 — `TOSMiniPlayerView` (new iOS file)
 
-**New file**: `iPocketTube/Sources/iPocketTube/Views/Player/TOSMiniPlayerView.swift`
+**New file**: `AxrTube/Sources/iPocketTube/Views/Player/TOSMiniPlayerView.swift`
 
 ```swift
 #if os(iOS)
@@ -583,7 +583,7 @@ Remove the "(has no effect on iOS)" clause since iOS now has its own flag.
 
 ### Task 10 — UI Tests (`TOSPlayerIOSUITests.swift`)
 
-**New file**: `iPocketTubeApp/UITests/TOSPlayerIOSUITests.swift`
+**New file**: `AxrTubeApp/UITests/TOSPlayerIOSUITests.swift`
 
 Minimal test suite for the iOS TOS player. Mirrors `TOSPlayerUITests.swift` in structure:
 - `testTOSPlayerIOSSmoke` — opens first home video via TOS player, verifies `tosPlayer.stateLabel` appears with "playing", back button tap → stateLabel disappears (mini-player), mini-player bar appears

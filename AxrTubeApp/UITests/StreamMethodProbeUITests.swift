@@ -59,7 +59,7 @@ import XCTest
 // -------
 //   # Full matrix (parallel, iOS simulator):
 //   xcodebuild test \
-//     -workspace iPocketTube.xcworkspace -scheme "iPocketTube" \
+//     -workspace AxrTube.xcworkspace -scheme "iPocketTube" \
 //     -destination 'platform=iOS Simulator,name=iPhone 16' \
 //     -only-testing:iPocketTubeUITests/StreamMethodProbeUITests \
 //     -parallel-testing-enabled YES -maximum-parallel-testing-workers 4 \
