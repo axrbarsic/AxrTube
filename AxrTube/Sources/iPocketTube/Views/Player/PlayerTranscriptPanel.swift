@@ -14,6 +14,7 @@ import WebKit
 struct CurrentPlaybackTranscriptPanel: View {
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(PlayerRouter.self) private var playerRouter
+    @Environment(SettingsStore.self) private var settingsStore
     let onDismiss: () -> Void
 
     private var currentVideo: Video? {
@@ -28,6 +29,7 @@ struct CurrentPlaybackTranscriptPanel: View {
             onRetry: { playerState.vm.retryLoad() },
             onDismiss: onDismiss
         )
+        .preferredColorScheme(settingsStore.settings.themeName.colorScheme)
     }
 }
 #endif

@@ -959,8 +959,44 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphoneos*]" = AppIconGreen;
-				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphonesimulator*]" = AppIconGreen;
+				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphoneos*]" = (
+					AppIconGreen,
+					AppIconBlue,
+					AppIconOrange,
+					AppIconPurple,
+					AppIconPink,
+					AppIconYellow,
+					AppIconWhite,
+					AppIconBlack,
+					AppIconGlyphRed,
+					AppIconGlyphGreen,
+					AppIconGlyphBlue,
+					AppIconGlyphOrange,
+					AppIconGlyphPurple,
+					AppIconGlyphPink,
+					AppIconGlyphYellow,
+					AppIconGlyphWhite,
+					AppIconGlyphBlack,
+				);
+				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphonesimulator*]" = (
+					AppIconGreen,
+					AppIconBlue,
+					AppIconOrange,
+					AppIconPurple,
+					AppIconPink,
+					AppIconYellow,
+					AppIconWhite,
+					AppIconBlack,
+					AppIconGlyphRed,
+					AppIconGlyphGreen,
+					AppIconGlyphBlue,
+					AppIconGlyphOrange,
+					AppIconGlyphPurple,
+					AppIconGlyphPink,
+					AppIconGlyphYellow,
+					AppIconGlyphWhite,
+					AppIconGlyphBlack,
+				);
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = iPocketTubeApp/iPocketTubeApp.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "iPocketTubeApp/iPocketTubeApp-macOS.entitlements";
@@ -1444,8 +1480,44 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphoneos*]" = AppIconGreen;
-				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphonesimulator*]" = AppIconGreen;
+				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphoneos*]" = (
+					AppIconGreen,
+					AppIconBlue,
+					AppIconOrange,
+					AppIconPurple,
+					AppIconPink,
+					AppIconYellow,
+					AppIconWhite,
+					AppIconBlack,
+					AppIconGlyphRed,
+					AppIconGlyphGreen,
+					AppIconGlyphBlue,
+					AppIconGlyphOrange,
+					AppIconGlyphPurple,
+					AppIconGlyphPink,
+					AppIconGlyphYellow,
+					AppIconGlyphWhite,
+					AppIconGlyphBlack,
+				);
+				"ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES[sdk=iphonesimulator*]" = (
+					AppIconGreen,
+					AppIconBlue,
+					AppIconOrange,
+					AppIconPurple,
+					AppIconPink,
+					AppIconYellow,
+					AppIconWhite,
+					AppIconBlack,
+					AppIconGlyphRed,
+					AppIconGlyphGreen,
+					AppIconGlyphBlue,
+					AppIconGlyphOrange,
+					AppIconGlyphPurple,
+					AppIconGlyphPink,
+					AppIconGlyphYellow,
+					AppIconGlyphWhite,
+					AppIconGlyphBlack,
+				);
 				ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS = NO;
 				CODE_SIGN_ENTITLEMENTS = iPocketTubeApp/iPocketTubeApp.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "iPocketTubeApp/iPocketTubeApp-macOS.entitlements";

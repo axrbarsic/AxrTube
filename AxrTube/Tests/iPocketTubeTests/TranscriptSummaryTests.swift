@@ -148,9 +148,10 @@ struct TranscriptSummaryTests {
         #expect(fallback?.contains("\n") == false)
     }
 
-    @Test("System Now Playing is the only playback card")
-    func noDuplicatePlaybackCard() {
-        #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity)
+    @Test("Off mode keeps system Now Playing as the only playback card")
+    func noDuplicatePlaybackCardByDefault() {
+        #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .off))
+        #expect(PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .progress))
         var arbitration = LiveActivityArbitrationPolicy()
         let download = arbitration.beginDownload(itemID: "download-only")
         #expect(download.shouldPresent)

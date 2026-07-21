@@ -1,0 +1,33 @@
+name: AxrTube CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: axrtube-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests-and-simulator-build:
+    runs-on: macos-26
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Swift package tests
+        run: swift test --package-path AxrTube
+
+      - name: iOS Simulator build
+        run: >-
+          xcodebuild
+          -workspace AxrTube.xcworkspace
+          -scheme iPocketTube
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          CODE_SIGNING_ALLOWED=NO
+          build

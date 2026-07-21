@@ -116,7 +116,11 @@ public final class PlaybackLiveActivityController {
     }
 
     public func settingDidChange() {
-        stop()
+        guard let snapshot else {
+            endPlaybackActivity(clearSnapshot: true)
+            return
+        }
+        publish(snapshot, force: true)
     }
 
     public func update(
@@ -127,14 +131,6 @@ public final class PlaybackLiveActivityController {
         transcriptLine: String?,
         force: Bool = false
     ) {
-        // iOS already owns the reliable media surface through
-        // MPNowPlayingInfoCenter. A second playback Live Activity duplicates that
-        // card on the Lock Screen. Playback therefore never claims ActivityKit;
-        // download-only activities keep their separate existing owner.
-        guard PlaybackLockScreenPolicy.usesPlaybackLiveActivity else {
-            endPlaybackActivity(clearSnapshot: true)
-            return
-        }
         let snapshot = Snapshot(
             video: video,
             isPlaying: isPlaying,
@@ -192,14 +188,18 @@ public final class PlaybackLiveActivityController {
 
     private func publish(_ snapshot: Snapshot, force: Bool) {
         let selectedMode = settingsStore.settings.dynamicIslandMode
+        guard PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: selectedMode) else {
+            // Keep the current snapshot so changing from Off to an experimental
+            // mode can present immediately without restarting playback.
+            endPlaybackActivity(clearSnapshot: false)
+            return
+        }
         guard let presentation = PlaybackLiveActivityPolicy.presentation(
             for: selectedMode,
             transcriptLine: snapshot.transcriptLine,
             duration: snapshot.duration
         ) else {
-            // Keep the last playback snapshot while the preference is Off. This
-            // lets another mode recreate the same activity immediately without
-            // waiting for a playback tick or restarting playback.
+            // Defensive fallback for future modes that resolve to no surface.
             endPlaybackActivity(clearSnapshot: false)
             return
         }

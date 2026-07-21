@@ -23,6 +23,7 @@ public struct SettingsView: View {
     @State private var appIconStyle: AppIconStyle = .red
     @State private var isChangingAppIcon = false
     @State private var appIconChangeError: String?
+    @State private var showAppIconPicker = false
     @State private var summaryAPIKey = ""
     @State private var summaryKeyMessage: String?
     @State private var isEditingSummaryKey = false
@@ -128,6 +129,14 @@ public struct SettingsView: View {
                 .fontWeight(.semibold)
             }
         }
+        .sheet(isPresented: $showAppIconPicker) {
+            AppIconPickerView(
+                selectedStyle: appIconStyle,
+                isChanging: isChangingAppIcon,
+                supportsAlternateIcons: UIApplication.shared.supportsAlternateIcons,
+                onSelect: setAppIconStyle
+            )
+        }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -206,30 +215,56 @@ public struct SettingsView: View {
                 .overlay(iPocketTubeVisualTokens.stroke)
                 .padding(.vertical, 10)
 
-            Toggle(isOn: Binding(
-                get: { appIconStyle == .green },
-                set: { setGreenAppIconEnabled($0) }
-            )) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Green App Icon", systemImage: "app.badge.fill")
-                    Text("Red is the default. Switch to the green AXR icon anytime.")
-                        .font(.caption)
-                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
+            Button {
+                iPocketTubeHaptics.shared.perform(.settingsPicker)
+                showAppIconPicker = true
+            } label: {
+                HStack(spacing: 13) {
+                    AppIconPreviewImage(style: appIconStyle)
+                        .frame(width: 54, height: 54)
+                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                        .shadow(color: .black.opacity(0.13), radius: 4, y: 2)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Иконка приложения")
+                            .font(.headline)
+                            .foregroundStyle(.primary)
+                        Text(appIconSelectionSummary)
+                            .font(.caption)
+                            .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    if isChangingAppIcon {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                    }
                 }
+                .frame(maxWidth: .infinity, minHeight: 66, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .tint(iPocketTubeVisualTokens.mint)
-            .frame(minHeight: 58)
-            .disabled(isChangingAppIcon || !UIApplication.shared.supportsAlternateIcons)
-            .accessibilityIdentifier("settings.greenAppIconToggle")
+            .buttonStyle(.plain)
+            .disabled(isChangingAppIcon)
+            .accessibilityLabel("Иконка приложения, \(appIconSelectionSummary)")
+            .accessibilityHint("Открывает предпросмотр и выбор цвета")
+            .accessibilityIdentifier("settings.appIconPicker")
         }
         .task {
             appIconStyle = AppIconStyle(alternateIconName: UIApplication.shared.alternateIconName)
         }
     }
 
-    private func setGreenAppIconEnabled(_ isEnabled: Bool) {
-        let requestedStyle: AppIconStyle = isEnabled ? .green : .red
+    private var appIconSelectionSummary: String {
+        let targetName = appIconStyle.colorTarget == .background ? "фон" : "буквы"
+        return "\(targetName): \(appIconStyle.colorName.lowercased())"
+    }
+
+    private func setAppIconStyle(_ requestedStyle: AppIconStyle) {
         guard requestedStyle != appIconStyle, !isChangingAppIcon else { return }
         guard UIApplication.shared.supportsAlternateIcons else {
             appIconChangeError = String(localized: "Alternate app icons are unavailable on this device.", bundle: .module)
@@ -275,15 +310,48 @@ public struct SettingsView: View {
     }
 
     private var matrixLockScreenContent: some View {
-        return VStack(alignment: .leading, spacing: 8) {
-            Label("Одна системная карточка", systemImage: "checkmark.seal.fill")
+        @Bindable var store = store
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(
+                store.settings.dynamicIslandMode == .off
+                    ? "Одна системная карточка"
+                    : "Экспериментальный Dynamic Island",
+                systemImage: store.settings.dynamicIslandMode == .off
+                    ? "checkmark.seal.fill"
+                    : "iphone.gen3"
+            )
                 .font(.headline)
                 .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
 
-            Text("AxrTube использует надежный системный плеер iPhone. Отдельная playback-карточка больше не дублирует его.")
+            Text(
+                store.settings.dynamicIslandMode == .off
+                    ? "AxrTube использует надежный системный плеер iPhone без отдельной playback Live Activity."
+                    : "Зелёный показывает просмотренное, жёлтый остаток. Центральная часть острова остаётся системной. Включение также добавляет карточку Live Activity на экран блокировки."
+            )
                 .font(.caption)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            Toggle(isOn: Binding(
+                get: { store.settings.dynamicIslandMode != .off },
+                set: { isEnabled in
+                    let mode: PlaybackLiveActivityMode = isEnabled ? .progress : .off
+                    guard mode != store.settings.dynamicIslandMode else { return }
+                    iPocketTubeHaptics.shared.perform(.settingsPicker)
+                    store.settings.dynamicIslandMode = mode
+                }
+            )) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Прогресс в Dynamic Island", systemImage: "chart.bar.fill")
+                    Text("Круговой индикатор в minimal, длинная зелёно-жёлтая полоса в compact")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(iPocketTubeVisualTokens.mint)
+            .frame(minHeight: 58)
+            .accessibilityIdentifier("settings.dynamicIslandProgress")
 
             Divider().overlay(iPocketTubeVisualTokens.stroke).padding(.vertical, 4)
 
@@ -1024,43 +1092,6 @@ public struct SettingsView: View {
         )
     }
 }
-
-#if os(iOS)
-private extension PlaybackLiveActivityMode {
-    var displayName: String {
-        switch self {
-        case .off: "Off"
-        case .minimal: "Minimal"
-        case .progress: "Progress"
-        case .waveform: "Wave"
-        case .line: "Line"
-        case .automatic: "Auto"
-        }
-    }
-
-    var detail: String {
-        switch self {
-        case .off: "Uses only the standard system Now Playing controls."
-        case .minimal: "AxrTube, play state, and a short title."
-        case .progress: "Playback position, remaining time, and compact progress."
-        case .waveform: "A lightweight snapshot pattern updated at Live Activity cadence."
-        case .line: "The current available caption, with title and author fallback."
-        case .automatic: "Chooses line, progress, or minimal from currently available data."
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .off: "circle.slash"
-        case .minimal: "play.circle"
-        case .progress: "gauge.with.dots.needle.33percent"
-        case .waveform: "waveform"
-        case .line: "captions.bubble"
-        case .automatic: "wand.and.stars"
-        }
-    }
-}
-#endif
 
 // MARK: - GitHubQRView (tvOS)
 

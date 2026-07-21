@@ -98,9 +98,17 @@ struct PlaybackLiveActivityWidget: Widget {
                         .padding(.bottom, 5)
                 }
             } compactLeading: {
-                AxrTubePlaybackMark(isPlaying: context.state.isPlaying, size: 16)
+                PlaybackCompactProgressSegment(
+                    state: context.state,
+                    lowerBound: 0,
+                    upperBound: 0.36
+                )
             } compactTrailing: {
-                PlaybackCompactTrailingView(state: context.state)
+                PlaybackCompactProgressSegment(
+                    state: context.state,
+                    lowerBound: 0.36,
+                    upperBound: 1
+                )
             } minimal: {
                 PlaybackMinimalView(state: context.state)
             }
@@ -112,6 +120,7 @@ struct PlaybackLiveActivityWidget: Widget {
 @available(iOS 16.1, *)
 private enum AxrTubePlaybackStyle {
     static let green = Color(red: 0.10, green: 0.78, blue: 0.28)
+    static let yellow = Color(red: 1.0, green: 0.78, blue: 0.12)
 }
 
 @available(iOS 16.1, *)
@@ -137,7 +146,7 @@ private struct PlaybackLockScreenView: View {
                 AxrTubePlaybackMark(isPlaying: context.state.isPlaying, size: 17)
                 Text("AxrTube")
                     .font(.caption.weight(.semibold))
-                Text(context.state.presentation.lockScreenLabel)
+                Text("Прогресс")
                     .font(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 4)
@@ -148,7 +157,7 @@ private struct PlaybackLockScreenView: View {
             // ActivityKit always requires Lock Screen content when a Dynamic
             // Island activity exists. Keep this useful and mode-specific, but
             // do not repeat the system Now Playing title or transport controls.
-            PlaybackModeContent(state: context.state, author: context.attributes.author)
+            PlaybackModeContent(state: context.state)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 11)
@@ -167,7 +176,7 @@ private struct PlaybackExpandedBottomView: View {
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
-            PlaybackModeContent(state: context.state, author: context.attributes.author)
+            PlaybackModeContent(state: context.state)
                 .foregroundStyle(.white.opacity(0.88))
         }
     }
@@ -176,32 +185,17 @@ private struct PlaybackExpandedBottomView: View {
 @available(iOS 16.1, *)
 private struct PlaybackModeContent: View {
     let state: PlaybackActivityAttributes.ContentState
-    let author: String
 
     var body: some View {
-        switch state.presentation {
-        case .minimal:
-            Text(author.isEmpty ? (state.isPlaying ? "Playing" : "Paused") : author)
-                .font(.caption)
-                .lineLimit(1)
-        case .progress:
-            VStack(spacing: 4) {
-                ProgressView(value: state.progress)
-                    .tint(AxrTubePlaybackStyle.green)
-                HStack {
-                    Text(state.elapsed.axrDuration)
-                    Spacer()
-                    Text("-\(state.remaining.axrDuration)")
-                }
-                .font(.caption2.monospacedDigit())
+        VStack(spacing: 4) {
+            DualToneProgressBar(progress: state.progress)
+                .frame(height: 6)
+            HStack {
+                Text(state.elapsed.axrDuration)
+                Spacer()
+                Text("-\(state.remaining.axrDuration)")
             }
-        case .waveform:
-            WaveformSnapshotView(levels: state.waveformLevels)
-                .frame(height: 24)
-        case .line:
-            Text(state.line.isEmpty ? "AxrTube" : state.line)
-                .font(.caption)
-                .lineLimit(2)
+            .font(.caption2.monospacedDigit())
         }
     }
 }
@@ -211,44 +205,28 @@ private struct PlaybackTrailingView: View {
     let state: PlaybackActivityAttributes.ContentState
 
     var body: some View {
-        switch state.presentation {
-        case .progress:
-            Text(state.remaining.axrDuration)
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.white)
-        case .waveform:
-            WaveformSnapshotView(levels: Array(state.waveformLevels.prefix(5)))
-                .frame(width: 54, height: 24)
-        case .minimal, .line:
-            Text(state.isPlaying ? "PLAY" : "PAUSE")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.white.opacity(0.9))
-        }
+        Text(state.remaining.axrDuration)
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.white)
     }
 }
 
 @available(iOS 16.1, *)
-private struct PlaybackCompactTrailingView: View {
+private struct PlaybackCompactProgressSegment: View {
     let state: PlaybackActivityAttributes.ContentState
+    let lowerBound: Double
+    let upperBound: Double
 
     var body: some View {
-        switch PlaybackLiveActivitySurfacePolicy.compactContent(for: state.presentation) {
-        case .remainingTime:
-            Text(state.remaining.axrDuration)
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(.white)
-        case .waveform:
-            WaveformSnapshotView(levels: Array(state.waveformLevels.prefix(4)))
-                .frame(width: 32, height: 14)
-        case .playbackState:
-            Image(systemName: state.isPlaying ? "speaker.wave.2.fill" : "pause.fill")
-                .font(.caption2)
-                .foregroundStyle(.white)
-        case .caption:
-            Image(systemName: "captions.bubble.fill")
-                .font(.caption2)
-                .foregroundStyle(.white)
-        }
+        let fill = PlaybackLiveActivityPolicy.segmentFill(
+            progress: state.progress,
+            lowerBound: lowerBound,
+            upperBound: upperBound
+        )
+        DualToneProgressBar(progress: fill)
+            .frame(width: lowerBound == 0 ? 24 : 42, height: 6)
+            .accessibilityLabel("Playback progress")
+            .accessibilityValue("\(Int((state.progress * 100).rounded())) percent")
     }
 }
 
@@ -257,44 +235,34 @@ private struct PlaybackMinimalView: View {
     let state: PlaybackActivityAttributes.ContentState
 
     var body: some View {
-        switch PlaybackLiveActivitySurfacePolicy.minimalContent(for: state.presentation) {
-        case .brand:
-            AxrTubePlaybackMark(isPlaying: state.isPlaying, size: 14)
-        case .progress:
-            ZStack {
-                Circle().stroke(Color.white.opacity(0.28), lineWidth: 2)
-                Circle()
-                    .trim(from: 0, to: state.progress)
-                    .stroke(AxrTubePlaybackStyle.green, style: StrokeStyle(lineWidth: 2, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-            }
-            .frame(width: 15, height: 15)
-        case .waveform:
-            Image(systemName: "waveform")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AxrTubePlaybackStyle.green)
-        case .caption:
-            Image(systemName: "captions.bubble.fill")
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(AxrTubePlaybackStyle.green)
+        ZStack {
+            Circle().stroke(AxrTubePlaybackStyle.yellow, lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: state.progress)
+                .stroke(AxrTubePlaybackStyle.green, style: StrokeStyle(lineWidth: 2.5, lineCap: .butt))
+                .rotationEffect(.degrees(-90))
         }
+        .frame(width: 15, height: 15)
+        .accessibilityLabel("Playback progress")
+        .accessibilityValue("\(Int((state.progress * 100).rounded())) percent")
     }
 }
 
 @available(iOS 16.1, *)
-private struct WaveformSnapshotView: View {
-    let levels: [Double]
+private struct DualToneProgressBar: View {
+    let progress: Double
 
     var body: some View {
-        HStack(alignment: .center, spacing: 2) {
-            ForEach(Array(levels.enumerated()), id: \.offset) { _, level in
+        GeometryReader { proxy in
+            let width = max(0, proxy.size.width)
+            ZStack(alignment: .leading) {
+                Capsule().fill(AxrTubePlaybackStyle.yellow)
                 Capsule()
                     .fill(AxrTubePlaybackStyle.green)
-                    .frame(maxWidth: 5, maxHeight: CGFloat(max(4, 24 * min(1, max(0.1, level)))))
+                    .frame(width: width * min(1, max(0, progress)))
             }
         }
-        .frame(maxHeight: .infinity)
-        .accessibilityLabel("Wave snapshot")
+        .clipShape(Capsule())
     }
 }
 
@@ -306,18 +274,6 @@ private extension PlaybackActivityAttributes.ContentState {
     }
 
     var remaining: TimeInterval { max(0, duration - elapsed) }
-}
-
-@available(iOS 16.1, *)
-private extension PlaybackLiveActivityPresentation {
-    var lockScreenLabel: String {
-        switch self {
-        case .minimal: "Minimal"
-        case .progress: "Progress"
-        case .waveform: "Wave"
-        case .line: "Line"
-        }
-    }
 }
 
 private extension TimeInterval {

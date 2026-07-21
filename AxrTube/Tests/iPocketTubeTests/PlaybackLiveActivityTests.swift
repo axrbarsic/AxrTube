@@ -4,6 +4,14 @@ import Testing
 
 @Suite("Playback Live Activity contract")
 struct PlaybackLiveActivityTests {
+    @Test("Only explicit non-off modes opt into playback Live Activity")
+    func lockScreenPolicyFollowsUserMode() {
+        #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .off))
+        for mode in PlaybackLiveActivityMode.allCases where mode != .off {
+            #expect(PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: mode))
+        }
+    }
+
     @Test("Every user mode survives settings persistence", arguments: PlaybackLiveActivityMode.allCases)
     func modeRoundTrips(_ mode: PlaybackLiveActivityMode) throws {
         var settings = AppSettings()
@@ -15,36 +23,44 @@ struct PlaybackLiveActivityTests {
         #expect(decoded.dynamicIslandMode == mode)
     }
 
-    @Test("Explicit modes map directly and off maps to no activity")
-    func explicitMapping() {
+    @Test("Legacy experiment modes converge on the single progress style")
+    func legacyModesConvergeOnProgress() {
         #expect(PlaybackLiveActivityPolicy.presentation(for: .off, transcriptLine: "line", duration: 60) == nil)
-        #expect(PlaybackLiveActivityPolicy.presentation(for: .minimal, transcriptLine: nil, duration: 0) == .minimal)
+        #expect(PlaybackLiveActivityPolicy.presentation(for: .minimal, transcriptLine: nil, duration: 0) == .progress)
         #expect(PlaybackLiveActivityPolicy.presentation(for: .progress, transcriptLine: nil, duration: 60) == .progress)
-        #expect(PlaybackLiveActivityPolicy.presentation(for: .waveform, transcriptLine: nil, duration: 60) == .waveform)
-        #expect(PlaybackLiveActivityPolicy.presentation(for: .line, transcriptLine: nil, duration: 60) == .line)
+        #expect(PlaybackLiveActivityPolicy.presentation(for: .waveform, transcriptLine: nil, duration: 60) == .progress)
+        #expect(PlaybackLiveActivityPolicy.presentation(for: .line, transcriptLine: nil, duration: 60) == .progress)
     }
 
-    @Test("Auto chooses the most informative available presentation")
-    func automaticMapping() {
-        #expect(PlaybackLiveActivityPolicy.presentation(for: .automatic, transcriptLine: "Caption", duration: 60) == .line)
+    @Test("Legacy automatic mode also converges on progress")
+    func automaticModeConvergesOnProgress() {
+        #expect(PlaybackLiveActivityPolicy.presentation(for: .automatic, transcriptLine: "Caption", duration: 60) == .progress)
         #expect(PlaybackLiveActivityPolicy.presentation(for: .automatic, transcriptLine: "  ", duration: 60) == .progress)
-        #expect(PlaybackLiveActivityPolicy.presentation(for: .automatic, transcriptLine: nil, duration: 0) == .minimal)
+        #expect(PlaybackLiveActivityPolicy.presentation(for: .automatic, transcriptLine: nil, duration: 0) == .progress)
     }
 
-    @Test("Every resolved mode has distinct compact and minimal content")
-    func distinctActivitySurfaces() {
-        let presentations: [PlaybackLiveActivityPresentation] = [
-            .minimal, .progress, .waveform, .line
-        ]
-        let compact = presentations.map {
-            PlaybackLiveActivitySurfacePolicy.compactContent(for: $0)
-        }
-        let minimal = presentations.map {
-            PlaybackLiveActivitySurfacePolicy.minimalContent(for: $0)
-        }
-
-        #expect(Set(compact).count == presentations.count)
-        #expect(Set(minimal).count == presentations.count)
+    @Test("Compact progress segments form one green and yellow timeline")
+    func segmentedProgressFill() {
+        #expect(abs(PlaybackLiveActivityPolicy.segmentFill(
+            progress: 0.18,
+            lowerBound: 0,
+            upperBound: 0.36
+        ) - 0.5) < 0.0001)
+        #expect(PlaybackLiveActivityPolicy.segmentFill(
+            progress: 0.18,
+            lowerBound: 0.36,
+            upperBound: 1
+        ) == 0)
+        #expect(PlaybackLiveActivityPolicy.segmentFill(
+            progress: 0.68,
+            lowerBound: 0,
+            upperBound: 0.36
+        ) == 1)
+        #expect(abs(PlaybackLiveActivityPolicy.segmentFill(
+            progress: 0.68,
+            lowerBound: 0.36,
+            upperBound: 1
+        ) - 0.5) < 0.0001)
     }
 
     @Test("Line mode always has a safe nonempty fallback")

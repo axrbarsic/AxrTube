@@ -13,10 +13,13 @@ public enum PlaybackLiveActivityMode: String, Codable, CaseIterable, Sendable {
     case automatic
 }
 
-/// AxrTube uses the system Now Playing card as the single reliable playback
-/// surface. Download activities remain independent and are not affected.
+/// The system Now Playing card is always present during playback. A playback
+/// Live Activity is an explicit opt-in experiment because iOS also renders its
+/// required Lock Screen surface. Download activities remain independent.
 public enum PlaybackLockScreenPolicy {
-    public static let usesPlaybackLiveActivity = false
+    public static func usesPlaybackLiveActivity(for mode: PlaybackLiveActivityMode) -> Bool {
+        mode != .off
+    }
 }
 
 public enum PlaybackLiveActivityPresentation: String, Codable, Equatable, Sendable {
@@ -26,47 +29,17 @@ public enum PlaybackLiveActivityPresentation: String, Codable, Equatable, Sendab
     case line
 }
 
-public enum PlaybackLiveActivityCompactContent: Equatable, Hashable, Sendable {
-    case playbackState
-    case remainingTime
-    case waveform
-    case caption
-}
-
-public enum PlaybackLiveActivityMinimalContent: Equatable, Hashable, Sendable {
-    case brand
-    case progress
-    case waveform
-    case caption
-}
-
-/// Keeps every ActivityKit surface tied to the same resolved presentation.
-/// Automatic mode deliberately resolves to one of these four profiles.
-public enum PlaybackLiveActivitySurfacePolicy {
-    public static func compactContent(
-        for presentation: PlaybackLiveActivityPresentation
-    ) -> PlaybackLiveActivityCompactContent {
-        switch presentation {
-        case .minimal: .playbackState
-        case .progress: .remainingTime
-        case .waveform: .waveform
-        case .line: .caption
-        }
-    }
-
-    public static func minimalContent(
-        for presentation: PlaybackLiveActivityPresentation
-    ) -> PlaybackLiveActivityMinimalContent {
-        switch presentation {
-        case .minimal: .brand
-        case .progress: .progress
-        case .waveform: .waveform
-        case .line: .caption
-        }
-    }
-}
-
 public enum PlaybackLiveActivityPolicy {
+    public static func segmentFill(
+        progress: Double,
+        lowerBound: Double,
+        upperBound: Double
+    ) -> Double {
+        guard upperBound > lowerBound else { return 0 }
+        let normalizedProgress = min(1, max(0, progress))
+        return min(1, max(0, (normalizedProgress - lowerBound) / (upperBound - lowerBound)))
+    }
+
     public static func presentation(
         for mode: PlaybackLiveActivityMode,
         transcriptLine: String?,
@@ -74,14 +47,10 @@ public enum PlaybackLiveActivityPolicy {
     ) -> PlaybackLiveActivityPresentation? {
         switch mode {
         case .off: nil
-        case .minimal: .minimal
-        case .progress: .progress
-        case .waveform: .waveform
-        case .line: .line
-        case .automatic:
-            if cleaned(transcriptLine) != nil { .line }
-            else if duration.isFinite, duration > 0 { .progress }
-            else { .minimal }
+        // Older persisted experiment values deliberately converge on the one
+        // supported playback style. This keeps upgrades safe without exposing
+        // several visually competing modes again.
+        case .minimal, .progress, .waveform, .line, .automatic: .progress
         }
     }
 

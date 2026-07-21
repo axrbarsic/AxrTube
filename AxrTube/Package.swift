@@ -58,6 +58,7 @@ let package = Package(
             ],
             resources: [
                 .process("Localizable.xcstrings"),
+                .process("Resources/AppIconPreviews"),
                 .copy("Resources/yt.solver.lib.min.js"),
                 .copy("Resources/yt.solver.core.min.js"),
             ],
