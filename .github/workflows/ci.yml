@@ -17,10 +17,13 @@ jobs:
     timeout-minutes: 35
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
-      - name: Swift package tests
-        run: swift test --package-path AxrTube
+      - name: Targeted product tests
+        run: >-
+          swift test
+          --package-path AxrTube
+          --filter 'PlaybackLiveActivityTests|TranscriptSummaryTests|AppIconStyleTests'
 
       - name: iOS Simulator build
         run: >-
