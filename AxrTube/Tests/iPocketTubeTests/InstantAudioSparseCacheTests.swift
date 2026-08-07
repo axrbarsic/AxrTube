@@ -4,6 +4,36 @@ import Testing
 
 @Suite("Instant audio sparse cache")
 struct InstantAudioSparseCacheTests {
+    @Test("Progressive playback starts eagerly, then restores conservative stall waiting")
+    func progressivePlaybackWaitingPolicy() {
+        #expect(!ProgressivePlaybackWaitPolicy.automaticallyWaitsToMinimizeStalling(
+            timelineHasAdvanced: false
+        ))
+        #expect(ProgressivePlaybackWaitPolicy.automaticallyWaitsToMinimizeStalling(
+            timelineHasAdvanced: true
+        ))
+    }
+
+    @Test("Weak-network tuning prioritizes first audio and bounds retry waste")
+    func weakNetworkTransferTuning() {
+        #expect(SparseTransferTuning.playerChunkBytes <= 128 * 1024)
+        #expect(SparseTransferTuning.backgroundChunkBytes <= 128 * 1024)
+        #expect(SparseTransferTuning.mp4TailPrefetchBytes <= 128 * 1024)
+        #expect(SparseTransferTuning.resourceTimeoutSeconds >= 300)
+        #expect(!SparseTransferTuning.shouldStartBackgroundFill(
+            timelineHasAdvanced: false,
+            elapsedMilliseconds: SparseTransferTuning.backgroundFallbackDelayMilliseconds - 1
+        ))
+        #expect(SparseTransferTuning.shouldStartBackgroundFill(
+            timelineHasAdvanced: true,
+            elapsedMilliseconds: 1
+        ))
+        #expect(SparseTransferTuning.shouldStartBackgroundFill(
+            timelineHasAdvanced: false,
+            elapsedMilliseconds: SparseTransferTuning.backgroundFallbackDelayMilliseconds
+        ))
+    }
+
     private func format(_ mimeType: String) -> VideoFormat {
         VideoFormat(
             label: "fixture",

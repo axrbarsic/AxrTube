@@ -186,6 +186,20 @@ public actor InnerTubeAPI {
         ]
     ]
 
+    /// The JS-less visionOS player context used as the preferred audio resolver.
+    /// Values mirror the current public yt-dlp client configuration.
+    let visionOSClientContext: [String: Any] = [
+        "client": [
+            "clientName": InnerTubeClients.VisionOS.name,
+            "clientVersion": InnerTubeClients.VisionOS.version,
+            "deviceMake": InnerTubeClients.VisionOS.deviceMake,
+            "deviceModel": InnerTubeClients.VisionOS.deviceModel,
+            "userAgent": InnerTubeClients.VisionOS.userAgent,
+            "osName": InnerTubeClients.VisionOS.osName,
+            "osVersion": InnerTubeClients.VisionOS.osVersion,
+        ]
+    ]
+
     /// The WEB_EMBEDDED_PLAYER client context for embedded iframe player requests.
     /// Replaces the deprecated TVHTML5_SIMPLY_EMBEDDED_PLAYER (nameID=85). YouTube blocked
     /// nameID=85 in 2026; yt-dlp removed `tv_embedded` and now uses `web_embedded` (nameID=56).

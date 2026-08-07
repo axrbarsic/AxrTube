@@ -37,11 +37,12 @@ struct AudioFirstFlowTests {
         #expect(!duplicateStart)
     }
 
-    @Test("Seek is clamped to the downloaded region")
-    func seekCannotOutrunCache() {
+    @Test("Seek requests an uncached range and is clamped only to duration")
+    func seekCanPrioritizeAnUncachedRange() {
         var state = ProgressiveAudioStateMachine(initialBufferBytes: 1)
         _ = state.receive(downloaded: 1_000, expected: 10_000)
-        #expect(state.clampedSeekTime(90, duration: 100) == 9.75)
+        #expect(state.clampedSeekTime(90, duration: 100) == 90)
+        #expect(state.clampedSeekTime(110, duration: 100) == 100)
     }
 
     @Test("Russian publication labels cover today yesterday relative and missing")

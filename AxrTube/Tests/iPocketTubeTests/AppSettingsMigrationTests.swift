@@ -28,6 +28,7 @@ struct AppSettingsMigrationTests {
         #expect(!settings.showShorts)
         #expect(settings.compactSearchCards)
         #expect(settings.compactMediaLibraryCards)
+        #expect(!settings.lowBandwidthAudioMode)
     }
 
     @Test("Version 1 settings migrate background playback exactly once")
@@ -125,7 +126,7 @@ struct AppSettingsMigrationTests {
         #expect(settings.videoGravityMode == .fill)
         #expect(settings.loopEnabled == true)
         #expect(settings.hideShorts == true)
-        #expect(settings.themeName == .dark)
+        #expect(settings.themeName == .matrix)
         #expect(settings.historyState == .disabled)
         #expect(settings.sponsorBlockEnabled == false)
         #expect(settings.sponsorBlockMinSegmentDuration == 2.5)
@@ -187,6 +188,7 @@ struct AppSettingsMigrationTests {
         // All other stored values must survive
         #expect(settings.preferredQuality == .q720)
         #expect(settings.playbackSpeed == 2.0)
+        #expect(settings.themeName == .matrix)
         #expect(settings.settingsVersion == 1)
     }
 
@@ -208,13 +210,14 @@ struct AppSettingsMigrationTests {
         original.controlsHideTimeout = 8
         original.videoGravityMode = .fill
         original.hideShorts = true
-        original.themeName = .dark
+        original.themeName = .colorWashDark
         original.historyState = .disabled
         original.sponsorBlockEnabled = false
         original.deArrowEnabled = true
         original.iCloudSyncEnabled = true
         original.compactSearchCards = false
         original.compactMediaLibraryCards = true
+        original.lowBandwidthAudioMode = true
         original.settingsVersion = 1
 
         let encoded = try JSONEncoder().encode(original)
@@ -237,6 +240,7 @@ struct AppSettingsMigrationTests {
         #expect(decoded.iCloudSyncEnabled == original.iCloudSyncEnabled)
         #expect(decoded.compactSearchCards == original.compactSearchCards)
         #expect(decoded.compactMediaLibraryCards == original.compactMediaLibraryCards)
+        #expect(decoded.lowBandwidthAudioMode == original.lowBandwidthAudioMode)
         #expect(decoded.settingsVersion == original.settingsVersion)
     }
 

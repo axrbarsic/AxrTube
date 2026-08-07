@@ -781,7 +781,8 @@ extension PlayerView {
                 kind: kind,
                 saveVideoToPhotos: false,
                 storageLimitMB: store.settings.offlineStorageLimitMB,
-                isAutomatic: true
+                isAutomatic: true,
+                preferLowBandwidthAudio: store.settings.lowBandwidthAudioMode
             )
         }
         .confirmationDialog(
@@ -802,7 +803,8 @@ extension PlayerView {
                     video: vm.playerInfo?.video ?? video,
                     kind: .audio,
                     saveVideoToPhotos: false,
-                    storageLimitMB: store.settings.offlineStorageLimitMB
+                    storageLimitMB: store.settings.offlineStorageLimitMB,
+                    preferLowBandwidthAudio: store.settings.lowBandwidthAudioMode
                 )
             }
             Button("Cancel", role: .cancel) {}

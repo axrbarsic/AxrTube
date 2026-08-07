@@ -63,13 +63,7 @@ public struct VideoCardView: View {
     // Select button press natively) while iOS continues using the bare view.
 
     private var cardContent: some View {
-        Group {
-            if compact {
-                compactLayout
-            } else {
-                gridLayout
-            }
-        }
+        selectedLayout
         .task {
             localProgress = await VideoStateStore.shared.state(for: video.id)?.watchedFraction
         }
@@ -273,13 +267,7 @@ public struct VideoCardView: View {
             .disabled(downloadService.state.isActive)
             #endif
         } preview: {
-            Group {
-                if compact {
-                    compactLayout
-                } else {
-                    gridLayout
-                }
-            }
+            selectedLayout
             .padding(12)
             .frame(width: 300)
             .background(.background)
@@ -340,14 +328,51 @@ public struct VideoCardView: View {
             .alert(item: $watchLaterAlert) { item in
                 Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
             }
+        #elseif os(iOS)
+        cardContent
+            .padding(.vertical, store.settings.themeName.usesTimelineLayout ? 2 : 5)
+            .background {
+                if store.settings.themeName.usesColorWash {
+                    colorWashBackdrop
+                } else if store.settings.themeName.usesSpatialDeckLayout ||
+                            store.settings.themeName.usesSignalMapLayout ||
+                            store.settings.themeName.usesPrismLayout {
+                    creativeCardBackdrop
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .contentShape(Rectangle())
+            .onAppear { feedLog.info("[feed] id=\(self.video.id) title=\(self.video.title)") }
+            .alert(item: $watchLaterAlert) { item in
+                Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
+            }
         #else
         cardContent
-            .iPocketTubeCardSurface(cornerRadius: 12)
+            .padding(.vertical, 5)
             .onAppear { feedLog.info("[feed] id=\(self.video.id) title=\(self.video.title)") }
             .alert(item: $watchLaterAlert) { item in
                 Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
             }
         #endif
+    }
+
+    @ViewBuilder
+    private var selectedLayout: some View {
+        if store.settings.themeName.usesTimelineLayout {
+            timelineLayout
+        } else if store.settings.themeName.usesPosterLayout {
+            posterLayout
+        } else if store.settings.themeName.usesSpatialDeckLayout {
+            spatialDeckLayout
+        } else if store.settings.themeName.usesSignalMapLayout {
+            signalMapLayout
+        } else if store.settings.themeName.usesPrismLayout {
+            prismLayout
+        } else if compact {
+            compactLayout
+        } else {
+            gridLayout
+        }
     }
 
     // MARK: Grid layout (default)
@@ -455,6 +480,254 @@ public struct VideoCardView: View {
         }
     }
 
+    private var timelineLayout: some View {
+        HStack(alignment: .center, spacing: 10) {
+            timelineRail
+
+            thumbnailView
+                .frame(width: 126, height: 71)
+                .overlay(alignment: .bottom) {
+                    if let progress = effectiveProgress, progress > 0 {
+                        watchProgressBar(progress)
+                    }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .overlay(alignment: .bottomTrailing) {
+                    let duration = video.formattedDuration
+                    if !duration.isEmpty { durationBadge(duration) }
+                }
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(displayTitle)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(3)
+                    .accessibilityIdentifier("video.card.title")
+
+                HStack(spacing: 4) {
+                    Text(video.channelTitle).lineLimit(1)
+                    let viewCount = video.formattedViewCount
+                    if !viewCount.isEmpty {
+                        Text("•")
+                        Text(viewCount).lineLimit(1)
+                    }
+                }
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .accessibilityIdentifier("video.card.channelName")
+
+                if VideoPublicationPresentationPolicy.showsPublicationDate(for: video) {
+                    VideoPublicationLabel(video: video)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var posterLayout: some View {
+        Color.clear
+            .aspectRatio(compact ? 16 / 7 : 16 / 9, contentMode: .fit)
+            .overlay {
+                thumbnailView
+                    .overlay {
+                        LinearGradient(
+                            colors: [.clear, .black.opacity(0.18), .black.opacity(0.92)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    }
+            }
+            .overlay(alignment: .bottomLeading) {
+                VStack(alignment: .leading, spacing: 5) {
+                    Text(displayTitle)
+                        .font(compact ? .headline : .title3.bold())
+                        .foregroundStyle(.white)
+                        .lineLimit(compact ? 2 : 3)
+                        .shadow(color: .black.opacity(0.6), radius: 5, y: 2)
+                        .accessibilityIdentifier("video.card.title")
+
+                    HStack(spacing: 5) {
+                        Text(video.channelTitle).lineLimit(1)
+                        let viewCount = video.formattedViewCount
+                        if !viewCount.isEmpty {
+                            Text("·")
+                            Text(viewCount).lineLimit(1)
+                        }
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(.white.opacity(0.78))
+
+                    if VideoPublicationPresentationPolicy.showsPublicationDate(for: video) {
+                        VideoPublicationLabel(video: video)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(Color.orange.opacity(0.95))
+                    }
+                }
+                .padding(14)
+            }
+            .overlay(alignment: .bottom) {
+                if let progress = effectiveProgress, progress > 0 {
+                    watchProgressBar(progress)
+                }
+            }
+            .overlay(alignment: .topTrailing) {
+                let duration = video.formattedDuration
+                if !duration.isEmpty { durationBadge(duration) }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: Color.red.opacity(0.13), radius: 18, y: 8)
+    }
+
+    private var spatialDeckLayout: some View {
+        HStack(alignment: .center, spacing: 14) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.purple.opacity(0.25))
+                    .frame(width: 146, height: 86)
+                    .offset(x: 7, y: 7)
+                thumbnailView
+                    .frame(width: 146, height: 86)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(alignment: .bottom) {
+                        if let progress = effectiveProgress, progress > 0 {
+                            watchProgressBar(progress)
+                        }
+                    }
+                    .overlay(alignment: .bottomTrailing) {
+                        let duration = video.formattedDuration
+                        if !duration.isEmpty { durationBadge(duration) }
+                    }
+            }
+            .padding(.trailing, 7)
+            .padding(.bottom, 7)
+
+            creativeMetadata(accent: .cyan)
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+    }
+
+    private var signalMapLayout: some View {
+        HStack(alignment: .center, spacing: 11) {
+            Capsule()
+                .fill(creativeAccent)
+                .frame(width: 5, height: 72)
+
+            thumbnailView
+                .frame(width: 116, height: 72)
+                .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                .overlay(alignment: .bottom) {
+                    if let progress = effectiveProgress, progress > 0 {
+                        watchProgressBar(progress)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    let duration = video.formattedDuration
+                    if !duration.isEmpty { durationBadge(duration) }
+                }
+
+            creativeMetadata(accent: creativeAccent)
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+    }
+
+    private var prismLayout: some View {
+        HStack(alignment: .center, spacing: 13) {
+            thumbnailView
+                .frame(width: 138, height: 84)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(alignment: .bottom) {
+                    if let progress = effectiveProgress, progress > 0 {
+                        watchProgressBar(progress)
+                    }
+                }
+                .overlay(alignment: .bottomTrailing) {
+                    let duration = video.formattedDuration
+                    if !duration.isEmpty { durationBadge(duration) }
+                }
+
+            creativeMetadata(accent: Color(red: 0.62, green: 0.90, blue: 1.0))
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+    }
+
+    private func creativeMetadata(accent: Color) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(displayTitle)
+                .font(.subheadline.weight(.bold))
+                .lineLimit(3)
+                .accessibilityIdentifier("video.card.title")
+            HStack(spacing: 4) {
+                Text(video.channelTitle).lineLimit(1)
+                let viewCount = video.formattedViewCount
+                if !viewCount.isEmpty {
+                    Text("·")
+                    Text(viewCount).lineLimit(1)
+                }
+            }
+            .font(.caption)
+            .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+            .accessibilityIdentifier("video.card.channelName")
+            if VideoPublicationPresentationPolicy.showsPublicationDate(for: video) {
+                VideoPublicationLabel(video: video)
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(accent)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var timelineRail: some View {
+        VStack(alignment: .trailing, spacing: 3) {
+            Text(timelineDayLabel)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
+            Text(timelineTimeLabel)
+                .font(.caption2)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+        }
+        .multilineTextAlignment(.trailing)
+        .lineLimit(2)
+        .frame(width: 54, alignment: .trailing)
+        .padding(.trailing, 10)
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(iPocketTubeVisualTokens.mint.opacity(0.22))
+                .frame(width: 1)
+                .overlay {
+                    Circle()
+                        .fill(iPocketTubeVisualTokens.mint)
+                        .frame(width: 7, height: 7)
+                }
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Опубликовано: \(timelineDayLabel), \(timelineTimeLabel)")
+    }
+
+    private var timelineDayLabel: String {
+        guard let publishedAt = video.publishedAt else { return "Видео" }
+        if Calendar.autoupdatingCurrent.isDateInToday(publishedAt) { return "Сегодня" }
+        if Calendar.autoupdatingCurrent.isDateInYesterday(publishedAt) { return "Вчера" }
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.setLocalizedDateFormatFromTemplate("d MMM")
+        return formatter.string(from: publishedAt)
+    }
+
+    private var timelineTimeLabel: String {
+        guard let publishedAt = video.publishedAt else {
+            return VideoPublicationFormatter.string(for: video)
+        }
+        let formatter = DateFormatter()
+        formatter.locale = .autoupdatingCurrent
+        formatter.timeStyle = .short
+        formatter.dateStyle = .none
+        return formatter.string(from: publishedAt)
+    }
+
     // MARK: Shared
 
     /// Returns the DeArrow thumbnail URL if the feature is enabled and a timestamp is available.
@@ -462,6 +735,10 @@ public struct VideoCardView: View {
         guard store.settings.deArrowEnabled,
               let ts = video.deArrowThumbnailTimestamp else { return nil }
         return URL(string: "https://i.ytimg.com/vi/\(video.id)/\(Int(ts)).jpg")
+    }
+
+    private var ambientThumbnailURL: URL? {
+        deArrowThumbnailURL ?? video.thumbnailURL ?? video.thumbnailFallbackURLs.first
     }
 
     /// The title to show — community de-arrow title when enabled, raw title otherwise.
@@ -487,7 +764,7 @@ public struct VideoCardView: View {
             AsyncImage(url: url) { phase in
                 switch phase {
                 case .success(let img):
-                    img.resizable().scaledToFill()
+                    themedThumbnail(img)
                 case .failure:
                     let nextIndex = thumbnailFallbackIndex + 1
                     if nextIndex < fallbacks.count {
@@ -520,6 +797,102 @@ public struct VideoCardView: View {
         }
     }
 
+    @ViewBuilder
+    private func themedThumbnail(_ image: Image) -> some View {
+        if store.settings.themeName.usesMonochromeThumbnails {
+            image
+                .resizable()
+                .scaledToFill()
+                .saturation(0)
+                .contrast(1.06)
+                .colorMultiply(
+                    store.settings.themeName == .matrix
+                        ? Color(red: 0.76, green: 1.00, blue: 0.82)
+                        : Color(red: 0.88, green: 1.00, blue: 0.91)
+                )
+        } else {
+            image
+                .resizable()
+                .scaledToFill()
+        }
+    }
+
+    private var colorWashBackdrop: some View {
+        GeometryReader { geometry in
+            AsyncImage(url: ambientThumbnailURL) { phase in
+                if case .success(let image) = phase {
+                    image
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                        .saturation(1.15)
+                        .blur(radius: 30)
+                        .opacity(store.settings.themeName == .colorWashDark ? 0.22 : 0.15)
+                        .overlay(
+                            iPocketTubeVisualTokens.background.opacity(
+                                store.settings.themeName == .colorWashDark ? 0.42 : 0.28
+                            )
+                        )
+                } else {
+                    iPocketTubeVisualTokens.panel.opacity(0.08)
+                }
+            }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var creativeCardBackdrop: some View {
+        switch store.settings.themeName {
+        case .spatialDeck:
+            LinearGradient(
+                colors: [Color.cyan.opacity(0.12), Color.purple.opacity(0.15)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .background(.thinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .shadow(color: Color.cyan.opacity(0.12), radius: 16, y: 7)
+
+        case .signalMap:
+            Color.white.opacity(0.82)
+                .background(.thinMaterial)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .shadow(color: Color.blue.opacity(0.09), radius: 12, y: 5)
+
+        case .prismRooms:
+            LinearGradient(
+                colors: [
+                    Color.purple.opacity(0.34),
+                    Color.blue.opacity(0.18),
+                    Color.cyan.opacity(0.16)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .background(.ultraThinMaterial)
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: Color.purple.opacity(0.18), radius: 18, y: 8)
+
+        default:
+            EmptyView()
+        }
+    }
+
+    private var creativeAccent: Color {
+        let palette: [Color] = [
+            Color(red: 0.05, green: 0.40, blue: 0.95),
+            Color(red: 0.96, green: 0.38, blue: 0.12),
+            Color(red: 0.54, green: 0.20, blue: 0.92),
+            Color(red: 0.02, green: 0.58, blue: 0.47)
+        ]
+        let scalar = video.id.unicodeScalars.reduce(0) { $0 + Int($1.value) }
+        return palette[scalar % palette.count]
+    }
+
     private var systemPlaylistThumbnail: some View {
         let icon = video.id == "WL" ? "clock.fill" : "hand.thumbsup.fill"
         return ZStack {
@@ -540,7 +913,7 @@ public struct VideoCardView: View {
                 Rectangle()
                     .fill(Color.black.opacity(0.3))
                 Rectangle()
-                    .fill(Color.red)
+                    .fill(iPocketTubeVisualTokens.mint)
                     .frame(width: geo.size.width * fraction)
             }
         }

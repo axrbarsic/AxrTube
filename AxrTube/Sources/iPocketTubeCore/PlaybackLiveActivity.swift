@@ -13,12 +13,13 @@ public enum PlaybackLiveActivityMode: String, Codable, CaseIterable, Sendable {
     case automatic
 }
 
-/// The system Now Playing card is always present during playback. A playback
-/// Live Activity is an explicit opt-in experiment because iOS also renders its
-/// required Lock Screen surface. Download activities remain independent.
+/// Playback always uses the system Now Playing surface. ActivityKit cannot show
+/// a custom Dynamic Island presentation without also adding a Lock Screen card,
+/// so every persisted playback experiment mode is disabled here. Download-only
+/// activities remain independent.
 public enum PlaybackLockScreenPolicy {
-    public static func usesPlaybackLiveActivity(for mode: PlaybackLiveActivityMode) -> Bool {
-        mode != .off
+    public static func usesPlaybackLiveActivity(for _: PlaybackLiveActivityMode) -> Bool {
+        false
     }
 }
 

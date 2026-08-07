@@ -166,7 +166,15 @@ extension PlaybackViewModel {
             }
         }
 
-        player.automaticallyWaitsToMinimizeStalling = true
+        // Do not ask AVPlayer to predict that the entire remote item can finish
+        // without a stall before it emits first audio. On a constrained link
+        // that prediction can delay playback until download reaches 100%.
+        // AudioFirstPlaybackCoordinator restores conservative automatic waiting
+        // after the timeline has actually advanced.
+        player.automaticallyWaitsToMinimizeStalling =
+            ProgressivePlaybackWaitPolicy.automaticallyWaitsToMinimizeStalling(
+                timelineHasAdvanced: false
+            )
         player.replaceCurrentItem(with: item)
         audioScopeInstallationTask = Task { [weak self, weak item] in
             guard let self, let item else { return }

@@ -196,19 +196,57 @@ public struct SettingsView: View {
     private var matrixAppearanceContent: some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
-            Picker("Theme", selection: Binding(
-                get: { store.settings.themeName },
-                set: { newValue in
-                    guard newValue != store.settings.themeName else { return }
-                    iPocketTubeHaptics.shared.perform(.settingsPicker)
-                    store.settings.themeName = newValue
-                }
-            )) {
+            LazyVGrid(
+                columns: [
+                    GridItem(.flexible(), spacing: 10),
+                    GridItem(.flexible(), spacing: 10)
+                ],
+                spacing: 10
+            ) {
                 ForEach(AppSettings.ThemeName.allCases, id: \.self) { theme in
-                    Text(LocalizedStringKey(theme.rawValue), bundle: .module).tag(theme)
+                    Button {
+                        guard theme != store.settings.themeName else { return }
+                        iPocketTubeHaptics.shared.perform(.settingsPicker)
+                        store.settings.themeName = theme
+                    } label: {
+                        VStack(alignment: .leading, spacing: 7) {
+                            HStack {
+                                Image(systemName: themeSymbol(theme))
+                                    .font(.headline.weight(.semibold))
+                                Spacer()
+                                if theme == store.settings.themeName {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(iPocketTubeVisualTokens.mint)
+                                }
+                            }
+                            Text(theme.displayName)
+                                .font(.subheadline.weight(.bold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.82)
+                            Text(theme.displaySummary)
+                                .font(.caption2)
+                                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                                .lineLimit(3)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .padding(12)
+                        .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
+                        .background(
+                            theme == store.settings.themeName
+                                ? iPocketTubeVisualTokens.mint.opacity(0.16)
+                                : iPocketTubeVisualTokens.panelElevated.opacity(0.74),
+                            in: RoundedRectangle(cornerRadius: 15, style: .continuous)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(theme.displayName)
+                    .accessibilityValue(theme == store.settings.themeName ? "Выбрано" : "")
+                    .accessibilityHint(theme.displaySummary)
+                    .accessibilityIdentifier("settings.theme.\(theme.rawValue)")
                 }
             }
-            .pickerStyle(.segmented)
             .accessibilityIdentifier("settings.themePicker")
 
             Divider()
@@ -259,6 +297,20 @@ public struct SettingsView: View {
         }
     }
 
+    private func themeSymbol(_ theme: AppSettings.ThemeName) -> String {
+        switch theme {
+        case .matrix:         return "terminal.fill"
+        case .monochrome:     return "circle.lefthalf.filled"
+        case .timeline:       return "list.bullet.indent"
+        case .colorWashDark:  return "moon.stars.fill"
+        case .colorWashLight: return "sun.max.fill"
+        case .spatialDeck:    return "square.3.layers.3d"
+        case .livingPoster:   return "play.rectangle.on.rectangle.fill"
+        case .signalMap:      return "waveform.path.ecg.rectangle"
+        case .prismRooms:     return "triangle.fill"
+        }
+    }
+
     private var appIconSelectionSummary: String {
         let targetName = appIconStyle.colorTarget == .background ? "фон" : "буквы"
         return "\(targetName): \(appIconStyle.colorName.lowercased())"
@@ -300,6 +352,21 @@ public struct SettingsView: View {
 
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
+            Toggle(isOn: hapticBinding($store.settings.lowBandwidthAudioMode)) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Label("Режим слабой сети", systemImage: "tortoise.fill")
+                    Text("Минимальный размер аудио и самый ранний старт")
+                        .font(.caption)
+                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .tint(iPocketTubeVisualTokens.mint)
+            .frame(minHeight: 60)
+            .accessibilityIdentifier("settings.lowBandwidthAudioMode")
+
+            Divider().overlay(iPocketTubeVisualTokens.stroke)
+
             Toggle(isOn: hapticBinding($store.settings.downloadsWiFiOnly)) {
                 Label("Wi-Fi Only Downloads", systemImage: "wifi")
             }
@@ -310,48 +377,20 @@ public struct SettingsView: View {
     }
 
     private var matrixLockScreenContent: some View {
-        @Bindable var store = store
         return VStack(alignment: .leading, spacing: 10) {
-            Label(
-                store.settings.dynamicIslandMode == .off
-                    ? "Одна системная карточка"
-                    : "Экспериментальный Dynamic Island",
-                systemImage: store.settings.dynamicIslandMode == .off
-                    ? "checkmark.seal.fill"
-                    : "iphone.gen3"
-            )
+            Label("Одна системная карточка", systemImage: "checkmark.seal.fill")
                 .font(.headline)
                 .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
 
-            Text(
-                store.settings.dynamicIslandMode == .off
-                    ? "AxrTube использует надежный системный плеер iPhone без отдельной playback Live Activity."
-                    : "Зелёный показывает просмотренное, жёлтый остаток. Центральная часть острова остаётся системной. Включение также добавляет карточку Live Activity на экран блокировки."
-            )
+            Text("AxrTube использует системный Now Playing. Отдельная playback Live Activity отключена, поэтому на экране блокировки нет дублирующей карточки или полосы.")
                 .font(.caption)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Toggle(isOn: Binding(
-                get: { store.settings.dynamicIslandMode != .off },
-                set: { isEnabled in
-                    let mode: PlaybackLiveActivityMode = isEnabled ? .progress : .off
-                    guard mode != store.settings.dynamicIslandMode else { return }
-                    iPocketTubeHaptics.shared.perform(.settingsPicker)
-                    store.settings.dynamicIslandMode = mode
-                }
-            )) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Прогресс в Dynamic Island", systemImage: "chart.bar.fill")
-                    Text("Круговой индикатор в minimal, длинная зелёно-жёлтая полоса в compact")
-                        .font(.caption)
-                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .tint(iPocketTubeVisualTokens.mint)
-            .frame(minHeight: 58)
-            .accessibilityIdentifier("settings.dynamicIslandProgress")
+            Text("Dynamic Island для воспроизведения оформляет iOS. Добавить туда собственный круг без обязательной карточки Live Activity на экране блокировки система не позволяет.")
+                .font(.caption)
+                .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
 
             Divider().overlay(iPocketTubeVisualTokens.stroke).padding(.vertical, 4)
 
@@ -729,12 +768,14 @@ public struct SettingsView: View {
         return Section {
             LabeledContent("Audio Quality", value: String(localized: "Auto", bundle: .module))
                 .accessibilityIdentifier("settings.audioQuality")
+            Toggle("Режим слабой сети", isOn: $store.settings.lowBandwidthAudioMode)
+                .accessibilityIdentifier("settings.lowBandwidthAudioMode")
             Toggle("Wi-Fi Only Downloads", isOn: $store.settings.downloadsWiFiOnly)
                 .accessibilityIdentifier("settings.downloadsWiFiOnly")
         } header: {
             Text("Audio")
         } footer: {
-            Text("No ads, background playback, and pausing for external audio are always on.")
+            Text("Режим слабой сети выбирает самый маленький совместимый аудиопоток и запускает воспроизведение без ожидания полной загрузки.")
         }
     }
 
@@ -931,7 +972,7 @@ public struct SettingsView: View {
         return Section("Interface") {
             Picker("Theme", selection: $store.settings.themeName) {
                 ForEach(AppSettings.ThemeName.allCases, id: \.self) { t in
-                    Text(LocalizedStringKey(t.rawValue), bundle: .module).tag(t)
+                    Text(t.displayName).tag(t)
                 }
             }
             .accessibilityIdentifier("settings.themeRow")

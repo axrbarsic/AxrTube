@@ -161,15 +161,15 @@ private actor OpenAICompatibleTranscriptSummaryProvider {
             throw TranscriptSummaryServiceError.invalidResponse(provider: provider)
         }
         let content = try await complete(
-            system: "Сожми стенограмму ролика в одно полезное русское предложение. Верни только JSON вида {\"summary\":\"...\"}. Не добавляй вводные слова, рекламу, Markdown и неподтвержденные факты.",
+            system: "Сожми стенограмму ролика в один законченный русский абзац. Полностью закончи последнюю мысль. Верни только JSON вида {\"summary\":\"...\"}. Не добавляй вводные слова, рекламу, Markdown и неподтвержденные факты.",
             user: "Название: \(document.metadata.title)\nКанал: \(document.metadata.channelTitle)\nСтенограмма:\n\(transcript)",
-            maxCompletionTokens: 220,
+            maxCompletionTokens: 400,
             provider: provider,
             modelID: modelID,
             apiKey: apiKey
         )
         guard let contentData = content.data(using: .utf8),
-              let clean = TranscriptSummaryPolicy.sanitizedDisplayText(
+              let clean = TranscriptSummaryPolicy.sanitizedCompleteText(
                 try TranscriptSummaryPolicy.decodePayload(contentData).summary
               ) else {
             throw TranscriptSummaryServiceError.invalidResponse(provider: provider)
@@ -205,9 +205,8 @@ private actor OpenAICompatibleTranscriptSummaryProvider {
             apiKey: apiKey
         )
         guard let data = content.data(using: .utf8),
-              let text = TranscriptSummaryPolicy.sanitizedLongText(
-                try TranscriptSummaryPolicy.decodePayload(data).summary,
-                maximumCharacters: depth.maximumCharacters
+              let text = TranscriptSummaryPolicy.sanitizedCompleteText(
+                try TranscriptSummaryPolicy.decodePayload(data).summary
               ) else {
             throw TranscriptSummaryServiceError.invalidResponse(provider: provider)
         }
@@ -485,7 +484,7 @@ public final class TranscriptSummaryManager {
             isRateLimited = false
             retryAvailableAt = nil
             state = .ready(cached)
-            onSummaryReady?(document.metadata.videoID, cached.text)
+            publishNowPlayingSummary(cached, videoID: document.metadata.videoID)
             return
         }
         if let fallback = TranscriptSummaryPolicy.localFallbackText(for: document) {
@@ -523,7 +522,7 @@ public final class TranscriptSummaryManager {
                 isRateLimited = false
                 retryAvailableAt = nil
                 state = .ready(summary)
-                onSummaryReady?(document.metadata.videoID, summary.text)
+                publishNowPlayingSummary(summary, videoID: document.metadata.videoID)
             } catch is CancellationError {
                 return
             } catch {
@@ -552,6 +551,11 @@ public final class TranscriptSummaryManager {
         isRateLimited = false
         activeCacheKey = nil
         prepareIfNeeded(document: pendingDocument)
+    }
+
+    private func publishNowPlayingSummary(_ summary: TranscriptSummary, videoID: String) {
+        guard let compact = TranscriptSummaryPolicy.sanitizedDisplayText(summary.text) else { return }
+        onSummaryReady?(videoID, compact)
     }
 
     public func requestBrief(document: TranscriptBookDocument, depth: TranscriptInsightDepth) {

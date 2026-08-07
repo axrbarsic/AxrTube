@@ -29,20 +29,28 @@ public enum TranscriptInsightDepth: String, Codable, CaseIterable, Equatable, Se
 
     public var title: String {
         switch self {
-        case .quick: "30 секунд"
-        case .standard: "2 минуты"
+        case .quick: "Суть"
+        case .standard: "Кратко"
         case .detailed: "Подробно"
+        }
+    }
+
+    public var explanation: String {
+        switch self {
+        case .quick: "Один законченный абзац"
+        case .standard: "Несколько законченных абзацев"
+        case .detailed: "Разбор по разделам"
         }
     }
 
     public var instruction: String {
         switch self {
         case .quick:
-            "Дай 3 коротких пункта, которые можно прочитать примерно за 30 секунд."
+            "Дай суть в одном законченном абзаце. Не обрывай предложение."
         case .standard:
-            "Дай структурированный разбор из 5-7 пунктов, который можно прочитать примерно за 2 минуты."
+            "Дай краткий разбор в нескольких законченных абзацах. Не обрывай последний абзац."
         case .detailed:
-            "Дай подробный разбор: главная мысль, аргументы, практические выводы и важные ограничения."
+            "Дай подробный разбор по разделам: главная мысль, аргументы, практические выводы и важные ограничения. Каждый раздел должен быть закончен."
         }
     }
 
@@ -186,7 +194,7 @@ public struct TranscriptAIModelOption: Codable, Equatable, Identifiable, Sendabl
 }
 
 public enum TranscriptSummaryPolicy {
-    public static let schemaVersion = 3
+    public static let schemaVersion = 4
     public static let aiLensSchemaVersion = 2
     public static let maximumDisplayCharacters = 150
     public static let maximumSummaryPromptCharacters = 12_000
@@ -317,6 +325,18 @@ public enum TranscriptSummaryPolicy {
         return String(clean[..<end]).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 
+    /// Cleans provider prose without shortening it. Output length is bounded by
+    /// the provider request itself, while the complete generated text remains
+    /// available to selection, copying, and the enclosing scroll view.
+    public static func sanitizedCompleteText(_ value: String) -> String? {
+        let paragraphs = value
+            .components(separatedBy: .newlines)
+            .map(normalized)
+            .filter { !$0.isEmpty }
+        guard !paragraphs.isEmpty else { return nil }
+        return paragraphs.joined(separator: "\n\n")
+    }
+
     public static func groundedContext(
         for document: TranscriptBookDocument,
         question: String,
@@ -443,6 +463,16 @@ public enum TranscriptSummaryPolicy {
             ?? paragraphs.first(where: { !normalized($0.text).isEmpty })
         guard let candidate else { return nil }
         return sanitizedDisplayText(candidate.text)
+    }
+
+    /// Full local main thought for AI Lens. The separate Lock Screen fallback
+    /// remains intentionally bounded by `localFallbackText(for:)`.
+    public static func localMainThought(for document: TranscriptBookDocument) -> String? {
+        let paragraphs = document.sections.flatMap(\.paragraphs)
+        let candidate = paragraphs.first(where: { normalized($0.text).count >= 32 })
+            ?? paragraphs.first(where: { !normalized($0.text).isEmpty })
+        guard let candidate else { return nil }
+        return sanitizedCompleteText(candidate.text)
     }
 
     public static func decodePayload(_ data: Data) throws -> TranscriptSummaryPayload {

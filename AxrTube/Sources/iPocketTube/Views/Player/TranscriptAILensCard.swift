@@ -13,7 +13,7 @@ struct TranscriptAILensCard: View {
 
         var title: String {
             switch self {
-            case .brief: "Кратко"
+            case .brief: "Обзор"
             case .ask: "Спросить"
             case .connect: "Связать"
             }
@@ -89,13 +89,21 @@ struct TranscriptAILensCard: View {
         VStack(alignment: .leading, spacing: 14) {
             currentSummary
             Divider()
-            Picker("Глубина разбора", selection: $depth) {
+            Text("Объём текста")
+                .font(.subheadline.weight(.semibold))
+            Picker("Объём текста", selection: $depth) {
                 ForEach(TranscriptInsightDepth.allCases, id: \.self) { depth in
                     Text(depth.title).tag(depth)
                 }
             }
             .pickerStyle(.segmented)
             .accessibilityIdentifier("player.aiLens.depth")
+
+            Text(depth.explanation)
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("player.aiLens.depth.explanation")
 
             switch manager.briefState {
             case .preparing(let activeDepth) where activeDepth == depth:
@@ -140,7 +148,7 @@ struct TranscriptAILensCard: View {
         case .preparing:
             statusRow("Уточняем главную мысль", systemImage: "sparkles")
         case .failed:
-            if let fallback = TranscriptSummaryPolicy.localFallbackText(for: document) {
+            if let fallback = TranscriptSummaryPolicy.localMainThought(for: document) {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("Локальная выжимка", systemImage: "checkmark.shield")
                         .font(.subheadline.weight(.semibold))
@@ -152,11 +160,16 @@ struct TranscriptAILensCard: View {
                 }
             }
         case .needsAPIKey, .idle:
-            if let fallback = TranscriptSummaryPolicy.localFallbackText(for: document) {
-                Text(fallback)
-                    .font(.body.weight(.medium))
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+            if let fallback = TranscriptSummaryPolicy.localMainThought(for: document) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("Главная мысль", systemImage: "quote.opening")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(fallback)
+                        .font(.body.weight(.medium))
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

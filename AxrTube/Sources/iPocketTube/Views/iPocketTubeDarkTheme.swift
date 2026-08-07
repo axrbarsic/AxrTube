@@ -1,4 +1,5 @@
 import SwiftUI
+import iPocketTubeCore
 #if canImport(UIKit)
 import UIKit
 #elseif canImport(AppKit)
@@ -148,14 +149,17 @@ enum iPocketTubeVisualTokens {
 /// Static, inexpensive matrix-like backdrop. It never overlays videos or
 /// thumbnails; screen content is composed above it.
 struct iPocketTubeBackdrop: View {
+    @Environment(SettingsStore.self) private var store
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorScheme) private var colorScheme
 
+    private var theme: AppSettings.ThemeName { store.settings.themeName }
+
     var body: some View {
         ZStack {
             iPocketTubeVisualTokens.background
-            if colorScheme == .dark {
+            if theme == .matrix {
                 LinearGradient(
                     colors: [
                         iPocketTubeVisualTokens.backgroundDepth.opacity(0.72),
@@ -165,18 +169,19 @@ struct iPocketTubeBackdrop: View {
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
-            } else {
+            } else if theme.usesColorWash {
                 LinearGradient(
                     colors: [
-                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.52),
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(colorScheme == .dark ? 0.28 : 0.20),
                         iPocketTubeVisualTokens.background,
-                        iPocketTubeVisualTokens.backgroundDepth.opacity(0.26)
+                        iPocketTubeVisualTokens.backgroundDepth.opacity(colorScheme == .dark ? 0.18 : 0.12)
                     ],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 )
             }
-            if colorScheme == .dark && !reduceTransparency {
+            creativeBackdrop
+            if theme == .matrix && !reduceTransparency {
                 RadialGradient(
                     colors: [iPocketTubeVisualTokens.mint.opacity(glowOpacity), .clear],
                     center: .topLeading,
@@ -197,8 +202,118 @@ struct iPocketTubeBackdrop: View {
                 }
             }
         }
-        .overlay(iPocketTubeVisualTokens.background.opacity(colorScheme == .dark ? 0.18 : 0.08))
+        .overlay(iPocketTubeVisualTokens.background.opacity(backdropOverlayOpacity))
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var creativeBackdrop: some View {
+        switch theme {
+        case .spatialDeck:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.015, green: 0.025, blue: 0.080),
+                    Color(red: 0.030, green: 0.045, blue: 0.150),
+                    Color(red: 0.055, green: 0.018, blue: 0.120)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            if !reduceTransparency {
+                RadialGradient(
+                    colors: [Color.cyan.opacity(0.22), .clear],
+                    center: .topTrailing,
+                    startRadius: 8,
+                    endRadius: 380
+                )
+                RadialGradient(
+                    colors: [Color.purple.opacity(0.18), .clear],
+                    center: .bottomLeading,
+                    startRadius: 0,
+                    endRadius: 460
+                )
+            }
+
+        case .livingPoster:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.035, green: 0.025, blue: 0.030),
+                    Color(red: 0.120, green: 0.020, blue: 0.032),
+                    Color(red: 0.025, green: 0.018, blue: 0.030)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            if !reduceTransparency {
+                RadialGradient(
+                    colors: [Color.orange.opacity(0.20), .clear],
+                    center: .topLeading,
+                    startRadius: 0,
+                    endRadius: 420
+                )
+            }
+
+        case .signalMap:
+            Color(red: 0.965, green: 0.970, blue: 0.985)
+            if !reduceTransparency {
+                LinearGradient(
+                    colors: [Color.blue.opacity(0.08), .clear, Color.orange.opacity(0.07)],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                Canvas { context, size in
+                    var path = Path()
+                    stride(from: -size.height, through: size.width, by: 74).forEach { offset in
+                        path.move(to: CGPoint(x: offset, y: 0))
+                        path.addLine(to: CGPoint(x: offset + size.height, y: size.height))
+                    }
+                    context.stroke(path, with: .color(Color.blue.opacity(0.035)), lineWidth: 1)
+                }
+            }
+
+        case .prismRooms:
+            LinearGradient(
+                colors: [
+                    Color(red: 0.018, green: 0.020, blue: 0.090),
+                    Color(red: 0.090, green: 0.018, blue: 0.160),
+                    Color(red: 0.015, green: 0.085, blue: 0.120)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            if !reduceTransparency {
+                AngularGradient(
+                    colors: [
+                        Color.cyan.opacity(0.10),
+                        Color.pink.opacity(0.13),
+                        Color.purple.opacity(0.15),
+                        Color.cyan.opacity(0.10)
+                    ],
+                    center: .center
+                )
+                .blur(radius: 42)
+            }
+
+        default:
+            EmptyView()
+        }
+    }
+
+    private var backdropOverlayOpacity: Double {
+        switch theme {
+        case .matrix:
+            return 0.14
+        case .monochrome, .timeline:
+            return 0.02
+        case .colorWashDark:
+            return 0.12
+        case .colorWashLight:
+            return 0.04
+        case .spatialDeck, .livingPoster, .prismRooms:
+            return 0.05
+        case .signalMap:
+            return 0.015
+        }
     }
 
     private var glowOpacity: Double {

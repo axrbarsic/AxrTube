@@ -67,16 +67,29 @@ public enum OfflineAudioFormatSelector {
     }
 
     public static func resolve(
+        preferSmallestRepresentation: Bool = false,
         using fetchFormats: @Sendable () async throws -> [VideoFormat]
     ) async throws -> OfflineAudioResolution {
         let formats = try await fetchFormats()
-        return OfflineAudioResolution(formats: formats, plan: select(from: formats))
+        return OfflineAudioResolution(
+            formats: formats,
+            plan: select(
+                from: formats,
+                preferSmallestRepresentation: preferSmallestRepresentation
+            )
+        )
     }
 
-    public static func select(from formats: [VideoFormat]) -> OfflineAudioDownloadPlan? {
+    public static func select(
+        from formats: [VideoFormat],
+        preferSmallestRepresentation: Bool = false
+    ) -> OfflineAudioDownloadPlan? {
         let downloadable = formats.filter { $0.url != nil }
 
-        if let format = downloadable.filter({ isDirectM4A($0.mimeType) }).max(by: lowerBitrate) {
+        if let format = selectedBitrate(
+            from: downloadable.filter { isDirectM4A($0.mimeType) },
+            preferSmallestRepresentation: preferSmallestRepresentation
+        ) {
             return OfflineAudioDownloadPlan(
                 source: .directM4A,
                 format: format,
@@ -84,7 +97,10 @@ public enum OfflineAudioFormatSelector {
             )
         }
 
-        if let format = downloadable.filter({ nativeAudioExtension(for: $0.mimeType) != nil }).max(by: lowerBitrate),
+        if let format = selectedBitrate(
+            from: downloadable.filter { nativeAudioExtension(for: $0.mimeType) != nil },
+            preferSmallestRepresentation: preferSmallestRepresentation
+        ),
            let fileExtension = nativeAudioExtension(for: format.mimeType) {
             return OfflineAudioDownloadPlan(
                 source: .directNativeAudio,
@@ -158,5 +174,15 @@ public enum OfflineAudioFormatSelector {
 
     private static func lowerBitrate(_ lhs: VideoFormat, _ rhs: VideoFormat) -> Bool {
         (lhs.bitrate ?? 0) < (rhs.bitrate ?? 0)
+    }
+
+    private static func selectedBitrate(
+        from formats: [VideoFormat],
+        preferSmallestRepresentation: Bool
+    ) -> VideoFormat? {
+        if preferSmallestRepresentation {
+            return formats.min(by: lowerBitrate)
+        }
+        return formats.max(by: lowerBitrate)
     }
 }

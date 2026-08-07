@@ -78,7 +78,7 @@ struct AppSettingsTests {
         #expect(settings.autoplayEnabled)
         #expect(settings.sponsorBlockEnabled)
         #expect(!settings.deArrowEnabled)
-        #expect(settings.themeName == .system)
+        #expect(settings.themeName == .matrix)
         #expect(settings.perDeviceRecommendationsEnabled == true)
     }
 

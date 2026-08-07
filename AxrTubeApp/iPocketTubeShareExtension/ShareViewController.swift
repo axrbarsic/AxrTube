@@ -267,15 +267,16 @@ final class ShareViewController: UIViewController {
 
     private func applySavedAppearance() {
         guard let rawValue = UserDefaults(suiteName: Self.appGroup)?.string(forKey: Self.appearanceKey),
-              let appearance = AppSettings.ThemeName(rawValue: rawValue)
+              let appearance = AppSettings.ThemeName.migrated(rawValue: rawValue)
         else {
             overrideUserInterfaceStyle = .unspecified
             return
         }
         switch appearance {
-        case .system: overrideUserInterfaceStyle = .unspecified
-        case .dark: overrideUserInterfaceStyle = .dark
-        case .light: overrideUserInterfaceStyle = .light
+        case .matrix, .colorWashDark, .spatialDeck, .livingPoster, .prismRooms:
+            overrideUserInterfaceStyle = .dark
+        case .monochrome, .timeline, .colorWashLight, .signalMap:
+            overrideUserInterfaceStyle = .light
         }
     }
 

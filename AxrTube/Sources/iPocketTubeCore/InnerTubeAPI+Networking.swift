@@ -265,6 +265,46 @@ extension InnerTubeAPI {
         return json
     }
 
+    /// visionOS player request using the public YouTube InnerTube API identity.
+    /// This client does not require the browser JS player for URL resolution.
+    func postVisionOS(body: [String: Any]) async throws -> [String: Any] {
+        let publicApiKey = "AIzaSyDCU8mBbAkSfXX4txZFpEpPEBoAOUMCxkU" // gitleaks:allow
+        guard var comps = URLComponents(
+            url: baseURL.appendingPathComponent("player"),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw APIError.invalidURL("player")
+        }
+        comps.queryItems = [
+            URLQueryItem(name: "key", value: publicApiKey),
+            URLQueryItem(name: "prettyPrint", value: "false"),
+        ]
+        guard let url = comps.url else { throw APIError.invalidURL("player") }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+        request.setValue(InnerTubeClients.VisionOS.userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue(InnerTubeClients.VisionOS.nameID, forHTTPHeaderField: "X-YouTube-Client-Name")
+        request.setValue(InnerTubeClients.VisionOS.version, forHTTPHeaderField: "X-YouTube-Client-Version")
+        if let visitorData {
+            request.setValue(visitorData, forHTTPHeaderField: "X-Goog-Visitor-Id")
+        }
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await session.data(for: request)
+        let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            tubeLog.error("HTTP \(statusCode, privacy: .public) for /player [VisionOS]")
+            throw APIError.httpError(statusCode)
+        }
+        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingError("Root JSON is not a dictionary")
+        }
+        return json
+    }
+
     /// Android client player request — used for download URL resolution.
     /// Android client headers use googleapis.com like iOS, but with Android UA/client IDs.
     func postAndroid(endpoint: String, body: [String: Any]) async throws -> [String: Any] {

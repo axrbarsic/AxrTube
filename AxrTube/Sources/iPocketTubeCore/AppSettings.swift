@@ -160,6 +160,10 @@ public struct AppSettings: Codable {
     public var offlineStorageLimitMB: Int
     /// When enabled, progressive audio downloads wait for an unmetered Wi-Fi path.
     public var downloadsWiFiOnly: Bool
+    /// Opt-in constrained-network mode. Audio-first playback and offline audio
+    /// choose the smallest natively playable representation to minimize startup
+    /// bytes and make progress on very slow links.
+    public var lowBandwidthAudioMode: Bool
 
     // MARK: Codec preference
     /// When `true`, restricts adaptive video format selection to H.264 (`avc1`) only.
@@ -180,8 +184,8 @@ public struct AppSettings: Codable {
     /// Enables local EDR-capable press pulses on selected dark-mode controls.
     /// Unsupported displays and Simulator use a restrained SDR outline fallback.
     public var experimentalEDRPressGlowEnabled: Bool
-    /// User-selected playback Live Activity experiment. `.off` preserves the
-    /// system Now Playing experience without adding a Dynamic Island activity.
+    /// Legacy persisted playback Live Activity experiment. Production policy
+    /// disables every value so playback has one system Now Playing surface.
     public var dynamicIslandMode: PlaybackLiveActivityMode
 
     // Note: there is no user-facing `useTOSPlayerOnIOS` setting. iOS uses the
@@ -237,17 +241,92 @@ public struct AppSettings: Codable {
         }
     }
 
+    /// Complete user-facing visual themes. Light/dark is an implementation
+    /// detail of each design rather than a second, conflicting preference.
     public enum ThemeName: String, Codable, CaseIterable, Sendable {
-        case system = "System"
-        case dark   = "Dark"
-        case light  = "Light"
+        case matrix            = "Matrix"
+        case monochrome        = "Monochrome"
+        case timeline          = "Timeline"
+        case colorWashDark     = "ColorWashDark"
+        case colorWashLight    = "ColorWashLight"
+        case spatialDeck       = "SpatialDeck"
+        case livingPoster      = "LivingPoster"
+        case signalMap         = "SignalMap"
+        case prismRooms        = "PrismRooms"
 
         public var colorScheme: ColorScheme? {
             switch self {
-            case .system: return nil
-            case .dark:   return .dark
-            case .light:  return .light
+            case .matrix, .colorWashDark, .spatialDeck, .livingPoster, .prismRooms:
+                return .dark
+            case .monochrome, .timeline, .colorWashLight, .signalMap:
+                return .light
             }
+        }
+
+        public var displayName: String {
+            switch self {
+            case .matrix:         return "Матрица"
+            case .monochrome:     return "Монохром"
+            case .timeline:       return "Хронология"
+            case .colorWashDark:  return "Сияние, ночь"
+            case .colorWashLight: return "Сияние, день"
+            case .spatialDeck:    return "Орбита"
+            case .livingPoster:   return "Живой постер"
+            case .signalMap:      return "Сигнал"
+            case .prismRooms:     return "Призма"
+            }
+        }
+
+        public var displaySummary: String {
+            switch self {
+            case .matrix:         return "Чёрный фон и мягко-зелёные монохромные превью"
+            case .monochrome:     return "Светлая типографическая лента с зелёным оттенком"
+            case .timeline:       return "Публикации выстроены по времени"
+            case .colorWashDark:  return "Тёмный фон подхватывает цвета каждого ролика"
+            case .colorWashLight: return "Светлый фон подхватывает цвета каждого ролика"
+            case .spatialDeck:    return "Объёмная лента с холодным неоновым светом"
+            case .livingPoster:   return "Видео превращаются в крупные кинопостеры"
+            case .signalMap:      return "Смелая информационная карта с цветовыми метками"
+            case .prismRooms:     return "Насыщенные стеклянные блоки и спектральный свет"
+            }
+        }
+
+        public var usesMonochromeThumbnails: Bool {
+            self == .matrix || self == .monochrome
+        }
+
+        public var usesTimelineLayout: Bool { self == .timeline }
+
+        public var usesColorWash: Bool {
+            self == .colorWashDark || self == .colorWashLight
+        }
+
+        public var usesSpatialDeckLayout: Bool { self == .spatialDeck }
+        public var usesPosterLayout: Bool { self == .livingPoster }
+        public var usesSignalMapLayout: Bool { self == .signalMap }
+        public var usesPrismLayout: Bool { self == .prismRooms }
+
+        /// Reads both the new themes and the retired System/Light/Dark values.
+        /// This keeps every other persisted setting intact during the replacement.
+        public static func migrated(rawValue: String) -> Self? {
+            if let current = Self(rawValue: rawValue) { return current }
+            switch rawValue {
+            case "Dark":   return .matrix
+            case "Light":  return .colorWashLight
+            case "System": return .matrix
+            default:       return nil
+            }
+        }
+
+        public init(from decoder: Decoder) throws {
+            let container = try decoder.singleValueContainer()
+            let rawValue = try container.decode(String.self)
+            self = Self.migrated(rawValue: rawValue) ?? .matrix
+        }
+
+        public func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            try container.encode(rawValue)
         }
     }
 
@@ -278,7 +357,7 @@ public struct AppSettings: Codable {
         hideLiveShorts       = false
         hideVideoPremieres   = false
         perDeviceRecommendationsEnabled = true
-        themeName            = .system
+        themeName            = .matrix
         enabledSections      = BrowseSection.defaultSections.map(\.type)
         historyState         = .enabled
         sponsorBlockEnabled  = true
@@ -307,6 +386,7 @@ public struct AppSettings: Codable {
         offlineAutoSaveMode  = .off
         offlineStorageLimitMB = 4096
         downloadsWiFiOnly     = false
+        lowBandwidthAudioMode = false
         preferH264           = false
         iCloudSyncEnabled    = false
         #if os(macOS)
@@ -384,6 +464,7 @@ extension AppSettings {
         case offlineAutoSaveMode
         case offlineStorageLimitMB
         case downloadsWiFiOnly
+        case lowBandwidthAudioMode
         case preferH264
         case iCloudSyncEnabled
         case useTOSPlayerOnMac
@@ -436,6 +517,7 @@ extension AppSettings {
         offlineAutoSaveMode          = c.safeDecode(OfflineAutoSaveMode.self, forKey: .offlineAutoSaveMode,       default: d.offlineAutoSaveMode)
         offlineStorageLimitMB        = c.safeDecode(Int.self,               forKey: .offlineStorageLimitMB,        default: d.offlineStorageLimitMB)
         downloadsWiFiOnly            = c.safeDecode(Bool.self,              forKey: .downloadsWiFiOnly,            default: d.downloadsWiFiOnly)
+        lowBandwidthAudioMode         = c.safeDecode(Bool.self,              forKey: .lowBandwidthAudioMode,         default: d.lowBandwidthAudioMode)
         preferH264                   = c.safeDecode(Bool.self,              forKey: .preferH264,                   default: d.preferH264)
         iCloudSyncEnabled            = c.safeDecode(Bool.self,              forKey: .iCloudSyncEnabled,            default: d.iCloudSyncEnabled)
         useTOSPlayerOnMac            = c.safeDecode(Bool.self,              forKey: .useTOSPlayerOnMac,            default: d.useTOSPlayerOnMac)

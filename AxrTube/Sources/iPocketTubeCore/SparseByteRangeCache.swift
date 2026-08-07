@@ -434,6 +434,39 @@ public struct SparseByteRangeRequestSet: Sendable, Equatable {
     }
 }
 
+/// Network tuning for the shared sparse playback/download source. Small,
+/// durable ranges are intentional: on a weak connection a cancelled request
+/// loses at most one bounded chunk, while AVPlayer's current read stays ahead
+/// of best-effort offline completion.
+public enum SparseTransferTuning {
+    public static let playerChunkBytes: Int64 = 128 * 1024
+    public static let backgroundChunkBytes: Int64 = 128 * 1024
+    public static let mp4TailPrefetchBytes: Int64 = 128 * 1024
+    public static let backgroundFallbackDelayMilliseconds = 8_000
+    public static let requestTimeoutSeconds: TimeInterval = 30
+    public static let resourceTimeoutSeconds: TimeInterval = 300
+
+    public static func shouldStartBackgroundFill(
+        timelineHasAdvanced: Bool,
+        elapsedMilliseconds: Int
+    ) -> Bool {
+        timelineHasAdvanced || elapsedMilliseconds >= backgroundFallbackDelayMilliseconds
+    }
+}
+
+/// AVPlayer's default HTTP waiting policy tries to predict whether playback can
+/// reach the end without stalling. On a link slower than the media bitrate that
+/// can postpone first audio until the whole file is cached. Progressive files
+/// instead start as soon as AVFoundation has playable bytes, then return to the
+/// system's conservative stall recovery after the timeline actually advances.
+public enum ProgressivePlaybackWaitPolicy {
+    public static func automaticallyWaitsToMinimizeStalling(
+        timelineHasAdvanced: Bool
+    ) -> Bool {
+        timelineHasAdvanced
+    }
+}
+
 /// A tiny event model used both by diagnostics and regression tests to prove
 /// that playback became observable before download/export finalization.
 public struct InstantAudioMilestones: Sendable, Equatable {

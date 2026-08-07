@@ -9,7 +9,7 @@ import Testing
 //   2. PlayerInfo.bestAdaptiveAudioURL returns the highest-bitrate audio/mp4 URL.
 //   3. bestAdaptiveAudioURL returns nil when no audio/mp4 formats are present.
 //   4. isLive guard: live videos have no adaptive audio URL to try (no format added).
-//   5. InnerTubeClients.AndroidVR constants are populated correctly.
+//   5. Offline resolver identities and fallback order stay current.
 
 @Suite("Audio-Only Mode")
 struct AudioOnlyModeTests {
@@ -130,5 +130,30 @@ struct AudioOnlyModeTests {
         #expect(ua.contains("com.google.android.apps.youtube.vr.oculus"))
         #expect(ua.contains(InnerTubeClients.AndroidVR.version))
         #expect(ua.contains("Android 12"))
+    }
+
+    @Test("VisionOS client identity matches the JS-less player profile")
+    func visionOSClientIdentity() {
+        #expect(InnerTubeClients.VisionOS.name == "VISIONOS")
+        #expect(InnerTubeClients.VisionOS.nameID == "101")
+        #expect(InnerTubeClients.VisionOS.version == "1.02")
+        #expect(InnerTubeClients.VisionOS.userAgent.contains("Version/26.0"))
+        #expect(InnerTubeClients.VisionOS.osName == "visionOS")
+    }
+
+    @Test("Offline audio resolver prefers VisionOS and keeps independent fallbacks")
+    func resolverPreferenceOrder() {
+        #expect(OfflineAudioResolverClient.preferredOrder == [
+            .visionOS,
+            .androidVR,
+            .android,
+        ])
+        #expect(Set(OfflineAudioResolverClient.preferredOrder.map(\.userAgent)).count == 3)
+    }
+
+    @Test("Android fallback identity uses the maintained client version")
+    func androidClientVersionIsCurrent() {
+        #expect(InnerTubeClients.Android.version == "21.26.364")
+        #expect(InnerTubeClients.Android.userAgent.contains("21.26.364"))
     }
 }

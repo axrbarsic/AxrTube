@@ -160,8 +160,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         configuration.allowsCellularAccess = allowsCellularAccess
         configuration.allowsExpensiveNetworkAccess = allowsCellularAccess
         configuration.waitsForConnectivity = true
-        configuration.timeoutIntervalForRequest = 15
-        configuration.timeoutIntervalForResource = 60
+        configuration.timeoutIntervalForRequest = SparseTransferTuning.requestTimeoutSeconds
+        configuration.timeoutIntervalForResource = SparseTransferTuning.resourceTimeoutSeconds
         self.session = URLSession(configuration: configuration)
 
         let directory = cacheDirectory
@@ -227,7 +227,11 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         }
     }
 
-    func startBackgroundFill(after delay: Duration = .milliseconds(750)) {
+    func startBackgroundFill(
+        after delay: Duration = .milliseconds(
+            SparseTransferTuning.backgroundFallbackDelayMilliseconds
+        )
+    ) {
         queue.asyncAfter(deadline: .now() + delay.timeInterval) { [weak self] in
             guard let self, !self.isCancelled else { return }
             self.backgroundFillEnabled = true
@@ -379,7 +383,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 request.finishLoading()
                 finished.append(request)
             } else {
-                let end = min(requestedEnd, cursor + 512 * 1024)
+                let end = min(requestedEnd, cursor + SparseTransferTuning.playerChunkBytes)
                 requestRange(SparseByteRange(cursor, end), reason: cursor > expectedBytes / 2 ? "player-tail" : "player")
             }
         }
@@ -400,7 +404,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             : requested
         guard !clamped.isEmpty else { return }
 
-        let playerPriority = reason.hasPrefix("player") || reason == "content-info" || reason == "probe"
+        let playerPriority = reason.hasPrefix("player") || reason == "content-info"
+            || reason == "probe" || reason == "moov-tail-prefetch"
         if playerPriority {
             // A seek/play request preempts an overlapping background fill. The
             // reservation is released immediately so AVPlayer never waits behind
@@ -875,7 +880,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                expectedBytes > 2,
                placement.supportsByteRanges,
                mimeType.lowercased().contains("mp4") {
-                let tailStart = max(2, expectedBytes - 512 * 1024)
+                let tailStart = max(2, expectedBytes - SparseTransferTuning.mp4TailPrefetchBytes)
                 requestRange(SparseByteRange(tailStart, expectedBytes), reason: "moov-tail-prefetch")
             }
             processPendingRequests()
@@ -923,7 +928,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             checkCompletion()
             return
         }
-        let chunk = SparseByteRange(missing.lowerBound, min(missing.upperBound, missing.lowerBound + 1024 * 1024))
+        let chunk = SparseByteRange(
+            missing.lowerBound,
+            min(missing.upperBound, missing.lowerBound + SparseTransferTuning.backgroundChunkBytes)
+        )
         requestRange(chunk, reason: "background-fill")
     }
 

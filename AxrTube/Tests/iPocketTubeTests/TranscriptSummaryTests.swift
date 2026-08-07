@@ -79,6 +79,38 @@ struct TranscriptSummaryTests {
         #expect(result?.hasSuffix("…") == true)
     }
 
+    @Test("AI Lens preserves complete long text while Lock Screen stays bounded")
+    func completeAILensTextIsNotSilentlyTruncated() throws {
+        let paragraph = Array(repeating: "Это законченная полезная мысль.", count: 18).joined(separator: " ")
+        let full = try #require(TranscriptSummaryPolicy.sanitizedCompleteText(paragraph))
+        let compact = try #require(TranscriptSummaryPolicy.sanitizedDisplayText(full))
+
+        #expect(full == paragraph)
+        #expect(!full.hasSuffix("…"))
+        #expect(compact.count <= TranscriptSummaryPolicy.maximumDisplayCharacters)
+        #expect(compact.hasSuffix("…"))
+    }
+
+    @Test("Overview depth labels describe text volume instead of audio time")
+    func insightDepthLabels() {
+        #expect(TranscriptInsightDepth.quick.title == "Суть")
+        #expect(TranscriptInsightDepth.quick.explanation == "Один законченный абзац")
+        #expect(TranscriptInsightDepth.standard.title == "Кратко")
+        #expect(TranscriptInsightDepth.standard.explanation == "Несколько законченных абзацев")
+        #expect(TranscriptInsightDepth.detailed.title == "Подробно")
+        #expect(TranscriptInsightDepth.detailed.explanation == "Разбор по разделам")
+    }
+
+    @Test("AI Lens local main thought keeps the complete canonical paragraph")
+    func completeLocalMainThought() throws {
+        let source = document()
+        let full = try #require(TranscriptSummaryPolicy.localMainThought(for: source))
+        let compact = try #require(TranscriptSummaryPolicy.localFallbackText(for: source))
+
+        #expect(full == source.sections[0].paragraphs[0].text)
+        #expect(full.count >= compact.count)
+    }
+
     @Test("Cache identity changes with the canonical book")
     func cacheIdentity() {
         let first = document()
@@ -151,7 +183,7 @@ struct TranscriptSummaryTests {
     @Test("Off mode keeps system Now Playing as the only playback card")
     func noDuplicatePlaybackCardByDefault() {
         #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .off))
-        #expect(PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .progress))
+        #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .progress))
         var arbitration = LiveActivityArbitrationPolicy()
         let download = arbitration.beginDownload(itemID: "download-only")
         #expect(download.shouldPresent)

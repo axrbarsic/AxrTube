@@ -4,11 +4,10 @@ import Testing
 
 @Suite("Playback Live Activity contract")
 struct PlaybackLiveActivityTests {
-    @Test("Only explicit non-off modes opt into playback Live Activity")
-    func lockScreenPolicyFollowsUserMode() {
-        #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: .off))
-        for mode in PlaybackLiveActivityMode.allCases where mode != .off {
-            #expect(PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: mode))
+    @Test("No persisted mode can add a duplicate playback Live Activity")
+    func lockScreenPolicyDisablesEveryPlaybackMode() {
+        for mode in PlaybackLiveActivityMode.allCases {
+            #expect(!PlaybackLockScreenPolicy.usesPlaybackLiveActivity(for: mode))
         }
     }
 

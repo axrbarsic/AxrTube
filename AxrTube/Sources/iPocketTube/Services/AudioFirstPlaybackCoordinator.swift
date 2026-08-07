@@ -412,6 +412,7 @@ public final class AudioFirstPlaybackCoordinator {
                 try startSparsePlayback(
                     video: video,
                     plan: resolved.plan,
+                    client: resolved.client,
                     source: .init(
                         url: url,
                         userAgent: resolved.userAgent,
@@ -441,74 +442,49 @@ public final class AudioFirstPlaybackCoordinator {
 
     private struct ResolvedAudioPlan {
         let plan: OfflineAudioDownloadPlan
-        let userAgent: String
+        let client: OfflineAudioResolverClient
         let captionTracks: [CaptionTrack]
+
+        var userAgent: String { client.userAgent }
     }
 
     private func resolveDownloadPlan(for video: Video) async throws -> ResolvedAudioPlan {
         var resolvedFormats: [VideoFormat] = []
         var resolvedCaptionTracks: [CaptionTrack] = []
         var resolutionErrors: [Error] = []
-        var androidFormatCount = 0
-        var vrFormatCount = 0
+        var formatCounts: [OfflineAudioResolverClient: Int] = [:]
 
-        do {
-            let android = try await api.fetchPlayerInfoAndroid(videoId: video.id)
-            androidFormatCount = android.formats.count
-            resolvedFormats.append(contentsOf: android.formats)
-            resolvedCaptionTracks = Self.mergedCaptionTracks(
-                resolvedCaptionTracks,
-                android.captionTracks
-            )
-            if let plan = OfflineAudioFormatSelector.select(from: android.formats) {
-                return ResolvedAudioPlan(
-                    plan: plan,
-                    userAgent: InnerTubeClients.Android.userAgent,
-                    captionTracks: resolvedCaptionTracks
+        for client in OfflineAudioResolverClient.preferredOrder {
+            do {
+                let info = try await Self.fetchPlayerInfo(api: api, videoID: video.id, client: client)
+                formatCounts[client] = info.formats.count
+                resolvedFormats.append(contentsOf: info.formats)
+                resolvedCaptionTracks = Self.mergedCaptionTracks(
+                    resolvedCaptionTracks,
+                    info.captionTracks
+                )
+                if let plan = OfflineAudioFormatSelector.select(
+                    from: info.formats,
+                    preferSmallestRepresentation: settingsStore.settings.lowBandwidthAudioMode
+                ) {
+                    return ResolvedAudioPlan(
+                        plan: plan,
+                        client: client,
+                        captionTracks: resolvedCaptionTracks
+                    )
+                }
+            } catch {
+                resolutionErrors.append(error)
+                AudioDiagnostics.shared.record(
+                    source: "audio-source-resolution",
+                    event: "client.failed",
+                    decision: "client=\(client.rawValue) class=\(OfflineFailurePresentationPolicy.reason(for: error)?.rawValue ?? "unknown")",
+                    player: playerState.vm.player,
+                    itemID: video.id,
+                    commandGeneration: commandGate.generation,
+                    error: error
                 )
             }
-        } catch {
-            resolutionErrors.append(error)
-            AudioDiagnostics.shared.record(
-                source: "audio-source-resolution",
-                event: "client.failed",
-                decision: "client=android class=\(OfflineFailurePresentationPolicy.reason(for: error)?.rawValue ?? "unknown")",
-                player: playerState.vm.player,
-                itemID: video.id,
-                commandGeneration: commandGate.generation,
-                error: error
-            )
-        }
-
-        // A LOGIN_REQUIRED response from the Android client is frequently a bot check,
-        // not a content restriction. Always let the independent AndroidVR client try
-        // before presenting a terminal error.
-        do {
-            let vr = try await api.fetchPlayerInfoAndroidVR(videoId: video.id)
-            resolvedFormats.append(contentsOf: vr.formats)
-            resolvedCaptionTracks = Self.mergedCaptionTracks(
-                resolvedCaptionTracks,
-                vr.captionTracks
-            )
-            vrFormatCount = vr.formats.count
-            if let plan = OfflineAudioFormatSelector.select(from: vr.formats) {
-                return ResolvedAudioPlan(
-                    plan: plan,
-                    userAgent: InnerTubeClients.AndroidVR.userAgent,
-                    captionTracks: resolvedCaptionTracks
-                )
-            }
-        } catch {
-            resolutionErrors.append(error)
-            AudioDiagnostics.shared.record(
-                source: "audio-source-resolution",
-                event: "client.failed",
-                decision: "client=android-vr class=\(OfflineFailurePresentationPolicy.reason(for: error)?.rawValue ?? "unknown")",
-                player: playerState.vm.player,
-                itemID: video.id,
-                commandGeneration: commandGate.generation,
-                error: error
-            )
         }
 
         if resolvedFormats.isEmpty, !resolutionErrors.isEmpty {
@@ -538,13 +514,28 @@ public final class AudioFirstPlaybackCoordinator {
         AudioDiagnostics.shared.record(
             source: "audio-source-resolution",
             event: "format.unsupported",
-            decision: "code=\(failure.diagnosticCode) android=\(androidFormatCount) vr=\(vrFormatCount)",
+            decision: "code=\(failure.diagnosticCode) visionos=\(formatCounts[.visionOS, default: 0]) vr=\(formatCounts[.androidVR, default: 0]) android=\(formatCounts[.android, default: 0])",
             player: playerState.vm.player,
             itemID: video.id,
             commandGeneration: commandGate.generation,
             error: error
         )
         throw error
+    }
+
+    nonisolated private static func fetchPlayerInfo(
+        api: InnerTubeAPI,
+        videoID: String,
+        client: OfflineAudioResolverClient
+    ) async throws -> PlayerInfo {
+        switch client {
+        case .visionOS:
+            try await api.fetchPlayerInfoVisionOS(videoId: videoID)
+        case .androidVR:
+            try await api.fetchPlayerInfoAndroidVR(videoId: videoID)
+        case .android:
+            try await api.fetchPlayerInfoAndroid(videoId: videoID)
+        }
     }
 
     nonisolated private static func mergedCaptionTracks(
@@ -587,6 +578,7 @@ public final class AudioFirstPlaybackCoordinator {
     private func startSparsePlayback(
         video: Video,
         plan: OfflineAudioDownloadPlan,
+        client: OfflineAudioResolverClient,
         source: ProgressiveAudioResourceLoader.Source,
         captionTracks: [CaptionTrack],
         generation: UInt64
@@ -605,13 +597,8 @@ public final class AudioFirstPlaybackCoordinator {
             fileExtension: plan.downloadFileExtension,
             cacheDirectory: DownloadStore.shared.partialDownloadsDirectory,
             allowsCellularAccess: !settingsStore.settings.downloadsWiFiOnly,
-            refreshSource: { [api, originalUserAgent = source.userAgent] in
-                let refreshedInfo: PlayerInfo
-                if originalUserAgent == InnerTubeClients.AndroidVR.userAgent {
-                    refreshedInfo = try await api.fetchPlayerInfoAndroidVR(videoId: video.id)
-                } else {
-                    refreshedInfo = try await api.fetchPlayerInfoAndroid(videoId: video.id)
-                }
+            refreshSource: { [api, client] in
+                let refreshedInfo = try await Self.fetchPlayerInfo(api: api, videoID: video.id, client: client)
                 let candidates = refreshedInfo.formats.filter {
                     $0.mimeType == plan.format.mimeType && $0.url != nil
                 }
@@ -628,7 +615,7 @@ public final class AudioFirstPlaybackCoordinator {
                 }
                 return .init(
                     url: refreshedURL,
-                    userAgent: originalUserAgent,
+                    userAgent: client.userAgent,
                     fingerprint: SparseSourceFingerprint(
                         videoID: video.id,
                         profile: Self.representationProfile(plan: plan, format: refreshedFormat),
@@ -683,6 +670,9 @@ public final class AudioFirstPlaybackCoordinator {
         )
         synchronizeLiveActivity(force: true)
         loader.start()
+        // Keep the scarce connection focused on AVPlayer's header, tail index,
+        // and first media reads. A bounded fallback still completes downloads
+        // when an unusual asset never advances its timeline.
         loader.startBackgroundFill()
         monitorTimelineAdvance(for: video, generation: generation)
     }
@@ -841,10 +831,8 @@ public final class AudioFirstPlaybackCoordinator {
                 fileExtension: plan.downloadFileExtension,
                 cacheDirectory: DownloadStore.shared.partialDownloadsDirectory,
                 allowsCellularAccess: !settingsStore.settings.downloadsWiFiOnly,
-                refreshSource: { [api, originalUserAgent = source.userAgent] in
-                    let info = originalUserAgent == InnerTubeClients.AndroidVR.userAgent
-                        ? try await api.fetchPlayerInfoAndroidVR(videoId: video.id)
-                        : try await api.fetchPlayerInfoAndroid(videoId: video.id)
+                refreshSource: { [api, client = resolved.client] in
+                    let info = try await Self.fetchPlayerInfo(api: api, videoID: video.id, client: client)
                     let formats = info.formats.filter { $0.mimeType == plan.format.mimeType && $0.url != nil }
                     let refreshed = plan.format.itag.flatMap { itag in formats.first { $0.itag == itag } }
                         ?? formats.first { $0.bitrate == plan.format.bitrate }
@@ -853,7 +841,7 @@ public final class AudioFirstPlaybackCoordinator {
                     }
                     return .init(
                         url: refreshedURL,
-                        userAgent: originalUserAgent,
+                        userAgent: client.userAgent,
                         fingerprint: SparseSourceFingerprint(
                             videoID: video.id,
                             profile: Self.representationProfile(plan: plan, format: refreshed),
@@ -1119,7 +1107,8 @@ public final class AudioFirstPlaybackCoordinator {
             video: video,
             kind: .audio,
             saveVideoToPhotos: false,
-            storageLimitMB: settingsStore.settings.offlineStorageLimitMB
+            storageLimitMB: settingsStore.settings.offlineStorageLimitMB,
+            preferLowBandwidthAudio: settingsStore.settings.lowBandwidthAudioMode
         )
 
         while !Task.isCancelled, commandGate.isCurrent(generation), currentVideo?.id == video.id {
@@ -1387,6 +1376,13 @@ public final class AudioFirstPlaybackCoordinator {
                     }
                     if !recordedFirstAdvance {
                         recordedFirstAdvance = true
+                        self.playerState.vm.player.automaticallyWaitsToMinimizeStalling =
+                            ProgressivePlaybackWaitPolicy.automaticallyWaitsToMinimizeStalling(
+                                timelineHasAdvanced: true
+                            )
+                        // Once first audio is proven, the same sparse owner may
+                        // fill the remaining file without delaying startup.
+                        self.resourceLoader?.startBackgroundFill(after: .zero)
                         let elapsed = self.elapsedMilliseconds
                         self.milestones.timelineAdvanced()
                         self.lastTTFAMilliseconds = elapsed

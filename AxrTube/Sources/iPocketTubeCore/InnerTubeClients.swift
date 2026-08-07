@@ -34,21 +34,32 @@ package enum InnerTubeClients {
         }
     }
 
-    /// Android client — used exclusively for downloads.
-    /// CDN URLs signed by the Android client are reliably downloadable using just
-    /// the Android UA; no session cookies or PO tokens required.
-    /// Exact params from yt-dlp to avoid YouTube bot detection / HTTP 400.
+    /// Android client used as the final independent audio resolver fallback.
+    /// Exact parameters mirror the maintained yt-dlp identity.
     package enum Android {
         package static let name            = "ANDROID"
         package static let nameID          = "3"
-        package static let version         = "21.02.35"
+        package static let version         = "21.26.364"
         package static let androidSdkVersion = 30  // Android 11
         package static let userAgent       = "com.google.android.youtube/\(version) (Linux; U; Android 11) gzip"
     }
 
-    /// Android VR client (Oculus Quest identity) — used as an unauthenticated fallback
-    /// for audio-only mode. Per yt-dlp research (May 2026), this client does not require
-    /// a Proof-of-Origin (PO) token for adaptive streams. Monitor for future enforcement.
+    /// visionOS client used as the first audio-only resolver. It is the current
+    /// JS-less default in yt-dlp and avoids coupling media URL resolution to a
+    /// browser player script.
+    package enum VisionOS {
+        package static let name      = "VISIONOS"
+        package static let nameID    = "101"
+        package static let version   = "1.02"
+        package static let userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 15_7_3) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/26.0 Safari/605.1.15"
+        package static let deviceMake = "Apple"
+        package static let deviceModel = "RealityDevice17,1"
+        package static let osName = "visionOS"
+        package static let osVersion = "26.5.23O471"
+    }
+
+    /// Android VR client (Oculus Quest identity) used as an audio-only fallback.
+    /// YouTube can selectively require proof tokens, so this is not the sole resolver.
     /// Note: clientVersion must not exceed 1.65 — higher versions return SABR streams only.
     package enum AndroidVR {
         package static let name    = "ANDROID_VR"

@@ -53,6 +53,7 @@ public final class VideoDownloadService {
     private var currentKind: OfflineMediaKind = .video
     private var shouldSaveVideoToPhotos = true
     private var storageLimitBytes: Int64 = 4 * 1024 * 1024 * 1024
+    private var preferLowBandwidthAudio = false
 
     #if os(iOS)
     @available(iOS 16.1, *)
@@ -116,7 +117,8 @@ public final class VideoDownloadService {
         kind: OfflineMediaKind = .video,
         saveVideoToPhotos: Bool = true,
         storageLimitMB: Int = 4096,
-        isAutomatic: Bool = false
+        isAutomatic: Bool = false,
+        preferLowBandwidthAudio: Bool = false
     ) {
         guard !state.isActive else { return }
         lastWasAutomatic = isAutomatic
@@ -137,6 +139,7 @@ public final class VideoDownloadService {
         currentKind = kind
         shouldSaveVideoToPhotos = saveVideoToPhotos && kind == .video
         storageLimitBytes = limitBytes
+        self.preferLowBandwidthAudio = preferLowBandwidthAudio
         state = .fetching
         store.update(videoId: video.id, kind: kind, status: .fetching, progress: 0.05)
         #if os(iOS)
@@ -153,7 +156,8 @@ public final class VideoDownloadService {
             kind: entry.kind,
             saveVideoToPhotos: entry.kind == .video,
             storageLimitMB: storageLimitMB,
-            isAutomatic: false
+            isAutomatic: false,
+            preferLowBandwidthAudio: preferLowBandwidthAudio
         )
     }
 
@@ -496,7 +500,9 @@ public final class VideoDownloadService {
     /// native ladder: direct M4A, other AVFoundation audio, or AAC extraction from
     /// an already downloaded / remotely available muxed MP4.
     private func performAudioDownload(video: Video) async throws {
-        let resolution = try await OfflineAudioFormatSelector.resolve { [api] in
+        let resolution = try await OfflineAudioFormatSelector.resolve(
+            preferSmallestRepresentation: preferLowBandwidthAudio
+        ) { [api] in
             let info = try await api.fetchPlayerInfoAndroid(videoId: video.id)
             return info.formats
         }

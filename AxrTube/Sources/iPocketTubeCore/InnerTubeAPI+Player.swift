@@ -207,6 +207,41 @@ extension InnerTubeAPI {
         return try parsePlayerInfo(from: data, videoId: videoId)
     }
 
+    /// Fetches player info using the current JS-less visionOS client.
+    public func fetchPlayerInfoVisionOS(videoId: String) async throws -> PlayerInfo {
+        let startedWithoutVisitorData = visitorData == nil
+        var clientFields = (visionOSClientContext["client"] as? [String: Any]) ?? [:]
+        if let visitorData { clientFields["visitorData"] = visitorData }
+        var body = makeBody(client: ["client": clientFields])
+        body["videoId"] = videoId
+        body["racyCheckOk"] = true
+        body["contentCheckOk"] = true
+        body["playbackContext"] = [
+            "contentPlaybackContext": ["html5Preference": "HTML5_PREF_WANTS"]
+        ]
+        var data = try await postVisionOS(body: body)
+
+        // A cold request may be rejected as a bot check while still issuing the
+        // visitor identity needed by the next request. Accept that identity and
+        // retry exactly once with matching body and header state.
+        if startedWithoutVisitorData,
+           let responseContext = data["responseContext"] as? [String: Any],
+           let seededVisitorData = responseContext["visitorData"] as? String,
+           !seededVisitorData.isEmpty {
+            visitorData = seededVisitorData
+            clientFields["visitorData"] = seededVisitorData
+            body = makeBody(client: ["client": clientFields])
+            body["videoId"] = videoId
+            body["racyCheckOk"] = true
+            body["contentCheckOk"] = true
+            body["playbackContext"] = [
+                "contentPlaybackContext": ["html5Preference": "HTML5_PREF_WANTS"]
+            ]
+            data = try await postVisionOS(body: body)
+        }
+        return try parsePlayerInfo(from: data, videoId: videoId)
+    }
+
     /// Fetches player info using the Android VR (Oculus) client.
     /// Uses the correct Android VR transport (nameID=28, Oculus UA on googleapis.com)
     /// so YouTube identifies the request as an Oculus Quest client — not a Web client.

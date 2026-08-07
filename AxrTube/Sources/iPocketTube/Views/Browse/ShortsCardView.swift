@@ -30,6 +30,9 @@ struct ShortsCardView: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             ThumbnailFillView(primaryURL: primaryURL, fallbackURLs: video.thumbnailFallbackURLs)
+                .saturation(store.settings.themeName.usesMonochromeThumbnails ? 0 : 1)
+                .contrast(store.settings.themeName.usesMonochromeThumbnails ? 1.06 : 1)
+                .colorMultiply(shortsThumbnailTint)
 
             // Dark gradient + title overlay at the bottom.
             LinearGradient(
@@ -68,7 +71,11 @@ struct ShortsCardView: View {
             iPocketTubeHaptics.shared.perform(.contentSelection)
             onTap()
         }
+        #if os(tvOS)
         .iPocketTubeCardSurface(cornerRadius: 10, contentPadding: 3)
+        #else
+        .padding(3)
+        #endif
         .contextMenu {
             #if !os(tvOS)
             if let shareURL = URL(string: "https://www.youtube.com/watch?v=\(video.id)") {
@@ -195,6 +202,18 @@ struct ShortsCardView: View {
         }
         .alert(item: $watchLaterAlert) { item in
             Alert(title: Text(item.title), message: Text(item.message), dismissButton: .default(Text("OK")))
+        }
+    }
+
+    private var shortsThumbnailTint: Color {
+        switch store.settings.themeName {
+        case .matrix:
+            return Color(red: 0.76, green: 1.00, blue: 0.82)
+        case .monochrome:
+            return Color(red: 0.88, green: 1.00, blue: 0.91)
+        case .timeline, .colorWashDark, .colorWashLight,
+             .spatialDeck, .livingPoster, .signalMap, .prismRooms:
+            return .white
         }
     }
 }

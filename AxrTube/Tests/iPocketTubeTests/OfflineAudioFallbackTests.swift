@@ -48,6 +48,23 @@ struct OfflineAudioFallbackTests {
         #expect(plan?.downloadFileExtension == "m4a")
     }
 
+    @Test("Constrained-network mode chooses the smallest direct AAC/M4A stream")
+    func constrainedNetworkSelectsSmallestM4A() {
+        let formats = [
+            format("audio/mp4; codecs=\"mp4a.40.2\"", bitrate: 128_000),
+            format("audio/mp4; codecs=\"mp4a.40.5\"", bitrate: 48_000),
+            format("audio/mp4; codecs=\"mp4a.40.5\"", bitrate: 64_000),
+        ]
+
+        let plan = OfflineAudioFormatSelector.select(
+            from: formats,
+            preferSmallestRepresentation: true
+        )
+
+        #expect(plan?.source == .directM4A)
+        #expect(plan?.format.bitrate == 48_000)
+    }
+
     @Test("Selection accepts another AVFoundation-native audio container before video extraction")
     func selectsOtherNativeAudioSecond() {
         let formats = [
