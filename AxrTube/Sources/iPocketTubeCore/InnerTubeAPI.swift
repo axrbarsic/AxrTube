@@ -105,6 +105,7 @@ public actor InnerTubeAPI {
     // caused by session/IP mismatch after a network transition.
     nonisolated private let pathMonitor = NWPathMonitor()
     private var lastPathStatus: NWPath.Status? = nil
+    private var lastPathInterfaceNames: Set<String> = []
 
     /// The web client context used to fetch home/search/channel feeds.
     let webClientContext: [String: Any] = [
@@ -300,14 +301,18 @@ public actor InnerTubeAPI {
     // MARK: - Private: Network path handler
 
     private func handlePathUpdate(_ path: NWPath) {
-        // Only reset visitorData when transitioning between satisfied states
-        // (e.g. VPN connect, WiFi switch). Ignore transient unsatisfied -> satisfied
-        // on first start by comparing to the previously recorded status.
+        // Reset visitorData only on a real network transition (VPN connect,
+        // WiFi switch, cellular handover): NWPath also emits satisfied→satisfied
+        // updates for signal-quality or route changes with no interface change,
+        // which would otherwise flush personalization needlessly.
         let prev = lastPathStatus
+        let interfaceNames = Set(path.availableInterfaces.map(\.name))
+        let interfacesChanged = interfaceNames != lastPathInterfaceNames
         lastPathStatus = path.status
-        guard path.status == .satisfied, prev == .satisfied else { return }
+        lastPathInterfaceNames = interfaceNames
+        guard path.status == .satisfied, prev == .satisfied, interfacesChanged else { return }
         visitorData = nil
-        tubeLog.notice("visitorData cleared — network path changed (VPN/WiFi transition)")
+        tubeLog.notice("visitorData cleared — network interface changed (VPN/WiFi transition)")
     }
 
     // MARK: - Auth

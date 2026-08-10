@@ -434,23 +434,74 @@ public struct SparseByteRangeRequestSet: Sendable, Equatable {
     }
 }
 
-/// Network tuning for the shared sparse playback/download source. Small,
-/// durable ranges are intentional: on a weak connection a cancelled request
-/// loses at most one bounded chunk, while AVPlayer's current read stays ahead
-/// of best-effort offline completion.
+/// Network tuning for the shared sparse playback/download source. Playback
+/// ranges stay small so AVPlayer's current read gets bytes quickly and a
+/// cancelled request loses at most one bounded chunk. Offline fill uses larger
+/// ranges: YouTube serves bounded range requests at full speed while a single
+/// large GET is throttled to roughly playback bitrate, and 2 MiB chunks stay
+/// well below the ~10 MiB range limit beyond which throttling resumes (mpv
+/// issue #10745 measurements). 8 parallel connections exploit per-connection
+/// throttling without hitting YouTube's connection abuse limits.
 public enum SparseTransferTuning {
     public static let playerChunkBytes: Int64 = 128 * 1024
-    public static let backgroundChunkBytes: Int64 = 128 * 1024
+    public static let backgroundChunkBytes: Int64 = 2 * 1024 * 1024
     public static let mp4TailPrefetchBytes: Int64 = 128 * 1024
+    public static let normalBackgroundConnections = 8
+    public static let constrainedBackgroundConnections = 2
     public static let backgroundFallbackDelayMilliseconds = 8_000
+    public static let offlineFillAfterFirstAudioMilliseconds = 1_000
     public static let requestTimeoutSeconds: TimeInterval = 30
-    public static let resourceTimeoutSeconds: TimeInterval = 300
+    /// Bounded resource ceiling: with `waitsForConnectivity` enabled a stalled
+    /// request would otherwise occupy its in-flight slot and freeze progress
+    /// for the full 300 s default. 60 s still covers extremely slow links
+    /// (128 KiB chunk ≈ 17 Kbps) while recovering promptly after drops.
+    public static let resourceTimeoutSeconds: TimeInterval = 60
+
+    public static func backgroundConnectionLimit(
+        lowBandwidthAudio: Bool,
+        constrainedNetwork: Bool
+    ) -> Int {
+        lowBandwidthAudio || constrainedNetwork
+            ? constrainedBackgroundConnections
+            : normalBackgroundConnections
+    }
 
     public static func shouldStartBackgroundFill(
         timelineHasAdvanced: Bool,
         elapsedMilliseconds: Int
     ) -> Bool {
         timelineHasAdvanced || elapsedMilliseconds >= backgroundFallbackDelayMilliseconds
+    }
+}
+
+/// Plans independent byte ranges without overlapping cached or active work.
+/// The loader executes these ranges concurrently only after the server has
+/// confirmed HTTP Range support. Writes remain serialized by the loader queue.
+public enum SparseBackgroundFillPlanner {
+    public static func ranges(
+        cached: SparseByteRangeIndex,
+        reserved: [SparseByteRange],
+        totalBytes: Int64,
+        chunkBytes: Int64,
+        limit: Int
+    ) -> [SparseByteRange] {
+        guard totalBytes > 0, chunkBytes > 0, limit > 0 else { return [] }
+        var occupied = cached
+        for range in reserved { occupied.insert(range) }
+
+        let whole = SparseByteRange(0, totalBytes)
+        var result: [SparseByteRange] = []
+        while result.count < limit,
+              let missing = occupied.missingRanges(in: whole).first {
+            let range = SparseByteRange(
+                missing.lowerBound,
+                min(missing.upperBound, missing.lowerBound + chunkBytes)
+            )
+            guard !range.isEmpty else { break }
+            result.append(range)
+            occupied.insert(range)
+        }
+        return result
     }
 }
 
@@ -464,6 +515,131 @@ public enum ProgressivePlaybackWaitPolicy {
         timelineHasAdvanced: Bool
     ) -> Bool {
         timelineHasAdvanced
+    }
+}
+
+/// Coordinates the native HTTPS playback lane with the durable offline lane.
+/// AVPlayer is never gated by download percentage. The downloader stays at one
+/// connection until playback is proven healthy and a completed local file is
+/// installed only when the network item never became audible or has failed.
+public struct PlaybackFirstTransferState: Sendable, Equatable {
+    public static let startupFallbackDelayMilliseconds = 15_000
+    public static let stableSamplesBeforeConnectionRamp = 10
+    public static let maximumDirectRefreshAttempts = 2
+
+    public private(set) var audiblePlaybackStarted = false
+    public private(set) var directPlaybackFailed = false
+    public private(set) var offlineTransferStarted = false
+    public private(set) var directRefreshAttempts = 0
+    public private(set) var stableBufferSamples = 0
+
+    public init() {}
+
+    public mutating func directItemInstalled() {
+        audiblePlaybackStarted = false
+        directPlaybackFailed = false
+        stableBufferSamples = 0
+    }
+
+    public mutating func audiblePlaybackDidStart() {
+        audiblePlaybackStarted = true
+        directPlaybackFailed = false
+    }
+
+    @discardableResult
+    public mutating func beginOfflineTransfer() -> Bool {
+        guard !offlineTransferStarted else { return false }
+        offlineTransferStarted = true
+        return true
+    }
+
+    public mutating func directPlaybackDidFail() {
+        directPlaybackFailed = true
+        stableBufferSamples = 0
+    }
+
+    /// Returns a one-based attempt number, or nil after the bounded retry budget.
+    public mutating func beginDirectRefresh() -> Int? {
+        guard directRefreshAttempts < Self.maximumDirectRefreshAttempts else { return nil }
+        directRefreshAttempts += 1
+        return directRefreshAttempts
+    }
+
+    /// A new downloader can resume the durable sparse manifest after URL refresh.
+    public mutating func offlineTransferWillBeReattached() {
+        offlineTransferStarted = false
+    }
+
+    /// Counts only consecutive healthy samples. A single weak sample immediately
+    /// returns the downloader to the playback-safe single connection policy.
+    @discardableResult
+    public mutating func observePlaybackBuffer(isLikelyToKeepUp: Bool) -> Bool {
+        if isLikelyToKeepUp {
+            stableBufferSamples = min(
+                Self.stableSamplesBeforeConnectionRamp,
+                stableBufferSamples + 1
+            )
+        } else {
+            stableBufferSamples = 0
+        }
+        return stableBufferSamples >= Self.stableSamplesBeforeConnectionRamp
+    }
+
+    public var shouldInstallCompletedLocalFile: Bool {
+        directPlaybackFailed || !audiblePlaybackStarted
+    }
+
+    public func backgroundConnectionLimit(
+        preferred: Int,
+        lowBandwidthAudio: Bool
+    ) -> Int {
+        guard !lowBandwidthAudio,
+              stableBufferSamples >= Self.stableSamplesBeforeConnectionRamp else { return 1 }
+        return max(1, preferred)
+    }
+}
+
+/// Rejects a restored-position jump or user seek as proof of first audio.
+/// Decoded PCM is authoritative. When the PCM tap is unavailable, two small,
+/// consecutive timeline advances while AVPlayer is actually playing form the
+/// energy-efficient fallback.
+public struct AudiblePlaybackEvidenceGate: Sendable, Equatable {
+    private var previousTime: TimeInterval?
+    private var consecutiveNaturalAdvances = 0
+
+    public init() {}
+
+    public mutating func observe(
+        time: TimeInterval,
+        rate: Double,
+        isPlaying: Bool,
+        isScrubbing: Bool,
+        hasDecodedPCM: Bool
+    ) -> Bool {
+        if hasDecodedPCM { return true }
+        guard time.isFinite, time >= 0 else {
+            reset()
+            return false
+        }
+        defer { previousTime = time }
+        guard isPlaying, rate > 0, !isScrubbing,
+              let previousTime else {
+            consecutiveNaturalAdvances = 0
+            return false
+        }
+
+        let delta = time - previousTime
+        if delta >= 0.01, delta <= 0.75 {
+            consecutiveNaturalAdvances += 1
+        } else if abs(delta) > 0.01 {
+            consecutiveNaturalAdvances = 0
+        }
+        return consecutiveNaturalAdvances >= 2
+    }
+
+    private mutating func reset() {
+        previousTime = nil
+        consecutiveNaturalAdvances = 0
     }
 }
 

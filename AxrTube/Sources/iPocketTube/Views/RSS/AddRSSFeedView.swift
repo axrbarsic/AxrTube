@@ -88,8 +88,13 @@ struct AddRSSFeedView: View {
 
         Task {
             let feed = RSSFeedInfo(title: trimmedTitle, feedURL: url)
-            await RSSFeedStore.shared.addFeed(feed)
-            dismiss()
+            let added = await RSSFeedStore.shared.addFeed(feed)
+            isAdding = false
+            if added {
+                dismiss()
+            } else {
+                errorMessage = "This feed is already in your list."
+            }
         }
     }
 }

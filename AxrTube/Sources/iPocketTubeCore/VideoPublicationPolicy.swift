@@ -249,6 +249,9 @@ public actor VideoPublicationDateEnricher {
     private let successTTL: TimeInterval
     private let failureTTL: TimeInterval
     private let maxConcurrentRequests: Int
+    /// Cap so a long-lived app process cannot grow the dictionary without bound
+    /// (one entry per unique video ID, never evicted otherwise).
+    private static let maxCacheEntries = 2_000
     private var cache: [String: CacheEntry] = [:]
     private var inFlight: [String: Task<Date?, Never>] = [:]
 
@@ -260,6 +263,20 @@ public actor VideoPublicationDateEnricher {
         self.successTTL = successTTL
         self.failureTTL = failureTTL
         self.maxConcurrentRequests = max(1, maxConcurrentRequests)
+    }
+
+    /// Removes expired entries and, when the cap is exceeded, the oldest
+    /// surviving entries. Bounded work: only runs after a fresh insertion.
+    private func evictExpired(now: Date) {
+        if cache.count < Self.maxCacheEntries {
+            cache = cache.filter { $0.value.expiresAt > now }
+            return
+        }
+        let expiredKeys = cache.filter { $0.value.expiresAt <= now }.map(\.key)
+        for key in expiredKeys { cache.removeValue(forKey: key) }
+        while cache.count >= Self.maxCacheEntries, let oldest = cache.min(by: { $0.value.expiresAt < $1.value.expiresAt }) {
+            cache.removeValue(forKey: oldest.key)
+        }
     }
 
     public func enrich(
@@ -319,6 +336,7 @@ public actor VideoPublicationDateEnricher {
             date: date,
             expiresAt: now.addingTimeInterval(date == nil ? failureTTL : successTTL)
         )
+        evictExpired(now: now)
         return date
     }
 }

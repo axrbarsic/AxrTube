@@ -132,6 +132,14 @@ public final class WatchtimeTracker {
         let segStart = segmentStart ?? 0
         trackerLog.notice("checkpoint: videoId=\(vid, privacy: .public) st=\(Int(segStart))s et=\(Int(position))s dur=\(Int(duration))s")
         await VideoStateStore.shared.save(videoId: vid, position: position, duration: duration)
+        guard position >= segStart else {
+            // A backward seek makes [segStart, position] an invalid interval
+            // (st > et), which YouTube drops. Skip the report and rebase the
+            // segment so the next forward interval is correct.
+            trackerLog.notice("checkpoint: backward seek to \(Int(position))s — rebasing segment start")
+            segmentStart = position
+            return
+        }
         await api.reportWatchtime(videoId: vid, cpn: localCPN, trackingURLs: localURLs,
                                    segmentStart: segStart, segmentEnd: position)
         segmentStart = position

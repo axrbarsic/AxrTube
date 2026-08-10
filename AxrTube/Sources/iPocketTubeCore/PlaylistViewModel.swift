@@ -59,6 +59,14 @@ public final class PlaylistViewModel {
         observeFeedHideNotifications()
     }
 
+    /// Cancels owned tasks and feed-hide observers. Call when the owning view
+    /// is torn down.
+    public func cancel() {
+        fetchTask?.cancel()
+        publicationTask?.cancel()
+        hideObserverTasks.forEach { $0.cancel() }
+    }
+
     public func load(playlistId: String, refresh: Bool = false) {
         // ── Queue short-circuit ────────────────────────────────────────────────
         // Delegates to `queueLoader` so this ViewModel is not coupled to

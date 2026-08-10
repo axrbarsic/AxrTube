@@ -4,18 +4,17 @@ import Testing
 
 // MARK: - FEShortsClientRegressionTests
 //
-// Regression tests for task #96: fetchShorts and fetchShortsMore must use the
-// TVHTML5 client context, not the WEB client context, when making authenticated
-// InnerTube browse requests.
+// Regression tests for task #96: fetchShorts and fetchShortsMore must route
+// through a client that the device-code OAuth token can ride on.
 //
-// Root cause: the device-code OAuth token is bound to TVHTML5. When the WEB
-// client body is sent with this token, YouTube returns HTTP 400. All other auth
-// endpoints correctly use tvClientContext; fetchShorts and fetchShortsMore had
-// a regression that switched them to webClientContext, causing Shorts to show
-// no videos on cold launch.
+// NOTE (2026-05-24): YouTube deprecated the FEshorts browseId — every attempt
+// (postTV, postTVCategory, WEB) returns HTTP 400, so fetchShorts was migrated
+// to the search "#shorts" path, which always uses the WEB client context.
+// The TVHTML5 client is only used by fetchShortsMore for legacy (un-prefixed)
+// continuation tokens from older app versions.
 //
 // These tests intercept the outgoing URLRequest via URLProtocol and verify the
-// JSON body contains `"clientName": "TVHTML5"` — not `"WEB"`.
+// JSON body contains the expected `clientName` for each path.
 
 // MARK: - URLProtocol helper
 
@@ -94,12 +93,13 @@ struct FEShortsClientRegressionTests {
 
     // MARK: - fetchShorts
 
-    /// Verifies that fetchShorts sends `clientName: "TVHTML5"` when authenticated.
+    /// Verifies that fetchShorts routes through the search endpoint with the
+    /// WEB client, even when authenticated.
     ///
-    /// Before the fix, this was `"WEB"`, causing YouTube to reject the request
-    /// with HTTP 400 because the device-code OAuth token is bound to TVHTML5.
-    @Test("fetchShorts sends TVHTML5 clientName when authenticated")
-    func fetchShortsSendsTVClientWhenAuthenticated() async throws {
+    /// FEshorts browse is retired (HTTP 400 on every client), so fetchShorts is
+    /// a search "#shorts" call; search always uses the WEB client context.
+    @Test("fetchShorts routes through the WEB search client")
+    func fetchShortsUsesSearchClient() async throws {
         BodyCapturingURLProtocol.capturedBody = nil
         let api = makeTestAPI(authToken: "fake-tv-oauth-token")
 
@@ -119,12 +119,16 @@ struct FEShortsClientRegressionTests {
         let clientDict = context?["client"] as? [String: Any]
 
         #expect(
-            clientDict?["clientName"] as? String == "TVHTML5",
+            clientDict?["clientName"] as? String == "WEB",
             """
-            fetchShorts must use TVHTML5 client when authenticated.
-            Sending a device-code OAuth token with clientName="WEB" returns HTTP 400.
+            fetchShorts is implemented as search "#shorts" and must use the WEB
+            client context (the FEshorts browseId is retired by YouTube).
             Found clientName=\(String(describing: clientDict?["clientName"]))
             """
+        )
+        #expect(
+            json["query"] as? String == "#shorts",
+            "fetchShorts must send the #shorts search query in the body"
         )
     }
 

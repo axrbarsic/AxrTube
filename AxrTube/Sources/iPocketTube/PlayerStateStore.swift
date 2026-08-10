@@ -133,15 +133,15 @@ public final class PlayerStateStore {
     }
 
     /// Audio-first tap path: show the compact player immediately while the
-    /// coordinator resolves the single progressive/offline byte source.
+    /// coordinator resolves native playback and durable offline sources.
     func prepareAudioFirst(video: Video) {
         currentVideo = video
         presentation = .miniPlayer
     }
 
-    /// Installs the sparse-cache item without waiting for a download threshold.
-    /// The coordinator starts playback immediately so AVPlayer can request the
-    /// header, tail index and first media ranges it actually needs.
+    /// Installs the native HTTPS item without waiting for offline progress.
+    /// AVPlayer owns its proven HTTP scheduler while the coordinator keeps the
+    /// durable offline transfer independent and lower priority.
     func prepareProgressiveAudio(item: AVPlayerItem, video: Video) {
         currentVideo = video
         presentation = .miniPlayer
@@ -198,6 +198,24 @@ public final class PlayerStateStore {
         currentVideo = video
         presentation = .miniPlayer
         vm.loadPreparedAudio(item: item, video: video, startImmediately: true)
+    }
+
+    /// Replaces a failed or never-audible network item with the completed local
+    /// file without reopening the screen or rebuilding the download pipeline.
+    func switchProgressiveAudioToLocal(
+        video: Video,
+        item: AVPlayerItem,
+        resumeAt: TimeInterval,
+        startImmediately: Bool
+    ) {
+        currentVideo = video
+        presentation = .miniPlayer
+        vm.loadPreparedAudio(
+            item: item,
+            video: video,
+            startImmediately: startImmediately,
+            resumePosition: resumeAt
+        )
     }
 
     /// Collapse the full-screen player to the mini-player bar. Playback continues.

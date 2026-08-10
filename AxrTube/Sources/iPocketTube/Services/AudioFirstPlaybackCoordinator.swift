@@ -50,9 +50,16 @@ public final class AudioFirstPlaybackCoordinator {
     private var pendingDubbingVideoID: String?
     private var pendingDubbingSourceLanguageOverride: String?
     private var resourceLoader: ProgressiveAudioResourceLoader?
+    private var directPlaybackStatusObservation: NSKeyValueObservation?
+    private var directPlaybackFailureTask: Task<Void, Never>?
+    private var directPlaybackStallTask: Task<Void, Never>?
+    private var startupFallbackTask: Task<Void, Never>?
     private var playbackState = ProgressiveAudioStateMachine()
+    private var transferState = PlaybackFirstTransferState()
     private var milestones = InstantAudioMilestones()
     private var currentPlan: OfflineAudioDownloadPlan?
+    private var appliedBackgroundConnectionLimit = 1
+    private var playbackRequested = true
     private var tapStartedAt = ContinuousClock.now
     private var commandGate = PlaybackCommandGate()
     private var authoritativeState = AudioFirstAuthoritativeState()
@@ -105,10 +112,36 @@ public final class AudioFirstPlaybackCoordinator {
         }
     }
 
-    public func open(video: Video) {
+    public var usesLowBandwidthAudio: Bool {
+        settingsStore.settings.lowBandwidthAudioMode
+    }
+
+    public var canSwitchCurrentAudioQuality: Bool {
+        guard let video = currentVideo, isVisible,
+              completedLocalEntry(for: video) == nil else { return false }
+        return status != .completed
+    }
+
+    public func setLowBandwidthAudioMode(_ enabled: Bool) {
+        guard settingsStore.settings.lowBandwidthAudioMode != enabled else { return }
+        settingsStore.settings.lowBandwidthAudioMode = enabled
+        AudioDiagnostics.shared.record(
+            source: "audio-first",
+            event: "quality.changed",
+            decision: enabled ? "economy" : "normal",
+            player: playerState.vm.player,
+            itemID: currentVideo?.id,
+            commandGeneration: commandGate.generation
+        )
+        guard let video = currentVideo,
+              completedLocalEntry(for: video) == nil else { return }
+        open(video: video, forceReload: true)
+    }
+
+    public func open(video: Video, forceReload: Bool = false) {
         persistCurrentPosition(force: true)
         cancelSupervisedDownload(ifMatching: video.id)
-        if currentVideo?.id == video.id, isVisible {
+        if currentVideo?.id == video.id, isVisible, !forceReload {
             if case .failed = status {
                 // Retry below: a fresh metadata resolve keeps verified sparse bytes.
             } else if case .finalizationPending = status {
@@ -143,8 +176,11 @@ public final class AudioFirstPlaybackCoordinator {
         apply(.begin(generation: generation, durableProgress: durableProgress))
         bufferedProgress = 0
         playbackState = ProgressiveAudioStateMachine()
+        transferState = PlaybackFirstTransferState()
         milestones = InstantAudioMilestones()
         currentPlan = nil
+        appliedBackgroundConnectionLimit = 1
+        playbackRequested = true
         lastTTFAMilliseconds = nil
         tapStartedAt = .now
         ttfaSignpostState = signposter.beginInterval("TapToFirstTimeline")
@@ -183,13 +219,16 @@ public final class AudioFirstPlaybackCoordinator {
             videoId: video.id,
             kind: .audio,
             status: .fetching,
-            progress: max(0.02, durableProgress)
+            progress: durableProgress
         )
         workTask = Task { [weak self] in await self?.resolveAndStart(video: video, generation: generation) }
     }
 
     public func close() {
-        close(markCancelled: true)
+        // Closing the player pauses the durable offline transfer and keeps the
+        // verified sparse cache; it must not discard progress like an explicit
+        // user cancellation of the download itself.
+        close(markCancelled: false)
     }
 
     public func requestRussianDubbing(sourceLanguageOverride: String? = nil) {
@@ -225,6 +264,7 @@ public final class AudioFirstPlaybackCoordinator {
         guard let video = currentVideo, playerState.vm.player.currentItem != nil else { return }
         let wasPlaying = playerState.vm.isPlaying
         playerState.vm.togglePlayPause()
+        playbackRequested = !wasPlaying
         synchronizeLiveActivity(force: true)
         if wasPlaying { persistCurrentPosition(force: true) }
         if !wasPlaying {
@@ -321,6 +361,11 @@ public final class AudioFirstPlaybackCoordinator {
     }
 
     public func commitScrubbing() {
+        // A spurious begin (SwiftUI fires onEditingChanged(true) right after a
+        // commit) leaves isScrubbing == false; committing then would overwrite
+        // the authoritative position with a stale scrubTime. Only commit a
+        // scrub that actually began.
+        guard playerState.vm.isScrubbing else { return }
         let resume = wasPlayingBeforeScrub
         let target = playerState.vm.scrubTime
         wasPlayingBeforeScrub = false
@@ -586,7 +631,13 @@ public final class AudioFirstPlaybackCoordinator {
         apply(.buffering(generation: generation))
         currentPlan = plan
         markTiming("format-chosen", details: "source=\(plan.source.rawValue) mime=\(plan.format.mimeType)")
-        DownloadStore.shared.update(videoId: video.id, kind: .audio, status: .downloading, progress: 0.05)
+        let durableProgress = DownloadStore.shared.entry(videoId: video.id, kind: .audio)?.progress ?? 0
+        DownloadStore.shared.update(
+            videoId: video.id,
+            kind: .audio,
+            status: .downloading,
+            progress: durableProgress
+        )
 
         let loaderID = UUID()
         let loader = try ProgressiveAudioResourceLoader(
@@ -597,8 +648,16 @@ public final class AudioFirstPlaybackCoordinator {
             fileExtension: plan.downloadFileExtension,
             cacheDirectory: DownloadStore.shared.partialDownloadsDirectory,
             allowsCellularAccess: !settingsStore.settings.downloadsWiFiOnly,
+            preferredBackgroundConnectionLimit: SparseTransferTuning.backgroundConnectionLimit(
+                lowBandwidthAudio: settingsStore.settings.lowBandwidthAudioMode,
+                constrainedNetwork: false
+            ),
             refreshSource: { [api, client] in
-                let refreshedInfo = try await Self.fetchPlayerInfo(api: api, videoID: video.id, client: client)
+                let refreshedInfo = try await Self.fetchPlayerInfo(
+                    api: api,
+                    videoID: video.id,
+                    client: client
+                )
                 let candidates = refreshedInfo.formats.filter {
                     $0.mimeType == plan.format.mimeType && $0.url != nil
                 }
@@ -606,9 +665,7 @@ public final class AudioFirstPlaybackCoordinator {
                 if let itag = plan.format.itag {
                     refreshedFormat = candidates.first { $0.itag == itag }
                 } else {
-                    refreshedFormat = candidates.first {
-                        $0.bitrate == plan.format.bitrate
-                    }
+                    refreshedFormat = candidates.first { $0.bitrate == plan.format.bitrate }
                 }
                 guard let refreshedFormat, let refreshedURL = refreshedFormat.url else {
                     throw URLError(.resourceUnavailable)
@@ -653,15 +710,22 @@ public final class AudioFirstPlaybackCoordinator {
         )
         resourceLoader = loader
         activeLoaderID = loaderID
-        let asset = loader.makeAsset()
+        transferState.directItemInstalled()
+        appliedBackgroundConnectionLimit = 1
+        loader.setBackgroundConnectionLimit(1)
+
+        // Native HTTPS playback is intentionally independent from offline
+        // completion. AVFoundation can range-fetch and demux immediately instead
+        // of receiving one custom all-data-to-EOF loading request from the app.
+        let asset = DirectAudioPlaybackAssetFactory.make(
+            url: source.url,
+            userAgent: source.userAgent
+        )
         let item = AVPlayerItem(asset: asset)
         item.audioTimePitchAlgorithm = .spectral
         item.preferredForwardBufferDuration = 0.5
         playerState.prepareProgressiveAudio(item: item, video: video)
         apply(.playbackInstalled(generation: generation))
-        // AVPlayer now drives the first header/moov/media ranges itself. Starting
-        // play here is essential: waiting for an arbitrary prefix recreates the
-        // old full-download behavior for files whose index is at the tail.
         playerState.startPreparedAudioPlayback()
         applyPreparedAudioCaptions(
             captionTracks,
@@ -669,12 +733,214 @@ public final class AudioFirstPlaybackCoordinator {
             generation: generation
         )
         synchronizeLiveActivity(force: true)
-        loader.start()
-        // Keep the scarce connection focused on AVPlayer's header, tail index,
-        // and first media reads. A bounded fallback still completes downloads
-        // when an unusual asset never advances its timeline.
-        loader.startBackgroundFill()
+        observeDirectPlayback(item: item, video: video, generation: generation)
+        scheduleOfflineFallback(video: video, generation: generation, loaderID: loaderID)
         monitorTimelineAdvance(for: video, generation: generation)
+    }
+
+    private func observeDirectPlayback(
+        item: AVPlayerItem,
+        video: Video,
+        generation: UInt64
+    ) {
+        cancelDirectPlaybackObservers()
+        directPlaybackStatusObservation = item.observe(\.status, options: [.new]) {
+            [weak self, weak item] observedItem, _ in
+            guard observedItem.status == .failed else { return }
+            let failure = observedItem.error ?? URLError(.cannotDecodeContentData)
+            Task { @MainActor [weak self, weak item] in
+                guard let self, let item else { return }
+                self.handleDirectPlaybackFailure(
+                    failure,
+                    item: item,
+                    video: video,
+                    generation: generation
+                )
+            }
+        }
+
+        directPlaybackFailureTask = Task { [weak self, weak item] in
+            guard let item else { return }
+            let notifications = NotificationCenter.default.notifications(
+                named: AVPlayerItem.failedToPlayToEndTimeNotification,
+                object: item
+            )
+            for await notification in notifications {
+                guard let self, !Task.isCancelled else { return }
+                let failure = notification.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey]
+                    as? Error ?? item.error ?? URLError(.networkConnectionLost)
+                self.handleDirectPlaybackFailure(
+                    failure,
+                    item: item,
+                    video: video,
+                    generation: generation
+                )
+            }
+        }
+
+        directPlaybackStallTask = Task { [weak self, weak item] in
+            guard let item else { return }
+            let notifications = NotificationCenter.default.notifications(
+                named: AVPlayerItem.playbackStalledNotification,
+                object: item
+            )
+            for await _ in notifications {
+                guard let self, !Task.isCancelled,
+                      self.commandGate.isCurrent(generation),
+                      self.currentVideo?.id == video.id,
+                      self.playerState.vm.player.currentItem === item else { return }
+                AudioDiagnostics.shared.record(
+                    source: "audio-first",
+                    event: "direct.playback-stalled",
+                    decision: self.transferState.audiblePlaybackStarted
+                        ? "after-first-audio"
+                        : "before-first-audio",
+                    player: self.playerState.vm.player,
+                    itemID: video.id,
+                    commandGeneration: generation
+                )
+                if let completed = self.completedLocalEntry(for: video) {
+                    await self.handoffToCompletedLocal(
+                        completed,
+                        generation: generation,
+                        reason: "direct-stall-after-completion"
+                    )
+                    return
+                }
+                if self.transferState.audiblePlaybackStarted {
+                    self.startOfflineTransferIfNeeded(
+                        reason: "playback-stalled",
+                        after: .zero,
+                        generation: generation
+                    )
+                }
+            }
+        }
+    }
+
+    private func scheduleOfflineFallback(
+        video: Video,
+        generation: UInt64,
+        loaderID: UUID
+    ) {
+        startupFallbackTask?.cancel()
+        startupFallbackTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(
+                PlaybackFirstTransferState.startupFallbackDelayMilliseconds
+            ))
+            guard let self, !Task.isCancelled,
+                  self.commandGate.isCurrent(generation),
+                  self.currentVideo?.id == video.id,
+                  self.activeLoaderID == loaderID,
+                  !self.transferState.audiblePlaybackStarted else { return }
+            self.startOfflineTransferIfNeeded(
+                reason: "startup-timeout",
+                after: .zero,
+                generation: generation
+            )
+        }
+    }
+
+    private func startOfflineTransferIfNeeded(
+        reason: String,
+        after delay: Duration,
+        generation: UInt64
+    ) {
+        guard commandGate.isCurrent(generation),
+              let video = currentVideo,
+              let resourceLoader,
+              activeLoaderID == resourceLoader.id,
+              transferState.beginOfflineTransfer() else { return }
+        resourceLoader.start()
+        resourceLoader.startBackgroundFill(after: delay)
+        AudioDiagnostics.shared.record(
+            source: "audio-first",
+            event: "offline-fill.started",
+            decision: reason,
+            player: playerState.vm.player,
+            itemID: video.id,
+            commandGeneration: generation
+        )
+    }
+
+    private func handleDirectPlaybackFailure(
+        _ error: Error,
+        item: AVPlayerItem,
+        video: Video,
+        generation: UInt64
+    ) {
+        guard commandGate.isCurrent(generation),
+              currentVideo?.id == video.id,
+              playerState.vm.player.currentItem === item,
+              !transferState.directPlaybackFailed else { return }
+        transferState.directPlaybackDidFail()
+        AudioDiagnostics.shared.record(
+            source: "audio-first",
+            event: "direct.playback-failed",
+            decision: "audible=\(transferState.audiblePlaybackStarted)",
+            player: playerState.vm.player,
+            itemID: video.id,
+            commandGeneration: generation,
+            error: error
+        )
+
+        if let completed = completedLocalEntry(for: video) {
+            workTask?.cancel()
+            workTask = Task { [weak self] in
+                await self?.handoffToCompletedLocal(
+                    completed,
+                    generation: generation,
+                    reason: "direct-failure-after-completion"
+                )
+            }
+            return
+        }
+
+        guard let attempt = transferState.beginDirectRefresh() else {
+            startOfflineTransferIfNeeded(
+                reason: "direct-retries-exhausted",
+                after: .zero,
+                generation: generation
+            )
+            return
+        }
+
+        cancelDirectPlaybackObservers()
+        startupFallbackTask?.cancel()
+        resourceLoader?.cancel(discardCache: false)
+        resourceLoader = nil
+        activeLoaderID = nil
+        transferState.offlineTransferWillBeReattached()
+        apply(.reconnecting(generation: generation))
+        let entry = DownloadStore.shared.entry(videoId: video.id, kind: .audio)
+        DownloadStore.shared.update(
+            videoId: video.id,
+            kind: .audio,
+            status: .reconnecting,
+            progress: entry?.progress ?? downloadProgress,
+            errorMessage: String(localized: "Reconnecting…", bundle: .module),
+            retryCount: max(entry?.retryCount ?? 0, attempt),
+            resumePolicy: .automatic
+        )
+        workTask?.cancel()
+        workTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(
+                SparseDownloadRetryPolicy.delayMilliseconds(attempt: attempt - 1, seed: 0)
+            ))
+            guard let self, !Task.isCancelled,
+                  self.commandGate.isCurrent(generation),
+                  self.currentVideo?.id == video.id else { return }
+            await self.resolveAndStart(video: video, generation: generation)
+        }
+    }
+
+    private func cancelDirectPlaybackObservers() {
+        directPlaybackStatusObservation?.invalidate()
+        directPlaybackStatusObservation = nil
+        directPlaybackFailureTask?.cancel()
+        directPlaybackFailureTask = nil
+        directPlaybackStallTask?.cancel()
+        directPlaybackStallTask = nil
     }
 
     private func receive(
@@ -711,7 +977,18 @@ public final class AudioFirstPlaybackCoordinator {
               currentVideo?.id == video.id else { return }
         switch result {
         case .failure(let error):
-            if !scheduleProgressiveRecovery(
+            if transferState.audiblePlaybackStarted {
+                handleFinalizationFailure(
+                    video: video,
+                    error: error,
+                    generation: generation,
+                    verifiedBytes: DownloadStore.shared.entry(
+                        videoId: video.id,
+                        kind: .audio
+                    )?.fileSizeBytes ?? 0,
+                    progress: downloadProgress
+                )
+            } else if !scheduleProgressiveRecovery(
                 video: video,
                 error: error,
                 generation: generation,
@@ -765,6 +1042,14 @@ public final class AudioFirstPlaybackCoordinator {
                 guard commandGate.isCurrent(generation), activeLoaderID == loaderID,
                       currentVideo?.id == video.id else { return }
                 DownloadStore.shared.complete(video: video, kind: .audio, fileURL: destination, fileSizeBytes: bytes)
+                if transferState.shouldInstallCompletedLocalFile,
+                   let completed = DownloadStore.shared.entry(videoId: video.id, kind: .audio) {
+                    await handoffToCompletedLocal(
+                        completed,
+                        generation: generation,
+                        reason: "offline-complete-before-audible-playback"
+                    )
+                }
                 apply(.completed(generation: generation))
                 bufferedProgress = 1
             } catch {
@@ -774,6 +1059,55 @@ public final class AudioFirstPlaybackCoordinator {
                     generation: generation,
                     verifiedBytes: progress.downloadedBytes
                 )
+            }
+        }
+    }
+
+    private func handoffToCompletedLocal(
+        _ entry: DownloadedVideo,
+        generation: UInt64,
+        reason: String
+    ) async {
+        guard commandGate.isCurrent(generation),
+              currentVideo?.id == entry.videoId else { return }
+        do {
+            let item = try await playerState.validatedLocalAudioItem(for: entry.video)
+            guard commandGate.isCurrent(generation),
+                  currentVideo?.id == entry.videoId else { return }
+            let currentSeconds = playerState.vm.player.currentTime().seconds
+            let resumeAt = currentSeconds.isFinite
+                ? max(authoritativeState.playbackPosition, currentSeconds)
+                : authoritativeState.playbackPosition
+            cancelDirectPlaybackObservers()
+            startupFallbackTask?.cancel()
+            playerState.switchProgressiveAudioToLocal(
+                video: entry.video,
+                item: item,
+                resumeAt: resumeAt,
+                startImmediately: playbackRequested
+            )
+            apply(.playbackInstalled(generation: generation))
+            monitorTimelineAdvance(for: entry.video, generation: generation)
+            AudioDiagnostics.shared.record(
+                source: "audio-first",
+                event: "playback.local-handoff",
+                decision: "\(reason) position=\(Int(resumeAt))",
+                player: playerState.vm.player,
+                itemID: entry.videoId,
+                commandGeneration: generation
+            )
+        } catch {
+            AudioDiagnostics.shared.record(
+                source: "audio-first",
+                event: "playback.local-handoff-failed",
+                decision: reason,
+                player: playerState.vm.player,
+                itemID: entry.videoId,
+                commandGeneration: generation,
+                error: error
+            )
+            if !transferState.audiblePlaybackStarted {
+                fail(video: entry.video, error: error, generation: generation)
             }
         }
     }
@@ -831,6 +1165,10 @@ public final class AudioFirstPlaybackCoordinator {
                 fileExtension: plan.downloadFileExtension,
                 cacheDirectory: DownloadStore.shared.partialDownloadsDirectory,
                 allowsCellularAccess: !settingsStore.settings.downloadsWiFiOnly,
+                preferredBackgroundConnectionLimit: SparseTransferTuning.backgroundConnectionLimit(
+                    lowBandwidthAudio: settingsStore.settings.lowBandwidthAudioMode,
+                    constrainedNetwork: false
+                ),
                 refreshSource: { [api, client = resolved.client] in
                     let info = try await Self.fetchPlayerInfo(api: api, videoID: video.id, client: client)
                     let formats = info.formats.filter { $0.mimeType == plan.format.mimeType && $0.url != nil }
@@ -1175,6 +1513,9 @@ public final class AudioFirstPlaybackCoordinator {
         resourceLoader?.cancel(discardCache: false)
         resourceLoader = nil
         activeLoaderID = nil
+        transferState.offlineTransferWillBeReattached()
+        cancelDirectPlaybackObservers()
+        startupFallbackTask?.cancel()
         apply(.reconnecting(generation: generation))
         DownloadStore.shared.update(
             videoId: video.id,
@@ -1265,7 +1606,8 @@ public final class AudioFirstPlaybackCoordinator {
         video: Video,
         error: Error,
         generation: UInt64,
-        verifiedBytes: Int64
+        verifiedBytes: Int64,
+        progress: Double = 1
     ) {
         guard commandGate.isCurrent(generation), currentVideo?.id == video.id,
               apply(.finalizationFailed(generation: generation, message: error.localizedDescription)) else { return }
@@ -1273,7 +1615,7 @@ public final class AudioFirstPlaybackCoordinator {
             videoId: video.id,
             kind: .audio,
             status: authoritativeState.hasPlayableSource ? .finalizationPending : .failed,
-            progress: 1,
+            progress: progress,
             errorMessage: error.localizedDescription,
             fileSizeBytes: verifiedBytes
         )
@@ -1313,6 +1655,9 @@ public final class AudioFirstPlaybackCoordinator {
         workTask = nil
         timelineTask?.cancel()
         timelineTask = nil
+        cancelDirectPlaybackObservers()
+        startupFallbackTask?.cancel()
+        startupFallbackTask = nil
         positionHydrationTask?.cancel()
         positionHydrationTask = nil
         captionMetadataTask?.cancel()
@@ -1356,10 +1701,27 @@ public final class AudioFirstPlaybackCoordinator {
         timelineTask?.cancel()
         timelineTask = Task { [weak self] in
             var recordedFirstAdvance = false
+            var evidence = AudiblePlaybackEvidenceGate()
+            let initialPCM = RealtimeAudioScopeRegistry.shared.snapshot(videoID: video.id)
             while !Task.isCancelled {
                 guard let self, self.commandGate.isCurrent(generation),
                       self.currentVideo?.id == video.id else { return }
-                let seconds = self.playerState.vm.player.currentTime().seconds
+                let player = self.playerState.vm.player
+                let seconds = player.currentTime().seconds
+                let currentPCM = RealtimeAudioScopeRegistry.shared.snapshot(videoID: video.id)
+                let hasFreshPCM = currentPCM.map { snapshot in
+                    guard let initialPCM else { return true }
+                    return snapshot.identity != initialPCM.identity
+                        || snapshot.sequence > initialPCM.sequence
+                } ?? false
+                let audiblePlaybackProven = evidence.observe(
+                    time: seconds,
+                    rate: Double(player.rate),
+                    isPlaying: self.playerState.vm.isPlaying
+                        && player.timeControlStatus == .playing,
+                    isScrubbing: self.playerState.vm.isScrubbing,
+                    hasDecodedPCM: hasFreshPCM
+                )
                 self.synchronizeLiveActivity(force: false)
                 if seconds.isFinite, seconds >= 0.05 {
                     self.apply(.timeline(generation: generation, position: seconds))
@@ -1367,22 +1729,29 @@ public final class AudioFirstPlaybackCoordinator {
                     if let pending = self.pendingHistoryActivation,
                        pending.videoID == video.id,
                        pending.generation == generation,
-                       self.playerState.vm.isPlaying {
+                       audiblePlaybackProven {
                         DownloadStore.shared.markPlaybackActivated(
                             videoId: pending.videoID,
                             kind: pending.kind
                         )
                         self.pendingHistoryActivation = nil
                     }
-                    if !recordedFirstAdvance {
+                    if !recordedFirstAdvance, audiblePlaybackProven {
                         recordedFirstAdvance = true
+                        self.transferState.audiblePlaybackDidStart()
+                        self.startupFallbackTask?.cancel()
+                        self.startupFallbackTask = nil
                         self.playerState.vm.player.automaticallyWaitsToMinimizeStalling =
                             ProgressivePlaybackWaitPolicy.automaticallyWaitsToMinimizeStalling(
                                 timelineHasAdvanced: true
                             )
-                        // Once first audio is proven, the same sparse owner may
-                        // fill the remaining file without delaying startup.
-                        self.resourceLoader?.startBackgroundFill(after: .zero)
+                        self.startOfflineTransferIfNeeded(
+                            reason: "first-audio",
+                            after: .milliseconds(
+                                SparseTransferTuning.offlineFillAfterFirstAudioMilliseconds
+                            ),
+                            generation: generation
+                        )
                         let elapsed = self.elapsedMilliseconds
                         self.milestones.timelineAdvanced()
                         self.lastTTFAMilliseconds = elapsed
@@ -1396,6 +1765,31 @@ public final class AudioFirstPlaybackCoordinator {
                             event: "timeline.firstAdvance",
                             decision: "download=\(Int(self.downloadProgress * 100))pct",
                             player: self.playerState.vm.player,
+                            itemID: video.id,
+                            commandGeneration: generation
+                        )
+                    }
+                }
+                if recordedFirstAdvance {
+                    let canRamp = self.transferState.observePlaybackBuffer(
+                        isLikelyToKeepUp: player.currentItem?.isPlaybackLikelyToKeepUp == true
+                    )
+                    let preferred = SparseTransferTuning.backgroundConnectionLimit(
+                        lowBandwidthAudio: self.settingsStore.settings.lowBandwidthAudioMode,
+                        constrainedNetwork: false
+                    )
+                    let limit = self.transferState.backgroundConnectionLimit(
+                        preferred: preferred,
+                        lowBandwidthAudio: self.settingsStore.settings.lowBandwidthAudioMode
+                    )
+                    if limit != self.appliedBackgroundConnectionLimit {
+                        self.appliedBackgroundConnectionLimit = limit
+                        self.resourceLoader?.setBackgroundConnectionLimit(limit)
+                        AudioDiagnostics.shared.record(
+                            source: "audio-first",
+                            event: "offline-fill.connections",
+                            decision: canRamp ? "stable=\(limit)" : "protect-playback=\(limit)",
+                            player: player,
                             itemID: video.id,
                             commandGeneration: generation
                         )
@@ -1685,7 +2079,7 @@ public final class AudioFirstPlaybackCoordinator {
                 apply(.buffering(generation: generation))
             }
         }
-        let status = diagnostic.statusCode.map(String.init) ?? "-"
+        let httpStatus = diagnostic.statusCode.map(String.init) ?? "-"
         let offset = diagnostic.requestedOffset.map(String.init) ?? "-"
         let bytes = diagnostic.byteCount.map(String.init) ?? "-"
         let total = diagnostic.expectedBytes.map(String.init) ?? "-"
@@ -1694,12 +2088,12 @@ public final class AudioFirstPlaybackCoordinator {
         let contentEncoding = diagnostic.contentEncoding ?? "-"
         let bodyClass = diagnostic.bodyClass ?? "-"
         instantAudioLog.notice(
-            "[ttfa] stage=\(diagnostic.stage, privacy: .public) ms=\(diagnostic.elapsedMilliseconds) status=\(status, privacy: .public) type=\(contentType, privacy: .public) encoding=\(contentEncoding, privacy: .public) body=\(bodyClass, privacy: .public) offset=\(offset, privacy: .public) bytes=\(bytes, privacy: .public) total=\(total, privacy: .public) ranges=\(ranged, privacy: .public)"
+            "[ttfa] stage=\(diagnostic.stage, privacy: .public) ms=\(diagnostic.elapsedMilliseconds) status=\(httpStatus, privacy: .public) type=\(contentType, privacy: .public) encoding=\(contentEncoding, privacy: .public) body=\(bodyClass, privacy: .public) offset=\(offset, privacy: .public) bytes=\(bytes, privacy: .public) total=\(total, privacy: .public) ranges=\(ranged, privacy: .public)"
         )
         AudioDiagnostics.shared.record(
             source: "range-loader",
             event: diagnostic.stage,
-            decision: "offset=\(offset) bytes=\(bytes) total=\(total) status=\(status) type=\(contentType) encoding=\(contentEncoding) body=\(bodyClass)",
+            decision: "offset=\(offset) bytes=\(bytes) total=\(total) status=\(httpStatus) type=\(contentType) encoding=\(contentEncoding) body=\(bodyClass)",
             player: playerState.vm.player,
             itemID: currentVideo?.id,
             commandGeneration: commandGate.generation

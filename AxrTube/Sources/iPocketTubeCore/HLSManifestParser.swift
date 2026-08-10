@@ -93,13 +93,14 @@ public func parseHLSVariantURLsForLanguage(
     while i < lines.count {
         let line = lines[i].trimmingCharacters(in: .whitespaces)
         if line.hasPrefix("#EXT-X-STREAM-INF:") {
-            let hasContentID = line.contains("YT-EXT-AUDIO-CONTENT-ID=")
+            let contentIDValue = extractHLSAttributeValue("YT-EXT-AUDIO-CONTENT-ID", from: line)
             let matches: Bool
             if let lang = contentID {
-                matches = line.contains("YT-EXT-AUDIO-CONTENT-ID=\"\(lang)\"")
-                       || line.contains("YT-EXT-AUDIO-CONTENT-ID=\(lang)")
+                // Exact value equality (quoted or unquoted) so a short language
+                // prefix like "en-US.1" can never match "en-US.10".
+                matches = contentIDValue == lang
             } else {
-                matches = !hasContentID
+                matches = contentIDValue == nil
             }
             guard matches else { i += 2; continue }
 

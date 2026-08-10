@@ -851,7 +851,10 @@ extension InnerTubeAPI {
         let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
             ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
         } ?? false
-        let isShort = hasReelEndpoint || hasShortOverlay
+        // The overlay is a weak signal: YouTube also renders it on long-form grid
+        // cards. reelWatchEndpoint is authoritative; the overlay only counts as a
+        // Short when the duration (if known) is within the Shorts window.
+        let isShort = hasReelEndpoint || (hasShortOverlay && (duration.map { $0 <= 180 } ?? true))
         if isShort {
             let signal: String
             if hasReelEndpoint {
@@ -962,7 +965,9 @@ extension InnerTubeAPI {
         let hasShortOverlay = (r["thumbnailOverlays"] as? [[String: Any]])?.contains {
             ($0["thumbnailOverlayTimeStatusRenderer"] as? [String: Any])?["style"] as? String == "SHORTS"
         } ?? false
-        let isShort = hasReelEndpoint || hasShortOverlay
+        // Mirrors parseVideoRenderer: the overlay alone is a weak signal and only
+        // tags a Short when the duration (if known) fits the Shorts window.
+        let isShort = hasReelEndpoint || (hasShortOverlay && (duration.map { $0 <= 180 } ?? true))
         if isShort {
             tubeLog.debug("playlistVideoRenderer isShort=true id=\(videoId, privacy: .public) duration=\(Int(duration ?? -1))")
         }

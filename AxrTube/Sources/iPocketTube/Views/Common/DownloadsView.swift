@@ -54,6 +54,7 @@ struct DownloadsView: View {
                                     bufferedProgress: playerRouter.audioFirst.playbackBufferedProgress,
                                     isScrubbing: playerState.vm.isScrubbing,
                                     isPlaying: playerState.vm.isPlaying,
+                                    lowBandwidthAudioMode: activeAudioQualityBinding,
                                     onPlayPause: {
                                         iPocketTubeHaptics.shared.perform(.playbackTransport)
                                         playerRouter.audioFirst.togglePlayPauseByUser()
@@ -244,6 +245,17 @@ struct DownloadsView: View {
         guard let video = playerRouter.audioFirst.currentVideo ?? playerState.vm.currentVideo else { return nil }
         return "\(video.id)::\((video.localMediaKind ?? .audio).rawValue)"
     }
+
+    private var activeAudioQualityBinding: Binding<Bool>? {
+        guard playerRouter.audioFirst.canSwitchCurrentAudioQuality else { return nil }
+        return Binding(
+            get: { playerRouter.audioFirst.usesLowBandwidthAudio },
+            set: { enabled in
+                iPocketTubeHaptics.shared.perform(.settingsPicker)
+                playerRouter.audioFirst.setLowBandwidthAudioMode(enabled)
+            }
+        )
+    }
     #endif
 
     private var emptyState: some View {
@@ -277,6 +289,7 @@ private struct DownloadedNowPlayingCard: View {
     let bufferedProgress: Double
     let isScrubbing: Bool
     let isPlaying: Bool
+    let lowBandwidthAudioMode: Binding<Bool>?
     let onPlayPause: () -> Void
     let onScrubBegan: () -> Void
     let onScrubChanged: (TimeInterval) -> Void
@@ -367,6 +380,13 @@ private struct DownloadedNowPlayingCard: View {
                 ProgressView(value: downloadProgress)
                     .tint(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: 1, y: 0.55, anchor: .center)
+                if let lowBandwidthAudioMode {
+                    AudioDownloadQualityPicker(
+                        lowBandwidthAudioMode: lowBandwidthAudioMode
+                    )
+                    .padding(.vertical, 2)
+                    .accessibilityIdentifier("downloads.nowPlaying.audioQualityPicker")
+                }
                 Button(action: onTranscript) {
                     Label("Стенограмма", systemImage: "text.quote")
                         .font(.subheadline.weight(.semibold))
@@ -608,10 +628,7 @@ private func failureDescription(_ entry: DownloadedVideo) -> String {
     if entry.status == .cancelled {
         return String(localized: "Download cancelled.", bundle: .module)
     }
-    if entry.errorMessage == "Download was interrupted. Tap Retry." {
-        return String(localized: "Download was interrupted. Tap Retry.", bundle: .module)
-    }
-    return "Не удалось открыть ролик. Повторите попытку."
+    return String(localized: "Не удалось открыть ролик. Повторите попытку.", bundle: .module)
 }
 
 private func shouldOfferRetry(_ entry: DownloadedVideo) -> Bool {
@@ -628,6 +645,7 @@ private func formattedBytes(_ bytes: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
 }
 
+// Shared with AudioWaveformView; must stay internal to the module.
 func formatPlaybackTime(_ seconds: TimeInterval) -> String {
     guard seconds.isFinite, seconds >= 0 else { return "—:—" }
     let total = Int(seconds.rounded(.down))

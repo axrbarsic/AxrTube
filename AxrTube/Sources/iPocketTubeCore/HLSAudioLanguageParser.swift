@@ -12,6 +12,22 @@ public func extractQuotedHLSAttribute(_ name: String, from line: String) -> Stri
     return String(afterQuote[afterQuote.startIndex..<end])
 }
 
+/// Extracts an HLS attribute value in either quoted or unquoted form.
+/// Quoted: `NAME="value"`. Unquoted: `NAME=value` terminated by whitespace,
+/// comma or end-of-line. Falls back to the quoted-only helper so both forms
+/// YouTube may emit are handled identically.
+public func extractHLSAttributeValue(_ name: String, from line: String) -> String? {
+    if let quoted = extractQuotedHLSAttribute(name, from: line) { return quoted }
+    let prefix = "\(name)="
+    guard let start = line.range(of: prefix) else { return nil }
+    let rest = line[start.upperBound...]
+    guard !rest.isEmpty else { return nil }
+    guard let end = rest.firstIndex(where: { $0 == " " || $0 == "," || $0 == "\r" || $0 == "\n" }) else {
+        return String(rest)
+    }
+    return String(rest[rest.startIndex..<end])
+}
+
 /// Parses dubbed-audio language tracks from a YouTube HLS master manifest.
 /// YouTube encodes dubbed languages in `#EXT-X-STREAM-INF` lines via a
 /// non-standard `YT-EXT-AUDIO-CONTENT-ID` attribute, rather than the standard
@@ -30,7 +46,7 @@ public func parseHLSAudioLanguages(from manifest: String) -> [AudioTrack] {
         guard trimmed.hasPrefix("#EXT-X-STREAM-INF:"),
               trimmed.contains("YT-EXT-AUDIO-CONTENT-ID=") else { continue }
 
-        guard let contentID = extractQuotedHLSAttribute("YT-EXT-AUDIO-CONTENT-ID", from: trimmed),
+        guard let contentID = extractHLSAttributeValue("YT-EXT-AUDIO-CONTENT-ID", from: trimmed),
               !contentID.isEmpty, !seenContentIDs.contains(contentID) else { continue }
         seenContentIDs.insert(contentID)
 

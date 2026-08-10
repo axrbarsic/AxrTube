@@ -53,11 +53,14 @@ public actor RSSFeedStore {
         feeds.values.sorted { $0.addedAt > $1.addedAt }
     }
 
-    /// Adds a new feed. Idempotent by URL — if the same feedURL already exists, no-op.
-    public func addFeed(_ feed: RSSFeedInfo) {
-        guard !feeds.values.contains(where: { $0.feedURL == feed.feedURL }) else { return }
+    /// Adds a new feed. Idempotent by URL — if the same feedURL already exists,
+    /// it is a no-op and `false` is returned so callers can surface the state.
+    @discardableResult
+    public func addFeed(_ feed: RSSFeedInfo) -> Bool {
+        guard !feeds.values.contains(where: { $0.feedURL == feed.feedURL }) else { return false }
         feeds[feed.id] = feed
         persist()
+        return true
     }
 
     /// Removes a feed by ID. No-op if not found.

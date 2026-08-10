@@ -341,32 +341,6 @@ public struct SettingsView: View {
     private var matrixAudioContent: some View {
         @Bindable var store = store
         return VStack(spacing: 0) {
-            HStack {
-                Label("Audio Quality", systemImage: "slider.horizontal.3")
-                Spacer()
-                Text("Auto")
-                    .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
-            }
-            .frame(minHeight: 44)
-            .accessibilityIdentifier("settings.audioQuality")
-
-            Divider().overlay(iPocketTubeVisualTokens.stroke)
-
-            Toggle(isOn: hapticBinding($store.settings.lowBandwidthAudioMode)) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Label("Режим слабой сети", systemImage: "tortoise.fill")
-                    Text("Минимальный размер аудио и самый ранний старт")
-                        .font(.caption)
-                        .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-            .tint(iPocketTubeVisualTokens.mint)
-            .frame(minHeight: 60)
-            .accessibilityIdentifier("settings.lowBandwidthAudioMode")
-
-            Divider().overlay(iPocketTubeVisualTokens.stroke)
-
             Toggle(isOn: hapticBinding($store.settings.downloadsWiFiOnly)) {
                 Label("Wi-Fi Only Downloads", systemImage: "wifi")
             }
@@ -766,16 +740,12 @@ public struct SettingsView: View {
     private var audioSection: some View {
         @Bindable var store = store
         return Section {
-            LabeledContent("Audio Quality", value: String(localized: "Auto", bundle: .module))
-                .accessibilityIdentifier("settings.audioQuality")
-            Toggle("Режим слабой сети", isOn: $store.settings.lowBandwidthAudioMode)
-                .accessibilityIdentifier("settings.lowBandwidthAudioMode")
             Toggle("Wi-Fi Only Downloads", isOn: $store.settings.downloadsWiFiOnly)
                 .accessibilityIdentifier("settings.downloadsWiFiOnly")
         } header: {
             Text("Audio")
         } footer: {
-            Text("Режим слабой сети выбирает самый маленький совместимый аудиопоток и запускает воспроизведение без ожидания полной загрузки.")
+            Text("Качество аудио меняется прямо на активной карточке загрузки.")
         }
     }
 

@@ -117,6 +117,9 @@ public enum OfflineFailurePresentationPolicy {
         if value.contains("video is unavailable") || value.contains("video unavailable") {
             return .unavailable
         }
+        if value.contains("interrupted") || value.contains("resuming") {
+            return .transientNetwork
+        }
         return nil
     }
 

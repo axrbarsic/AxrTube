@@ -59,7 +59,12 @@ extension PlaybackViewModel {
     /// Installs a direct audio item supplied by the progressive offline cache.
     /// This bypasses every video/HLS/IFrame/end-card/ad path while retaining the
     /// proven AVAudioSession, interruption, remote-command, and recovery graph.
-    func loadPreparedAudio(item: AVPlayerItem, video: Video, startImmediately: Bool) {
+    func loadPreparedAudio(
+        item: AVPlayerItem,
+        video: Video,
+        startImmediately: Bool,
+        resumePosition: TimeInterval? = nil
+    ) {
         if captionsManager.activePlaybackIdentity?.itemID != video.id {
             _ = captionsManager.beginPlaybackItem(
                 video.id,
@@ -126,10 +131,15 @@ extension PlaybackViewModel {
                 case .readyToPlay:
                     let seconds = item.duration.seconds
                     if seconds.isFinite, seconds > 0 { self.duration = seconds }
-                    let saved = await VideoStateStore.shared.restoredPosition(
-                        for: video.id,
-                        actualDuration: self.duration
-                    )
+                    let saved: TimeInterval
+                    if let resumePosition, resumePosition.isFinite {
+                        saved = max(0, resumePosition)
+                    } else {
+                        saved = await VideoStateStore.shared.restoredPosition(
+                            for: video.id,
+                            actualDuration: self.duration
+                        )
+                    }
                     guard self.player.currentItem === item else { return }
                     if saved > 5, self.duration <= 0 || saved < self.duration - 2 {
                         await self.player.seek(

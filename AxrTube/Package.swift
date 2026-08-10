@@ -69,6 +69,9 @@ let package = Package(
             name: "iPocketTubeTests",
             dependencies: ["iPocketTubeCore", "iPocketTube"],
             path: "Tests/iPocketTubeTests",
+            resources: [
+                .copy("Fixtures/progressive-audio.m4a"),
+            ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

@@ -105,7 +105,7 @@ extension InnerTubeAPI {
                 tubeLog.notice("att/get: no attestationToken in response keys=\(topKeys, privacy: .public)")
                 return nil
             }
-            tubeLog.notice("att/get: ✅ attestationToken obtained (prefix=\(attToken.prefix(20), privacy: .public)…)")
+            tubeLog.notice("att/get: ✅ attestationToken obtained (len=\(attToken.count, privacy: .public))")
             return attToken
         } catch {
             tubeLog.notice("att/get: failed — \(error, privacy: .public)")

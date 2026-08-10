@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import iPocketTubeCore
 
-@Suite("Instant audio sparse cache")
+@Suite("Instant audio playback and sparse cache")
 struct InstantAudioSparseCacheTests {
     @Test("Progressive playback starts eagerly, then restores conservative stall waiting")
     func progressivePlaybackWaitingPolicy() {
@@ -14,12 +14,204 @@ struct InstantAudioSparseCacheTests {
         ))
     }
 
+    @Test("Playback-first state never gates audio on offline completion")
+    func playbackFirstTransferOrdering() {
+        var state = PlaybackFirstTransferState()
+        state.directItemInstalled()
+        #expect(!state.offlineTransferStarted)
+        #expect(state.shouldInstallCompletedLocalFile)
+
+        state.audiblePlaybackDidStart()
+        #expect(!state.shouldInstallCompletedLocalFile)
+        let firstStart = state.beginOfflineTransfer()
+        let duplicateStart = state.beginOfflineTransfer()
+        #expect(firstStart)
+        #expect(!duplicateStart)
+    }
+
+    @Test("Failed native playback hands off to completed local audio")
+    func failedDirectPlaybackRequiresLocalHandoff() {
+        var state = PlaybackFirstTransferState()
+        state.directItemInstalled()
+        state.audiblePlaybackDidStart()
+        #expect(!state.shouldInstallCompletedLocalFile)
+        state.directPlaybackDidFail()
+        #expect(state.shouldInstallCompletedLocalFile)
+    }
+
+    @Test("Signed URL refresh is bounded and reattaches the durable downloader")
+    func directRefreshIsBounded() {
+        var state = PlaybackFirstTransferState()
+        state.directItemInstalled()
+        state.audiblePlaybackDidStart()
+        let initialOfflineStart = state.beginOfflineTransfer()
+        #expect(initialOfflineStart)
+        state.directPlaybackDidFail()
+        let firstRefresh = state.beginDirectRefresh()
+        #expect(firstRefresh == 1)
+        state.offlineTransferWillBeReattached()
+        let reattachedOfflineStart = state.beginOfflineTransfer()
+        #expect(reattachedOfflineStart)
+        state.directItemInstalled()
+        #expect(!state.audiblePlaybackStarted)
+        #expect(state.shouldInstallCompletedLocalFile)
+        state.directPlaybackDidFail()
+        let secondRefresh = state.beginDirectRefresh()
+        let exhaustedRefresh = state.beginDirectRefresh()
+        #expect(secondRefresh == 2)
+        #expect(exhaustedRefresh == nil)
+    }
+
+    @Test("Offline concurrency ramps only after a stable native buffer")
+    func offlineConnectionsProtectPlayback() {
+        var state = PlaybackFirstTransferState()
+        for _ in 0..<(PlaybackFirstTransferState.stableSamplesBeforeConnectionRamp - 1) {
+            let ramped = state.observePlaybackBuffer(isLikelyToKeepUp: true)
+            #expect(!ramped)
+        }
+        #expect(state.backgroundConnectionLimit(preferred: 4, lowBandwidthAudio: false) == 1)
+        let ramped = state.observePlaybackBuffer(isLikelyToKeepUp: true)
+        #expect(ramped)
+        #expect(state.backgroundConnectionLimit(preferred: 4, lowBandwidthAudio: false) == 4)
+        #expect(state.backgroundConnectionLimit(preferred: 4, lowBandwidthAudio: true) == 1)
+        let protectedAgain = state.observePlaybackBuffer(isLikelyToKeepUp: false)
+        #expect(!protectedAgain)
+        #expect(state.backgroundConnectionLimit(preferred: 4, lowBandwidthAudio: false) == 1)
+    }
+
+    @Test("Offline fallback has a bounded startup deadline and never races first audio")
+    func startupFallbackDeadlineIsBounded() {
+        #expect(PlaybackFirstTransferState.startupFallbackDelayMilliseconds >= 10_000)
+        #expect(PlaybackFirstTransferState.startupFallbackDelayMilliseconds <= 20_000)
+        // Behaviour tied to the deadline: audible playback disqualifies the
+        // offline lane even when a later item failure would otherwise trigger it.
+        var state = PlaybackFirstTransferState()
+        state.audiblePlaybackDidStart()
+        #expect(!state.shouldInstallCompletedLocalFile)
+        // A never-audible item keeps the fallback armed, but the deadline caps
+        // the wait: refresh budget is bounded, so the fallback cannot loop.
+        var silent = PlaybackFirstTransferState()
+        #expect(silent.shouldInstallCompletedLocalFile)
+        #expect(silent.beginDirectRefresh() == 1)
+        #expect(silent.beginDirectRefresh() == 2)
+        #expect(silent.beginDirectRefresh() == nil)
+    }
+
+    @Test("A seek is not accepted as first audible playback")
+    func seekDoesNotFakeFirstAudio() {
+        var gate = AudiblePlaybackEvidenceGate()
+        let initial = gate.observe(
+            time: 0,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: false,
+            hasDecodedPCM: false
+        )
+        let seek = gate.observe(
+            time: 120,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: false,
+            hasDecodedPCM: false
+        )
+        let firstNaturalAdvance = gate.observe(
+            time: 120.05,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: false,
+            hasDecodedPCM: false
+        )
+        let secondNaturalAdvance = gate.observe(
+            time: 120.10,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: false,
+            hasDecodedPCM: false
+        )
+        #expect(!initial)
+        #expect(!seek)
+        #expect(!firstNaturalAdvance)
+        #expect(secondNaturalAdvance)
+    }
+
+    @Test("Decoded PCM is authoritative even before two timeline samples")
+    func decodedPCMProvesFirstAudio() {
+        var gate = AudiblePlaybackEvidenceGate()
+        let result = gate.observe(
+            time: 0,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: false,
+            hasDecodedPCM: true
+        )
+        #expect(result)
+    }
+
+    @Test("Paused and scrubbing movement never proves first audio")
+    func inactiveMovementDoesNotProveFirstAudio() {
+        var gate = AudiblePlaybackEvidenceGate()
+        let paused = gate.observe(
+            time: 10,
+            rate: 0,
+            isPlaying: false,
+            isScrubbing: false,
+            hasDecodedPCM: false
+        )
+        let scrubbing = gate.observe(
+            time: 10.1,
+            rate: 1,
+            isPlaying: true,
+            isScrubbing: true,
+            hasDecodedPCM: false
+        )
+        #expect(!paused)
+        #expect(!scrubbing)
+    }
+
+    @Test("Unified sparse playback gets a head start before offline completion")
+    func unifiedPlaybackTransferOrdering() {
+        #expect(SparseTransferTuning.offlineFillAfterFirstAudioMilliseconds >= 1_000)
+        #expect(SparseTransferTuning.backgroundFallbackDelayMilliseconds
+            > SparseTransferTuning.offlineFillAfterFirstAudioMilliseconds)
+        #expect(SparseTransferTuning.backgroundFallbackDelayMilliseconds <= 8_000)
+        // Behaviour tied to the ordering: the offline lane starts exactly once
+        // per downloader generation and can be reattached after a URL refresh.
+        var state = PlaybackFirstTransferState()
+        let firstStart = state.beginOfflineTransfer()
+        #expect(firstStart)
+        let secondStart = state.beginOfflineTransfer()
+        #expect(!secondStart)
+        state.offlineTransferWillBeReattached()
+        let reattachedStart = state.beginOfflineTransfer()
+        #expect(reattachedStart)
+    }
+
     @Test("Weak-network tuning prioritizes first audio and bounds retry waste")
     func weakNetworkTransferTuning() {
         #expect(SparseTransferTuning.playerChunkBytes <= 128 * 1024)
-        #expect(SparseTransferTuning.backgroundChunkBytes <= 128 * 1024)
+        // Offline fill uses multi-megabyte ranges: YouTube throttles a single
+        // large GET but serves bounded ranges (well below the ~10 MiB ceiling)
+        // at full speed, so bigger chunks cut HTTP overhead without cost.
+        #expect(SparseTransferTuning.backgroundChunkBytes >= 1 * 1024 * 1024)
+        #expect(SparseTransferTuning.backgroundChunkBytes <= 10 * 1024 * 1024)
         #expect(SparseTransferTuning.mp4TailPrefetchBytes <= 128 * 1024)
-        #expect(SparseTransferTuning.resourceTimeoutSeconds >= 300)
+        #expect(SparseTransferTuning.backgroundConnectionLimit(
+            lowBandwidthAudio: false,
+            constrainedNetwork: false
+        ) == 8)
+        #expect(SparseTransferTuning.backgroundConnectionLimit(
+            lowBandwidthAudio: true,
+            constrainedNetwork: false
+        ) == 2)
+        #expect(SparseTransferTuning.backgroundConnectionLimit(
+            lowBandwidthAudio: false,
+            constrainedNetwork: true
+        ) == 2)
+        // Per-call resource timeout is a recovery bound, not a session budget:
+        // it must be generous enough for a weak network but never stall an
+        // active transfer for minutes.
+        #expect(SparseTransferTuning.resourceTimeoutSeconds >= 30)
+        #expect(SparseTransferTuning.resourceTimeoutSeconds <= 120)
         #expect(!SparseTransferTuning.shouldStartBackgroundFill(
             timelineHasAdvanced: false,
             elapsedMilliseconds: SparseTransferTuning.backgroundFallbackDelayMilliseconds - 1
@@ -32,6 +224,45 @@ struct InstantAudioSparseCacheTests {
             timelineHasAdvanced: false,
             elapsedMilliseconds: SparseTransferTuning.backgroundFallbackDelayMilliseconds
         ))
+    }
+
+    @Test("Background fill plans four independent ranges in normal mode")
+    func backgroundFillPlansConcurrentRanges() {
+        var cached = SparseByteRangeIndex()
+        cached.insert(SparseByteRange(0, 128))
+        let planned = SparseBackgroundFillPlanner.ranges(
+            cached: cached,
+            reserved: [SparseByteRange(128, 256)],
+            totalBytes: 768,
+            chunkBytes: 128,
+            limit: 4
+        )
+
+        #expect(planned == [
+            SparseByteRange(256, 384),
+            SparseByteRange(384, 512),
+            SparseByteRange(512, 640),
+            SparseByteRange(640, 768),
+        ])
+    }
+
+    @Test("Concurrent planner skips cached and active ranges")
+    func backgroundFillDoesNotDuplicateWork() {
+        var cached = SparseByteRangeIndex()
+        cached.insert(SparseByteRange(0, 128))
+        cached.insert(SparseByteRange(256, 384))
+        let planned = SparseBackgroundFillPlanner.ranges(
+            cached: cached,
+            reserved: [SparseByteRange(128, 256)],
+            totalBytes: 640,
+            chunkBytes: 128,
+            limit: 2
+        )
+
+        #expect(planned == [
+            SparseByteRange(384, 512),
+            SparseByteRange(512, 640),
+        ])
     }
 
     private func format(_ mimeType: String) -> VideoFormat {
@@ -306,6 +537,8 @@ struct InstantAudioSparseCacheTests {
         var playable = AudioFirstAuthoritativeState()
         _ = playable.reduce(.begin(generation: 21, durableProgress: 0.35))
         _ = playable.reduce(.playbackInstalled(generation: 21))
+        #expect(!playable.hasPlayableSource)
+        _ = playable.reduce(.timeline(generation: 21, position: 0.1))
         _ = playable.reduce(.exhaustedFailure(generation: 21, message: "offline finalization failed"))
         #expect(playable.phase == .finalizationPending("offline finalization failed"))
     }

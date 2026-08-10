@@ -6,9 +6,30 @@ import Network
 import iPocketTubeCore
 import UniformTypeIdentifiers
 
-/// Sparse byte-range cache shared by AVPlayer and the eventual offline asset.
-/// Player requests (including a tail `moov` lookup) are served before the
-/// background fill, and every received byte is placed once in the same file.
+private actor ProgressiveAudioSingleFlight<Value: Sendable> {
+    private var current: (id: UUID, task: Task<Value, Error>)?
+
+    func run(
+        _ operation: @escaping @Sendable () async throws -> Value
+    ) async throws -> Value {
+        if let current { return try await current.task.value }
+        let id = UUID()
+        let task = Task { try await operation() }
+        current = (id, task)
+        do {
+            let value = try await task.value
+            if current?.id == id { current = nil }
+            return value
+        } catch {
+            if current?.id == id { current = nil }
+            throw error
+        }
+    }
+}
+
+/// Durable sparse byte-range downloader for the eventual offline asset.
+/// Production playback uses native HTTPS AVURLAsset scheduling, so an AVPlayer
+/// all-data request can never force this downloader to gate first audio.
 final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDelegate, @unchecked Sendable {
     struct Source: Sendable {
         let url: URL
@@ -110,6 +131,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
     private let progressHandler: @Sendable (Progress) -> Void
     private let diagnosticHandler: @Sendable (Diagnostic) -> Void
     private let completionHandler: @Sendable (Result<Progress, Error>) -> Void
+    private let preferredBackgroundConnectionLimit: Int
+    private let refreshGate = ProgressiveAudioSingleFlight<Source>()
 
     private var source: Source
     private var index = SparseByteRangeIndex()
@@ -130,6 +153,13 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
     private var verifiedChunks: [VerifiedSparseChunk] = []
     private var retryCount = 0
     private var requiresRestoredCacheValidation = false
+    private var activeBackgroundConnectionLimit = 1
+
+    /// Upper bound for the representation-identity probe used before a restored
+    /// cache is exposed to AVPlayer. Large enough to make an ftyp/moov header
+    /// collision between two distinct entities practically impossible, small
+    /// enough to stay cheap even on the weakest network.
+    private static let cacheValidationProbeByteLimit: Int64 = 4096
 
     init(
         id: UUID,
@@ -139,6 +169,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         fileExtension: String,
         cacheDirectory: URL,
         allowsCellularAccess: Bool,
+        preferredBackgroundConnectionLimit: Int,
         refreshSource: @escaping @Sendable () async throws -> Source,
         progress: @escaping @Sendable (Progress) -> Void,
         diagnostic: @escaping @Sendable (Diagnostic) -> Void,
@@ -150,6 +181,10 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         self.mimeType = mimeType
         self.fileExtension = fileExtension
         self.allowsCellularAccess = allowsCellularAccess
+        self.preferredBackgroundConnectionLimit = max(1, min(
+            SparseTransferTuning.normalBackgroundConnections,
+            preferredBackgroundConnectionLimit
+        ))
         self.refreshSource = refreshSource
         self.progressHandler = progress
         self.diagnosticHandler = diagnostic
@@ -160,6 +195,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         configuration.allowsCellularAccess = allowsCellularAccess
         configuration.allowsExpensiveNetworkAccess = allowsCellularAccess
         configuration.waitsForConnectivity = true
+        configuration.httpMaximumConnectionsPerHost = self.preferredBackgroundConnectionLimit + 1
         configuration.timeoutIntervalForRequest = SparseTransferTuning.requestTimeoutSeconds
         configuration.timeoutIntervalForResource = SparseTransferTuning.resourceTimeoutSeconds
         self.session = URLSession(configuration: configuration)
@@ -204,6 +240,8 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         pathMonitor.start(queue: queue)
     }
 
+    /// Retained only for compatibility with focused loader tests and old cache
+    /// migrations. The production audio-first path no longer calls this method.
     func makeAsset() -> AVURLAsset {
         let customURL = URL(string: "ipockettube-sparse-cache:///\(videoId).\(fileExtension)")!
         let asset = AVURLAsset(url: customURL)
@@ -235,6 +273,20 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         queue.asyncAfter(deadline: .now() + delay.timeInterval) { [weak self] in
             guard let self, !self.isCancelled else { return }
             self.backgroundFillEnabled = true
+            self.fillNextBackgroundRange()
+        }
+    }
+
+    /// Keeps the durable downloader subordinate to native AVPlayer traffic.
+    /// Production starts with one connection, then raises the limit only after
+    /// consecutive AVPlayer buffer-health samples prove that playback is safe.
+    func setBackgroundConnectionLimit(_ limit: Int) {
+        queue.async { [weak self] in
+            guard let self, !self.isCancelled, !self.isTerminal else { return }
+            self.activeBackgroundConnectionLimit = max(
+                1,
+                min(self.preferredBackgroundConnectionLimit, limit)
+            )
             self.fillNextBackgroundRange()
         }
     }
@@ -419,7 +471,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 requestSet.remove(range)
                 requestGenerationGate.invalidate(range)
             }
-            if inFlight.count >= 3,
+            if inFlight.count >= maximumInFlightRequests,
                let background = inFlight.first(where: { $0.value.reason == "background-fill" }) {
                 background.value.task.cancel()
                 inFlight[background.key] = nil
@@ -427,7 +479,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 requestGenerationGate.invalidate(background.key)
             }
         }
-        guard inFlight.count < 3 else { return }
+        guard inFlight.count < maximumInFlightRequests else { return }
         guard requestSet.reserve(clamped, cached: index) else { return }
 
         emitDiagnostic(stage: reason, requested: clamped)
@@ -508,7 +560,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
         )
 
         if permitRefresh, [401, 403, 410].contains(http.statusCode) {
-            let refreshed = try await refreshSource()
+            let refreshed = try await refreshGate.run(refreshSource)
             guard source.fingerprint.isCompatible(with: refreshed.fingerprint) else {
                 throw LoaderError.changedRepresentation
             }
@@ -547,7 +599,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 bodyClass: bodyClass
             )
             if permitRefresh {
-                let refreshed = try await refreshSource()
+                let refreshed = try await refreshGate.run(refreshSource)
                 guard source.fingerprint.isCompatible(with: refreshed.fingerprint) else {
                     throw LoaderError.changedRepresentation
                 }
@@ -577,7 +629,7 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
                 bodyClass: bodyClass
             )
             if permitRefresh {
-                let refreshed = try await refreshSource()
+                let refreshed = try await refreshGate.run(refreshSource)
                 guard source.fingerprint.isCompatible(with: refreshed.fingerprint) else {
                     throw LoaderError.changedRepresentation
                 }
@@ -629,7 +681,17 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             return
         }
 
-        let probe = SparseByteRange(0, min(2, expectedBytes))
+        // The probe must be strong enough to discriminate a foreign or stale
+        // entity: MP4/M4A files share identical leading bytes ("00 00" ftyp box
+        // size), so a 2-byte sample cannot prove representation identity. Use
+        // the verified prefix up to a bounded size when the cache covers it.
+        let probe: SparseByteRange
+        if let prefix = index.contiguousCachedRange(startingAt: 0) {
+            let probeLength = min(prefix.upperBound, Self.cacheValidationProbeByteLimit)
+            probe = SparseByteRange(0, probeLength)
+        } else {
+            probe = SparseByteRange(0, min(2, expectedBytes))
+        }
         emitDiagnostic(stage: "cache-validator-probe", requested: probe)
         let sourceSnapshot = source
         let requestGeneration = requestGenerationGate.issue(for: probe)
@@ -922,17 +984,38 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
     private func fillNextBackgroundRange() {
         guard backgroundFillEnabled, expectedBytes > 0, !isComplete, !isCancelled,
               !isTerminal, !requiresRestoredCacheValidation else { return }
-        guard inFlight.count < 2 else { return }
-        let whole = SparseByteRange(0, expectedBytes)
-        guard let missing = index.missingRanges(in: whole).first else {
+        let activeBackgroundCount = inFlight.values.reduce(into: 0) { count, request in
+            if request.reason == "background-fill" { count += 1 }
+        }
+        let availableSlots = effectiveBackgroundConnectionLimit - activeBackgroundCount
+        guard availableSlots > 0 else { return }
+        let planned = SparseBackgroundFillPlanner.ranges(
+            cached: index,
+            reserved: Array(inFlight.keys),
+            totalBytes: expectedBytes,
+            chunkBytes: SparseTransferTuning.backgroundChunkBytes,
+            limit: availableSlots
+        )
+        guard !planned.isEmpty else {
             checkCompletion()
             return
         }
-        let chunk = SparseByteRange(
-            missing.lowerBound,
-            min(missing.upperBound, missing.lowerBound + SparseTransferTuning.backgroundChunkBytes)
+        for range in planned {
+            requestRange(range, reason: "background-fill")
+        }
+    }
+
+    private var effectiveBackgroundConnectionLimit: Int {
+        guard rangeSupported != false else { return 1 }
+        let systemLimit = SparseTransferTuning.backgroundConnectionLimit(
+            lowBandwidthAudio: false,
+            constrainedNetwork: networkPath?.isConstrained == true
         )
-        requestRange(chunk, reason: "background-fill")
+        return min(activeBackgroundConnectionLimit, systemLimit)
+    }
+
+    private var maximumInFlightRequests: Int {
+        preferredBackgroundConnectionLimit + 1
     }
 
     private func checkCompletion() {
@@ -1065,11 +1148,16 @@ final class ProgressiveAudioResourceLoader: NSObject, AVAssetResourceLoaderDeleg
             let compatible: Bool
             if var manifest = try? JSONDecoder().decode(SparseCacheManifest.self, from: data) {
                 let strict = source.fingerprint.isCompatible(with: manifest.fingerprint)
-                let legacyProfileMatch = source.legacyProfile.map {
-                    $0 == manifest.fingerprint.profile
-                } ?? false
-                    && source.fingerprint.videoID == manifest.fingerprint.videoID
-                    && source.fingerprint.mimeType == manifest.fingerprint.mimeType
+                let legacyProfileMatch: Bool
+                if let legacyProfile = source.legacyProfile {
+                    // `&&` binds tighter than `??`; the video/mime identity checks
+                    // must apply for every accepted legacy candidate.
+                    legacyProfileMatch = legacyProfile == manifest.fingerprint.profile
+                        && source.fingerprint.videoID == manifest.fingerprint.videoID
+                        && source.fingerprint.mimeType == manifest.fingerprint.mimeType
+                } else {
+                    legacyProfileMatch = false
+                }
                 compatible = strict || legacyProfileMatch
                 if legacyProfileMatch, !strict {
                     // One-time migration from the pre-itag profile. The selected

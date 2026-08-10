@@ -52,8 +52,15 @@ final class VideoDiskCache: @unchecked Sendable {
         let writtenBytes = data.count
         queue.async { [weak self] in
             guard let self else { return }
-            try? data.write(to: url, options: .atomic)
-            self.estimatedBytes += writtenBytes
+            do {
+                try data.write(to: url, options: .atomic)
+                // Only count bytes the write actually persisted: on a failed
+                // write (e.g. disk full) the estimate would otherwise drift up
+                // and eventually trigger a needless full-directory scan.
+                self.estimatedBytes += writtenBytes
+            } catch {
+                // Estimate not updated; eviction's full scan corrects it.
+            }
             self.evictIfNeeded()
         }
     }

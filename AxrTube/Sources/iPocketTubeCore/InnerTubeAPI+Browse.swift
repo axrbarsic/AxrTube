@@ -158,16 +158,6 @@ extension InnerTubeAPI {
             }
         }
         let data = try await post(endpoint: "search", body: body)
-        // DEBUG: dump raw search response for #shorts queries so we can inspect
-        // which renderer types YouTube is actually returning.
-        if query == "#shorts", let desktop = FileManager.default.urls(for: .desktopDirectory, in: .userDomainMask).first {
-            let filename = continuationToken == nil ? "shorts_search_p1.json" : "shorts_search_cont_\(Int.random(in: 1000...9999)).json"
-            let url = desktop.appendingPathComponent(filename)
-            if let jsonData = try? JSONSerialization.data(withJSONObject: data, options: [.prettyPrinted, .sortedKeys]) {
-                try? jsonData.write(to: url)
-                tubeLog.notice("search DEBUG: dumped #shorts response (\(jsonData.count, privacy: .public) bytes) to Desktop/\(filename, privacy: .public)")
-            }
-        }
         return try parseVideoGroup(from: data, title: "Search: \(query)")
     }
 
@@ -182,36 +172,29 @@ extension InnerTubeAPI {
             URLQueryItem(name: "callback", value: ""),
         ]
         guard let url = components.url else { return [] }
-        print("[Suggestions] Fetching URL: \(url)")
         let (data, response) = try await session.data(from: url)
         let statusCode = (response as? HTTPURLResponse)?.statusCode ?? -1
-        print("[Suggestions] HTTP status: \(statusCode), bytes: \(data.count)")
+        tubeLog.notice("search suggestions: HTTP \(statusCode, privacy: .public), \(data.count, privacy: .public) bytes")
         // Response format: [query, [[suggestion, 0, []], ...], ...]
         guard let raw = String(data: data, encoding: .utf8) else {
-            print("[Suggestions] Failed to decode response as UTF-8")
             return []
         }
-        print("[Suggestions] Raw prefix: \(raw.prefix(120))")
         // Extract the outermost JSON array — works regardless of callback wrapper name
         guard let arrayStart = raw.firstIndex(of: "["),
               let arrayEnd = raw.lastIndex(of: "]") else {
-            print("[Suggestions] Could not find JSON array bounds")
             return []
         }
         let jsonString = String(raw[arrayStart...arrayEnd])
-        print("[Suggestions] JSON prefix after strip: \(jsonString.prefix(120))")
         guard let jsonData = jsonString.data(using: .utf8),
               let json = try? JSONSerialization.jsonObject(with: jsonData) as? [Any]
         else {
-            print("[Suggestions] JSON parse failed")
             return []
         }
         guard let suggestions = json[safe: 1] as? [[Any]] else {
-            print("[Suggestions] Unexpected JSON shape: \(json.prefix(2))")
             return []
         }
         let results = suggestions.compactMap { $0[safe: 0] as? String }
-        print("[Suggestions] Parsed \(results.count) suggestions: \(results.prefix(5))")
+        tubeLog.notice("search suggestions: parsed \(results.count, privacy: .public) items")
         return results
     }
 

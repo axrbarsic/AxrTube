@@ -15,6 +15,8 @@ public final class RSSFeedsViewModel {
     public private(set) var videos: [Video] = []
     public private(set) var isLoading = false
     public var error: Error?
+    private var loadGeneration: UInt = 0
+    private var activeLoadTask: Task<Void, Never>?
 
     // MARK: - Dependencies
 
@@ -31,15 +33,22 @@ public final class RSSFeedsViewModel {
     // MARK: - Load
 
     public func load() {
+        // Re-entrancy guard: .task, .refreshable and sheet dismissal may all
+        // call load(); a generation token lets the newest call win and cancels
+        // any in-flight fetch instead of stacking duplicate network traffic.
+        loadGeneration &+= 1
+        let generation = loadGeneration
+        activeLoadTask?.cancel()
         isLoading = true
-        Task { [weak self] in
+        activeLoadTask = Task { [weak self] in
             guard let self else { return }
-            await self.fetchAll()
+            await self.fetchAll(generation: generation)
+            guard generation == self.loadGeneration else { return }
             self.isLoading = false
         }
     }
 
-    private func fetchAll() async {
+    private func fetchAll(generation: UInt) async {
         let activeFeeds = await feedStore.allFeeds().filter { $0.isActive }
         guard !activeFeeds.isEmpty else {
             videos = []
@@ -61,10 +70,12 @@ public final class RSSFeedsViewModel {
                 }
             }
             for await feedVideos in group {
+                guard !Task.isCancelled else { return }
                 allVideos.append(contentsOf: feedVideos)
             }
         }
 
+        guard generation == loadGeneration else { return }
         var seen = Set<String>()
         let deduplicated = allVideos.filter { seen.insert($0.id).inserted }
         videos = VideoPublicationSortPolicy.sorted(deduplicated, for: .rss)
@@ -73,7 +84,7 @@ public final class RSSFeedsViewModel {
     public func removeFeed(id: UUID) {
         Task {
             await feedStore.removeFeed(id: id)
-            await fetchAll()
+            await fetchAll(generation: loadGeneration)
         }
     }
 }

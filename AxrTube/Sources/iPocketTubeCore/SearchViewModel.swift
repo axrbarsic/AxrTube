@@ -26,6 +26,7 @@ public final class SearchViewModel {
     private var searchTask: Task<Void, Never>?
     private var publicationTask: Task<Void, Never>?
     private var suggestTask: Task<Void, Never>?
+    private var historyLoadTask: Task<Void, Never>?
     private var hideObserverTasks: [Task<Void, Never>] = []
     private var searchGeneration: UInt = 0
     private static let strictSearchPageBudget = 3
@@ -44,15 +45,24 @@ public final class SearchViewModel {
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI(), historyStore: SearchHistoryStore = .shared) {
         self.api = api
         self.historyStore = historyStore
-        Task { await loadHistory() }
+        historyLoadTask = Task { await loadHistory() }
         observeFeedHideNotifications()
+    }
+
+    /// Cancels all owned tasks and feed-hide observers. Call when the owning
+    /// view is torn down to avoid orphaned observers bleeding into later use.
+    public func cancel() {
+        searchTask?.cancel()
+        publicationTask?.cancel()
+        suggestTask?.cancel()
+        historyLoadTask?.cancel()
+        hideObserverTasks.forEach { $0.cancel() }
     }
 
     /// Call from `.task(id: query)` in the view to debounce live suggestions.
     /// An empty query shows real local history and the discovery feed. We never
     /// manufacture static English recommendations.
     public func updateSuggestions(for q: String) async {
-        print("[Suggestions] updateSuggestions called, q='\(q)'")
         if q.isEmpty {
             suggestTask?.cancel()
             suggestions = []
@@ -60,7 +70,6 @@ public final class SearchViewModel {
         }
         try? await Task.sleep(for: .milliseconds(300))
         guard !Task.isCancelled else {
-            print("[Suggestions] Task cancelled before fetch")
             return
         }
         fetchSuggestions(for: q)
@@ -302,20 +311,15 @@ public final class SearchViewModel {
     }
 
     private func fetchSuggestions(for requestedQuery: String) {
-        print("[Suggestions] fetchSuggestions spawning task for q='\(requestedQuery)'")
         suggestTask?.cancel()
         suggestTask = Task {
             do {
                 let s = try await api.fetchSearchSuggestions(query: requestedQuery)
                 guard !Task.isCancelled, self.query == requestedQuery else {
-                    print("[Suggestions] Task cancelled after fetch")
                     return
                 }
-                let result = s
-                print("[Suggestions] Setting \(result.count) suggestions")
-                suggestions = result
+                suggestions = s
             } catch {
-                print("[Suggestions] fetchSearchSuggestions threw: \(error)")
                 if !Task.isCancelled { suggestions = [] }
             }
         }
@@ -358,6 +362,13 @@ public final class ChannelViewModel {
     public init(api: any InnerTubeAPIProtocol = InnerTubeAPI()) {
         self.api = api
         observeFeedHideNotifications()
+    }
+
+    /// Cancels the publication task and feed-hide observers. Call when the
+    /// owning view is torn down.
+    public func cancel() {
+        publicationTask?.cancel()
+        hideObserverTasks.forEach { $0.cancel() }
     }
 
     public func load(channelId: String) {

@@ -25,7 +25,6 @@ public struct RootView: View {
     public init() {}
 
     public var body: some View {
-        @Bindable var browseVM = browseVM
         // Explicitly read cardDownloadService.state in body so SwiftUI's
         // @Observable tracking engine registers this view as a subscriber.
         // Without this, onChange(of: cardDownloadService.state) may not fire
@@ -90,24 +89,11 @@ public struct RootView: View {
             Text(item.message)
         }
         #endif
-        .sheet(isPresented: .constant(!auth.isSignedIn && requiresAuth)) {
-            // Sign-in prompt is shown as a dismissible sheet so users
-            // can still browse without being signed in.
-            SignInView()
-        }
         #if os(iOS)
         // Deep link is handled by MainTabView.onChange(of: browseVM.deepLinkedVideo)
         // which calls playerRouter.open(video:api:). No landscapePlayerCover needed here.
-        #elseif !os(macOS) && !os(tvOS)
-        .fullScreenCover(item: $browseVM.deepLinkedVideo) { video in
-            PlayerView(video: video, api: api)
-                .environment(store)
-                .environment(auth)
-        }
         #endif
     }
-
-    private var requiresAuth: Bool { false }   // guest browsing is allowed
 }
 
 // MARK: - AppSection

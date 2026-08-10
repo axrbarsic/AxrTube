@@ -160,9 +160,19 @@ struct ShortsEmbedPlayerViewModelTests {
         #expect(vm.wasPlayingBeforeSuspend == false)
     }
 
-    @Test("handleBackground pauses and sets wasPlayingBeforeSuspend; handleForeground resumes")
-    func handleBackgroundAndForeground() {
+    @Test("handleBackground respects the background playback setting")
+    func handleBackgroundRespectsBackgroundPlaybackSetting() {
+        // Default: background playback is allowed → nothing is paused or recorded.
+        let defaultVM = ShortsEmbedPlayerViewModel(api: InnerTubeAPI())
+        defaultVM.playerState = .playing
+        defaultVM.handleBackground()
+        #expect(defaultVM.wasPlayingBeforeSuspend == false)
+
+        // Background playback disabled → pause and remember to resume on foreground.
+        var settings = AppSettings()
+        settings.backgroundPlaybackEnabled = false
         let vm = ShortsEmbedPlayerViewModel(api: InnerTubeAPI())
+        vm.updateSettings(settings)
         vm.playerState = .playing
         vm.handleBackground()
         #expect(vm.wasPlayingBeforeSuspend == true)

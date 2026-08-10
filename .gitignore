@@ -42,10 +42,10 @@ fastlane/test_output
 *.mobileprovision
 AuthKey_*.p8
 
-# Private signing config (copy from iPocketTubePrivate via setup.sh)
+# Private signing config (opt-in; copied manually from a private source)
 iPocketTubeApp/Config/Secrets.xcconfig
 
-# Firebase config (copy from iPocketTubePrivate via setup.sh)
+# Firebase config (opt-in; copied manually from a private source)
 iPocketTubeApp/iPocketTubeApp/GoogleService-Info.plist
 
 # Simulator
@@ -76,3 +76,7 @@ tmp/
 fabric.properties
 *BAK.java
 hs_err_pid*.log
+
+# Local experiments and tool logs
+.codex-yandex-poc/
+.playwright-cli/

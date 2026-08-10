@@ -133,7 +133,6 @@ public struct AudioFirstAuthoritativeState: Sendable, Equatable {
         case .waitingForWiFi:
             phase = .waitingForWiFi
         case .playbackInstalled:
-            hasPlayableSource = true
             if phase == .resolving { phase = .buffering }
         case .timeline(_, let position):
             guard position.isFinite, position >= 0 else { return false }

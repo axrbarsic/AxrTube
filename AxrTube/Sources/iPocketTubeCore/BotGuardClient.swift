@@ -46,6 +46,9 @@ public final class BotGuardClient: PoTokenProvider, @unchecked Sendable {
     private static let requestKey = "O43z0dpjhgX20SCx4KAo"
     private static let waaCreateURL     = URL(string: "https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/Create")!
     private static let waaGenerateITURL = URL(string: "https://jnn-pa.googleapis.com/$rpc/google.internal.waa.v1.Waa/GenerateIT")!
+    /// Generous ceiling above the 12 s request timeout so a missing callback can
+    /// never block the serial JS queue forever.
+    private static let generateITTimeoutSeconds: TimeInterval = 15
 
     // MARK: - Properties
     private let session: URLSession
@@ -574,8 +577,17 @@ public final class BotGuardClient: PoTokenProvider, @unchecked Sendable {
             box.value = .success((integrityToken, websafeFallback, ttlSeconds))
         }.resume()
 
-        sema.wait()
-        return try box.value!.get()
+        let timedOut = sema.wait(timeout: .now() + Self.generateITTimeoutSeconds) == .timedOut
+        guard !timedOut else {
+            session.invalidateAndCancel()
+            throw BotGuardError.integrityTokenFailed(
+                "GenerateIT timed out after \(Int(Self.generateITTimeoutSeconds))s"
+            )
+        }
+        guard let value = box.value else {
+            throw BotGuardError.integrityTokenFailed("GenerateIT produced no result")
+        }
+        return try value.get()
     }
 
     // MARK: - Phase 5: mint (JS, on jsQueue)

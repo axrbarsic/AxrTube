@@ -40,10 +40,24 @@ public func qualityRecoveryAction(
     quality: AppSettings.VideoQuality,
     hasAppliedH264Cap: Bool
 ) -> QualityRecoveryAction {
-    let is403 = error.domain == nsURLErrorDomain && error.code == -1102
+    let is403 = error.domain == nsURLErrorDomain
+        && (error.code == -1102
+            || (error.code == -1011 && httpStatus(from: error) == 403))
     let isH264DecodeError = error.domain == avFoundationErrorDomain && error.code == -11833
     if is403 { return .retry403Recovery }
     if quality != .auto { return .revertToAuto }
     if !hasAppliedH264Cap && isH264DecodeError { return .retryWithH264Cap }
     return .fail(error: error)
+}
+
+/// Recovers an HTTP status code from an `NSError.userInfo` when the transport
+/// embedded it. Keys are best-effort; absence simply means "not a 403".
+private func httpStatus(from error: NSError) -> Int {
+    for key in ["statusCode", "NSHTTPURLResponseKey"] {
+        if let code = error.userInfo[key] as? Int { return code }
+    }
+    if let response = error.userInfo["NSHTTPURLResponseKey"] as? HTTPURLResponse {
+        return response.statusCode
+    }
+    return 0
 }

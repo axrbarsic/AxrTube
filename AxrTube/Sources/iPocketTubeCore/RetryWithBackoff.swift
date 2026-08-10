@@ -37,6 +37,22 @@ func retryWithBackoff<T>(
             lastError = urlError
             try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             delay = min(delay * 2, maxDelay)
+        } catch let apiError as APIError {
+            // YouTube rate-limits anonymous clients (429) and gateways may
+            // briefly 5xx; both are transient and worth a bounded retry.
+            guard case .httpError(let statusCode) = apiError,
+                  statusCode == 408 || statusCode == 429 || (500...599).contains(statusCode) else {
+                throw apiError
+            }
+            guard attempt < maxAttempts else {
+                lastError = apiError
+                break
+            }
+            let tag = label.isEmpty ? "" : "[\(label)] "
+            retryLog.notice("\(tag)attempt \(attempt)/\(maxAttempts) failed (HTTP \(statusCode)), retrying in \(Int(delay))s")
+            lastError = apiError
+            try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            delay = min(delay * 2, maxDelay)
         } catch {
             throw error
         }
