@@ -1042,13 +1042,25 @@ public final class AudioFirstPlaybackCoordinator {
                 guard commandGate.isCurrent(generation), activeLoaderID == loaderID,
                       currentVideo?.id == video.id else { return }
                 DownloadStore.shared.complete(video: video, kind: .audio, fileURL: destination, fileSizeBytes: bytes)
-                if transferState.shouldInstallCompletedLocalFile,
-                   let completed = DownloadStore.shared.entry(videoId: video.id, kind: .audio) {
-                    await handoffToCompletedLocal(
-                        completed,
-                        generation: generation,
-                        reason: "offline-complete-before-audible-playback"
-                    )
+                if let completed = DownloadStore.shared.entry(videoId: video.id, kind: .audio) {
+                    if transferState.shouldInstallCompletedLocalFile {
+                        await handoffToCompletedLocal(
+                            completed,
+                            generation: generation,
+                            reason: "offline-complete-before-audible-playback"
+                        )
+                    } else if transferState.audiblePlaybackStarted {
+                        // Once the offline file is complete, playback must move
+                        // off the network item: AVPlayer's own scheduler ignores
+                        // the sparse cache, so a seek would re-download every
+                        // range on a weak link and stall. Handing off preserves
+                        // position and play intent and makes scrubbing instant.
+                        await handoffToCompletedLocal(
+                            completed,
+                            generation: generation,
+                            reason: "offline-complete-while-audible"
+                        )
+                    }
                 }
                 apply(.completed(generation: generation))
                 bufferedProgress = 1
