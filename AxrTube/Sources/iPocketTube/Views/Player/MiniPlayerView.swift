@@ -4,28 +4,6 @@ import AVFoundation
 import UIKit
 import iPocketTubeCore
 
-struct AudioDownloadQualityPicker: View {
-    @Binding var lowBandwidthAudioMode: Bool
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Label("Качество аудио", systemImage: "network")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-            Picker("Качество аудио", selection: $lowBandwidthAudioMode) {
-                Text("Минимум").tag(true)
-                Text("Обычное").tag(false)
-            }
-            .pickerStyle(.segmented)
-            .frame(maxWidth: 220, minHeight: 44)
-            .accessibilityHint("Минимум предназначен для плохого интернета")
-            .accessibilityIdentifier("audioDownload.qualityPicker")
-        }
-        .accessibilityElement(children: .contain)
-    }
-}
-
 // MARK: - Shared Now Playing accessory
 
 struct NowPlayingAccessoryChrome<Artwork: View>: View {
@@ -36,7 +14,6 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
     let togglePlayback: () -> Void
     let close: () -> Void
     let openTranscript: (() -> Void)?
-    let lowBandwidthAudioMode: Binding<Bool>?
     @ViewBuilder let artwork: () -> Artwork
 
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -50,7 +27,6 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
         togglePlayback: @escaping () -> Void,
         close: @escaping () -> Void,
         openTranscript: (() -> Void)? = nil,
-        lowBandwidthAudioMode: Binding<Bool>? = nil,
         @ViewBuilder artwork: @escaping () -> Artwork
     ) {
         self.title = title
@@ -60,7 +36,6 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
         self.togglePlayback = togglePlayback
         self.close = close
         self.openTranscript = openTranscript
-        self.lowBandwidthAudioMode = lowBandwidthAudioMode
         self.artwork = artwork
     }
 
@@ -127,13 +102,8 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
                 .accessibilityIdentifier("nowPlayingAccessory.closeButton")
             }
 
-            if let lowBandwidthAudioMode {
-                AudioDownloadQualityPicker(lowBandwidthAudioMode: lowBandwidthAudioMode)
-                .padding(.horizontal, 8)
-                .padding(.bottom, 6)
-            }
         }
-        .frame(minHeight: lowBandwidthAudioMode == nil ? 52 : 96)
+        .frame(minHeight: 52)
         .padding(.horizontal, 8)
         .modifier(NowPlayingAccessoryFallbackSurface(
             reduceTransparency: reduceTransparency,
@@ -180,50 +150,30 @@ struct MiniPlayerView: View {
     let openDetails: () -> Void
     @State private var showTranscript = false
 
-    private var audioQualityBinding: Binding<Bool>? {
-        guard playerRouter.audioFirst.canSwitchCurrentAudioQuality else { return nil }
-        return Binding(
-            get: { playerRouter.audioFirst.usesLowBandwidthAudio },
-            set: { enabled in
-                iPocketTubeHaptics.shared.perform(.settingsPicker)
-                playerRouter.audioFirst.setLowBandwidthAudioMode(enabled)
-            }
-        )
-    }
-
     var body: some View {
         NowPlayingAccessoryChrome(
-            title: playerRouter.audioFirst.currentVideo?.title ?? "Текущее аудио",
+            title: playerState.currentVideo?.title ?? "Текущее видео",
             isPlaying: playerState.vm.isPlaying,
             canTogglePlayback: playerState.vm.player.currentItem != nil,
             openDetails: openDetails,
             togglePlayback: {
                 iPocketTubeHaptics.shared.perform(.playbackTransport)
-                playerRouter.audioFirst.togglePlayPauseByUser()
+                playerState.vm.togglePlayPause()
             },
             close: {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
-                playerRouter.closeAudioFirst()
+                playerRouter.closePlayback()
             },
             openTranscript: {
                 iPocketTubeHaptics.shared.perform(.contentSelection)
                 showTranscript = true
             },
-            lowBandwidthAudioMode: audioQualityBinding
         ) {
-            ZStack {
-                AsyncImage(url: playerRouter.audioFirst.currentVideo?.thumbnailURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
-                        ZStack {
-                            Color.secondary.opacity(0.16)
-                            Image(systemName: "waveform")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
+            FullScreenPlayerLayerView(
+                hostView: playerState.playerHostView,
+                videoGravity: .resizeAspectFill
+            )
+                .background(Color.black)
         }
         .fullScreenCover(isPresented: $showTranscript) {
             CurrentPlaybackTranscriptPanel {

@@ -39,9 +39,9 @@ public final class SettingsStore {
         var changed = false
         if migrated.settingsVersion < 3 {
             migrated.backgroundPlaybackEnabled = true
-            migrated.audioOnlyMode = true
+            migrated.audioOnlyMode = false
             migrated.autoplayEnabled = false
-            migrated.offlineAutoSaveMode = .audio
+            migrated.offlineAutoSaveMode = .video
             changed = true
         }
         if migrated.settingsVersion < 4 {
@@ -74,9 +74,9 @@ public final class SettingsStore {
                     UserDefaults.standard.set(migrated, forKey: Self.key)
                 }
             }
-            self.settings = Self.enforcingAudioFirstContract(migration.settings)
+            self.settings = Self.enforcingVideoPlaylistContract(migration.settings)
         } else {
-            self.settings = Self.enforcingAudioFirstContract(AppSettings())
+            self.settings = Self.enforcingVideoPlaylistContract(AppSettings())
         }
         // Reset settings to defaults when launched for UI testing so each test
         // suite starts from a clean, known state and prior runs cannot bleed in.
@@ -85,9 +85,6 @@ public final class SettingsStore {
         }
         if ProcessInfo.processInfo.arguments.contains("--uitesting-disable-sponsorblock") {
             self.settings.sponsorBlockEnabled = false
-        }
-        if ProcessInfo.processInfo.arguments.contains("--uitesting-audio-only-mode") {
-            self.settings.audioOnlyMode = true
         }
         if ProcessInfo.processInfo.arguments.contains("--uitesting-hide-shorts") {
             self.settings.hideShorts = true
@@ -115,15 +112,15 @@ public final class SettingsStore {
     }
 
     public func reset() {
-        settings = Self.enforcingAudioFirstContract(AppSettings())
+        settings = Self.enforcingVideoPlaylistContract(AppSettings())
     }
 
-    private static func enforcingAudioFirstContract(_ input: AppSettings) -> AppSettings {
+    private static func enforcingVideoPlaylistContract(_ input: AppSettings) -> AppSettings {
         var result = input
         result.backgroundPlaybackEnabled = true
-        result.audioOnlyMode = true
+        result.audioOnlyMode = false
         result.autoplayEnabled = false
-        result.offlineAutoSaveMode = .audio
+        if result.offlineAutoSaveMode == .audio { result.offlineAutoSaveMode = .video }
         return result
     }
 }

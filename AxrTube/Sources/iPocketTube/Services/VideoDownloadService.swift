@@ -1,29 +1,21 @@
-import Foundation
-import AVFoundation
-#if os(iOS)
-import Photos
-#endif
-import Observation
-import os
-import iPocketTubeCore
-#if os(iOS)
-@preconcurrency import ActivityKit
-#endif
-
-private let downloadLog = CrashlyticsLogger(category: "Download")
-
-// MARK: - VideoDownloadService
+// This Source Code Form is subject to the terms of the Mozilla Public
+// License, v. 2.0. If a copy of the MPL was not distributed with this
+// file, You can obtain one at https://mozilla.org/MPL/2.0/.
 //
-// Downloads a YouTube video stream to the device's Photos library.
-// Uses InnerTubeAPI to resolve the best stream URL, then downloads the
-// file to a temp location before saving it via PHPhotoLibrary.
+// The background file/HLS split and task restoration design are adapted from
+// Brave iOS Playlist. AxrTube resolves media through its existing InnerTube
+// client because it is a native catalog, not a browser DOM host.
+
+import AVFoundation
+import Foundation
+import Observation
+import iPocketTubeCore
+
+private let downloadLog = CrashlyticsLogger(category: "PlaylistDownload")
 
 @MainActor
 @Observable
 public final class VideoDownloadService {
-
-    // MARK: - State
-
     public enum DownloadState: Equatable {
         case idle
         case fetching
@@ -34,8 +26,8 @@ public final class VideoDownloadService {
 
         public var isActive: Bool {
             switch self {
-            case .fetching, .downloading, .saving: return true
-            default: return false
+            case .fetching, .downloading, .saving: true
+            default: false
             }
         }
     }
@@ -45,1010 +37,409 @@ public final class VideoDownloadService {
     public private(set) var lastSavedToPhotos = false
     public private(set) var lastWasAutomatic = false
 
-    // MARK: - Private
-
     private let api: InnerTubeAPI
-    private var downloadTask: Task<Void, Never>?
-    private var currentVideo: Video?
-    private var currentKind: OfflineMediaKind = .video
-    private var shouldSaveVideoToPhotos = true
-    private var storageLimitBytes: Int64 = 4 * 1024 * 1024 * 1024
-    private var preferLowBandwidthAudio = false
-
-    #if os(iOS)
-    @available(iOS 16.1, *)
-    @ObservationIgnored
-    private var liveActivity: Activity<DownloadActivityAttributes>?
-
-    @available(iOS 16.1, *)
-    @ObservationIgnored
-    private var liveActivityState = DownloadActivityAttributes.DownloadContentState(
-        progress: 0,
-        phase: .fetching
-    )
-
-    @available(iOS 16.1, *)
-    @ObservationIgnored
-    private var liveActivityLease: LiveActivityArbitrationLease?
-
-    @ObservationIgnored
-    private var liveActivityRegistrationGeneration: UInt64 = 0
-
-    private static var didReconcileLiveActivitiesAfterLaunch = false
-    #endif
-
-    /// URLSession used for all YouTube CDN downloads.
-    /// httpAdditionalHeaders cannot override User-Agent on iOS — must use URLRequest.setValue.
-    private static let cdnSession = URLSession(configuration: .default)
-
-    /// Builds a URLRequest for a YouTube CDN URL.
-    /// - `alr=yes` signals the CDN to respond with the full stream rather than an
-    ///   initial probe chunk. Without it, adaptive-stream URLs often return 403.
-    /// - `userAgent` must match the client that signed the URL (`c=` parameter):
-    ///   Web → desktop Chrome, TV-auth → Cobalt, iOS → native iOS app UA.
-    nonisolated private static func cdnRequest(for url: URL, userAgent: String = InnerTubeClients.iOS.userAgent) -> URLRequest {
-        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        var queryItems = components?.queryItems ?? []
-        if !queryItems.contains(where: { $0.name == "alr" }) {
-            queryItems.append(URLQueryItem(name: "alr", value: "yes"))
-        }
-        components?.queryItems = queryItems
-        let finalURL = components?.url ?? url
-        var req = URLRequest(url: finalURL)
-        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        return req
-    }
-
-    // MARK: - Init
+    private let backend: PlaylistDownloadBackend
+    private var resolverTask: Task<Void, Never>?
+    private var activeVideo: Video?
+    private var attemptedFileFallbacks: Set<String> = []
+    private var storageLimitBytes: Int64 = 4 * 1_024 * 1_024 * 1_024
 
     public init(api: InnerTubeAPI = InnerTubeAPI()) {
         self.api = api
-        #if os(iOS)
-        if #available(iOS 16.1, *) {
-            Self.reconcileLiveActivitiesAfterLaunch()
+        self.backend = PlaylistDownloadBackend.shared
+        backend.onEvent = { [weak self] event in
+            Task { @MainActor [weak self] in self?.handle(event) }
         }
-        #endif
+        backend.restoreTasks()
     }
 
-    // MARK: - Public
+    public nonisolated static func handleBackgroundEvents(
+        identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        PlaylistDownloadBackend.shared.handleBackgroundEvents(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
+    }
 
     public func download(
         video: Video,
         kind: OfflineMediaKind = .video,
-        saveVideoToPhotos: Bool = true,
-        storageLimitMB: Int = 4096,
+        saveVideoToPhotos: Bool = false,
+        storageLimitMB: Int = 4_096,
         isAutomatic: Bool = false,
         preferLowBandwidthAudio: Bool = false
     ) {
         guard !state.isActive else { return }
-        lastWasAutomatic = isAutomatic
+        guard kind == .video else {
+            state = .failed("AxrTube теперь сохраняет полноценное видео. Аудио-загрузка удалена.")
+            return
+        }
         let store = DownloadStore.shared
-        if store.containsCompleted(videoId: video.id, kind: kind) {
-            lastCompletedKind = kind
-            lastSavedToPhotos = false
+        if store.containsCompleted(videoId: video.id, kind: .video) {
+            lastCompletedKind = .video
             state = .done
             return
         }
-        let limitBytes = Int64(max(256, storageLimitMB)) * 1024 * 1024
-        guard store.canStore(additionalBytes: 0, limitBytes: limitBytes) else {
-            state = .failed(String(localized: "Offline collection storage limit reached. Delete items or raise the limit in Settings.", bundle: .module))
+        storageLimitBytes = Int64(max(256, storageLimitMB)) * 1_024 * 1_024
+        guard store.canStore(additionalBytes: 0, limitBytes: storageLimitBytes) else {
+            state = .failed("Достигнут лимит хранилища офлайн-видео.")
             return
         }
-        guard store.begin(video: video, kind: kind) else { return }
-        currentVideo = video
-        currentKind = kind
-        shouldSaveVideoToPhotos = saveVideoToPhotos && kind == .video
-        storageLimitBytes = limitBytes
-        self.preferLowBandwidthAudio = preferLowBandwidthAudio
+        guard store.begin(video: video, kind: .video) else { return }
+        activeVideo = video
+        lastWasAutomatic = isAutomatic
+        lastSavedToPhotos = false
         state = .fetching
-        store.update(videoId: video.id, kind: kind, status: .fetching, progress: 0.05)
-        #if os(iOS)
-        if #available(iOS 16.1, *) {
-            registerLiveActivity(video: video)
-        }
-        #endif
-        downloadTask = Task { await performDownload(video: video, kind: kind) }
+        store.update(videoId: video.id, kind: .video, status: .fetching, progress: 0)
+        resolverTask = Task { [weak self] in await self?.resolveAndStart(video) }
     }
 
-    public func retry(entry: DownloadedVideo, storageLimitMB: Int = 4096) {
-        download(
-            video: entry.video,
-            kind: entry.kind,
-            saveVideoToPhotos: entry.kind == .video,
-            storageLimitMB: storageLimitMB,
-            isAutomatic: false,
-            preferLowBandwidthAudio: preferLowBandwidthAudio
-        )
+    public func retry(entry: DownloadedVideo, storageLimitMB: Int = 4_096) {
+        download(video: entry.video, kind: .video, storageLimitMB: storageLimitMB)
     }
 
     public func cancel() {
-        downloadTask?.cancel()
-        #if os(iOS)
-        if #available(iOS 16.1, *) {
-            cancelLiveActivityPresentation()
-        }
-        #endif
-        if let currentVideo {
+        resolverTask?.cancel()
+        if let video = activeVideo {
+            backend.cancel(videoID: video.id)
+            let progress = DownloadStore.shared.entry(videoId: video.id, kind: .video)?.progress ?? 0
             DownloadStore.shared.update(
-                videoId: currentVideo.id,
-                kind: currentKind,
-                status: .cancelled,
-                progress: 0,
-                errorMessage: String(localized: "Download cancelled.", bundle: .module)
+                videoId: video.id,
+                kind: .video,
+                status: .paused,
+                progress: progress,
+                errorMessage: "Загрузка приостановлена.",
+                resumePolicy: .manual
             )
         }
         state = .idle
     }
 
     public func reset() {
-        downloadTask?.cancel()
-        #if os(iOS)
-        if #available(iOS 16.1, *) {
-            cancelLiveActivityPresentation()
-        }
-        #endif
-        downloadTask = nil
-        currentVideo = nil
-        state = .idle
+        resolverTask = nil
+        if !state.isActive { state = .idle }
     }
 
-    // MARK: - Private implementation
-
-    // MARK: Live Activity helpers
-
-    #if os(iOS)
-    @available(iOS 16.1, *)
-    private func registerLiveActivity(video: Video) {
-        liveActivityRegistrationGeneration &+= 1
-        let registrationGeneration = liveActivityRegistrationGeneration
-        liveActivityState = DownloadActivityAttributes.DownloadContentState(
-            progress: 0,
-            phase: .fetching
-        )
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            let registration = await LiveActivityArbitrationCenter.shared.registerDownload(
-                itemID: video.id
-            ) { [weak self] directive in
-                guard let self else { return }
-                await self.handleLiveActivityDirective(directive)
-            }
-            guard registrationGeneration == self.liveActivityRegistrationGeneration,
-                  self.currentVideo?.id == video.id,
-                  self.state.isActive else {
-                LiveActivityArbitrationCenter.shared.finishDownload(registration.lease)
-                return
-            }
-            self.liveActivityLease = registration.lease
-            if registration.shouldPresent {
-                await self.presentLiveActivity(video: video, lease: registration.lease)
-            }
-        }
-    }
-
-    @available(iOS 16.1, *)
-    private func presentLiveActivity(
-        video: Video,
-        lease: LiveActivityArbitrationLease
-    ) async {
-        guard liveActivityLease == lease,
-              currentVideo?.id == video.id,
-              state.isActive,
-              LiveActivityArbitrationCenter.shared.allowsDownloadPresentation(lease),
-              ActivityAuthorizationInfo().areActivitiesEnabled else { return }
-
-        let existingActivities = Activity<DownloadActivityAttributes>.activities
-        await Self.sendImmediateActivityEnds(existingActivities)
-        guard liveActivityLease == lease,
-              currentVideo?.id == video.id,
-              state.isActive,
-              LiveActivityArbitrationCenter.shared.allowsDownloadPresentation(lease) else { return }
-
-        let attrs = DownloadActivityAttributes(videoTitle: video.title)
+    private func resolveAndStart(_ video: Video) async {
         do {
-            liveActivity = try Activity<DownloadActivityAttributes>.request(
-                attributes: attrs,
-                content: .init(state: liveActivityState, staleDate: nil),
-                pushType: nil
-            )
-        } catch {
-            downloadLog.notice("[download] Live Activity unavailable: \(error.localizedDescription)")
-        }
-    }
-
-    @available(iOS 16.1, *)
-    private func handleLiveActivityDirective(_ directive: LiveActivityDownloadDirective) async {
-        switch directive {
-        case .suppress(let lease):
-            guard liveActivityLease == lease else { return }
-            await suppressLiveActivity()
-        case .restore(let lease):
-            guard liveActivityLease == lease,
-                  let video = currentVideo,
-                  state.isActive else { return }
-            await presentLiveActivity(video: video, lease: lease)
-        }
-    }
-
-    @available(iOS 16.1, *)
-    private func updateLiveActivity(phase: DownloadActivityAttributes.DownloadContentState.Phase,
-                                    progress: Double = 0) async {
-        let newState = DownloadActivityAttributes.DownloadContentState(progress: progress, phase: phase)
-        liveActivityState = newState
-        guard let activity = liveActivity else { return }
-        // Activity<T> is a Sendable struct; dispatch the await via a nonisolated helper to
-        // satisfy Swift 6 region isolation — the value is safely copied out of the @MainActor region.
-        await Self.sendActivityUpdate(activity, state: newState)
-    }
-
-    @available(iOS 16.1, *)
-    private func endLiveActivity(phase: DownloadActivityAttributes.DownloadContentState.Phase) async {
-        completeLiveActivityRegistration()
-        guard let activity = liveActivity else { return }
-        let finalState = DownloadActivityAttributes.DownloadContentState(progress: 1, phase: phase)
-        liveActivityState = finalState
-        liveActivity = nil  // nil out on @MainActor before sending the value across the boundary
-        await Self.sendActivityEnd(activity, state: finalState)
-    }
-
-    @available(iOS 16.1, *)
-    private func suppressLiveActivity() async {
-        guard let activity = liveActivity else { return }
-        liveActivity = nil
-        await Self.sendImmediateActivityEnd(activity, state: liveActivityState)
-    }
-
-    @available(iOS 16.1, *)
-    private func cancelLiveActivityPresentation() {
-        completeLiveActivityRegistration()
-        guard let activity = liveActivity else { return }
-        let finalState = liveActivityState
-        liveActivity = nil
-        Task {
-            await Self.sendImmediateActivityEnd(activity, state: finalState)
-        }
-    }
-
-    @available(iOS 16.1, *)
-    private func completeLiveActivityRegistration() {
-        liveActivityRegistrationGeneration &+= 1
-        guard let liveActivityLease else { return }
-        self.liveActivityLease = nil
-        LiveActivityArbitrationCenter.shared.finishDownload(liveActivityLease)
-    }
-
-    @available(iOS 16.1, *)
-    private static func reconcileLiveActivitiesAfterLaunch() {
-        guard !didReconcileLiveActivitiesAfterLaunch else { return }
-        didReconcileLiveActivitiesAfterLaunch = true
-        Task { @MainActor in
-            let activities = Activity<DownloadActivityAttributes>.activities
-            await Self.sendImmediateActivityEnds(activities)
-        }
-    }
-
-    /// Dispatches `Activity.update` from a nonisolated context.
-    /// `Activity<T>` is a `Sendable` struct so transferring it via `sending` is safe.
-    @available(iOS 16.1, *)
-    nonisolated private static func sendActivityUpdate(
-        _ activity: sending Activity<DownloadActivityAttributes>,
-        state: DownloadActivityAttributes.DownloadContentState
-    ) async {
-        await activity.update(ActivityContent(state: state, staleDate: nil))
-    }
-
-    /// Dispatches `Activity.end` from a nonisolated context. See `sendActivityUpdate` for rationale.
-    @available(iOS 16.1, *)
-    nonisolated private static func sendActivityEnd(
-        _ activity: sending Activity<DownloadActivityAttributes>,
-        state: DownloadActivityAttributes.DownloadContentState
-    ) async {
-        await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .after(.now + 4))
-    }
-
-    @available(iOS 16.1, *)
-    nonisolated private static func sendImmediateActivityEnd(
-        _ activity: sending Activity<DownloadActivityAttributes>,
-        state: DownloadActivityAttributes.DownloadContentState
-    ) async {
-        await activity.end(ActivityContent(state: state, staleDate: nil), dismissalPolicy: .immediate)
-    }
-
-    @available(iOS 16.1, *)
-    nonisolated private static func sendImmediateActivityEnds(
-        _ activities: sending [Activity<DownloadActivityAttributes>]
-    ) async {
-        for activity in activities {
-            await activity.end(nil, dismissalPolicy: .immediate)
-        }
-    }
-    #endif
-
-    // MARK: Download orchestration
-
-    private func performDownload(video: Video, kind: OfflineMediaKind) async {
-        do {
-            if kind == .audio {
-                try await performAudioDownload(video: video)
+            let primary = try await api.fetchPlayerInfoForDownload(videoId: video.id)
+            try Task.checkCancellation()
+            if case let .hls(hlsURL) = PlaylistDownloadPolicy.source(
+                hlsURL: primary.hlsURL,
+                muxedFileURL: primary.bestMuxedDownloadURL
+            ) {
+                downloadLog.notice("[playlist] HLS selected for \(video.id)")
+                backend.startHLS(video: video, url: hlsURL)
                 return
             }
-
-            let hasPhotoAccess = shouldSaveVideoToPhotos ? await requestPhotoAddAccess() : true
-            guard hasPhotoAccess else {
-                state = .failed("Photo library access is required to save the video")
-                DownloadStore.shared.update(
-                    videoId: video.id,
-                    kind: kind,
-                    status: .failed,
-                    progress: 0,
-                    errorMessage: String(localized: "Photo library access is required to save the video", bundle: .module)
-                )
-                #if os(iOS)
-                if #available(iOS 16.1, *) { await endLiveActivity(phase: .failed) }
-                #endif
+            if case let .file(fileURL) = PlaylistDownloadPolicy.source(
+                hlsURL: primary.hlsURL,
+                muxedFileURL: primary.bestMuxedDownloadURL
+            ) {
+                downloadLog.notice("[playlist] muxed MP4 selected for \(video.id)")
+                backend.startFile(video: video, url: fileURL)
                 return
             }
-
-            if let tempURL = await tryDirectDownload(videoId: video.id) {
-                downloadLog.notice("[download] remuxing for Photos compatibility")
-                #if os(iOS)
-                if #available(iOS 16.1, *) { await updateLiveActivity(phase: .saving, progress: 1) }
-                #endif
-                let photosURL = try await passthroughRemux(inputURL: tempURL, videoId: video.id, suffix: "muxed")
-                try? FileManager.default.removeItem(at: tempURL)
-                state = .saving
-                DownloadStore.shared.update(videoId: video.id, kind: kind, status: .saving, progress: 0.9)
-                if shouldSaveVideoToPhotos {
-                    try await saveToPhotoLibrary(fileURL: photosURL)
-                }
-                try storeInDownloadStore(video: video, kind: .video, sourceURL: photosURL)
-                try? FileManager.default.removeItem(at: photosURL)
-                lastCompletedKind = .video
-                lastSavedToPhotos = shouldSaveVideoToPhotos
-                downloadLog.notice("[download] ✅ video saved \(video.id)")
-                state = .done
-                #if os(iOS)
-                if #available(iOS 16.1, *) { await endLiveActivity(phase: .done) }
-                #endif
-                return
+            let fallback = try await api.fetchPlayerInfoAndroid(videoId: video.id)
+            try Task.checkCancellation()
+            guard let fileURL = fallback.bestMuxedDownloadURL else {
+                throw PlaylistDownloadError.noVideoResource
             }
-
-            downloadLog.notice("[download] direct download failed, trying adaptive merge fallback")
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await updateLiveActivity(phase: .downloading, progress: 0.1) }
-            #endif
-            let androidInfo = try await api.fetchPlayerInfoAndroid(videoId: video.id)
-            downloadLog.notice("[download] adaptive fallback formats=\(androidInfo.formats.count)")
-            for (i, fmt) in androidInfo.formats.enumerated() {
-                downloadLog.notice("[download]   [\(i)] mime=\(fmt.mimeType) label=\(fmt.label) hasURL=\(fmt.url != nil) bitrate=\(fmt.bitrate ?? 0)")
-            }
-            guard let videoURL = androidInfo.bestAdaptiveVideoURL,
-                  let audioURL = androidInfo.bestAdaptiveAudioURL else {
-                downloadLog.error("[download] ❌ no adaptive video/audio streams found")
-                state = .failed("No downloadable stream found for this video")
-                DownloadStore.shared.update(
-                    videoId: video.id,
-                    kind: kind,
-                    status: .failed,
-                    progress: 0,
-                    errorMessage: "No downloadable stream found for this video"
-                )
-                #if os(iOS)
-                if #available(iOS 16.1, *) { await endLiveActivity(phase: .failed) }
-                #endif
-                return
-            }
-            downloadLog.notice("[download] merging adaptive video/audio streams")
-            state = .downloading(progress: 0)
-            DownloadStore.shared.update(videoId: video.id, kind: kind, status: .downloading, progress: 0.2)
-            let mergedURL = try await mergeAdaptiveStreams(videoURL: videoURL, audioURL: audioURL, videoId: video.id,
-                                                          userAgent: InnerTubeClients.Android.userAgent)
-            state = .saving
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await updateLiveActivity(phase: .saving, progress: 1) }
-            #endif
-            if shouldSaveVideoToPhotos {
-                try await saveToPhotoLibrary(fileURL: mergedURL)
-            }
-            try storeInDownloadStore(video: video, kind: .video, sourceURL: mergedURL)
-            try? FileManager.default.removeItem(at: mergedURL)
-            lastCompletedKind = .video
-            lastSavedToPhotos = shouldSaveVideoToPhotos
-            downloadLog.notice("[download] ✅ adaptive video saved \(video.id)")
-            state = .done
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await endLiveActivity(phase: .done) }
-            #endif
+            backend.startFile(video: video, url: fileURL)
         } catch is CancellationError {
-            state = .idle
-            DownloadStore.shared.update(
-                videoId: video.id,
-                kind: kind,
-                status: .cancelled,
-                progress: 0,
-                errorMessage: "Download cancelled."
-            )
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await endLiveActivity(phase: .failed) }
-            #endif
+            return
         } catch {
-            let nsErr = error as NSError
-            downloadLog.error("[download] ❌ failed: domain=\(nsErr.domain) code=\(nsErr.code) desc=\(nsErr.localizedDescription)")
-            let userMessage: String
-            if nsErr.domain == "PHPhotosErrorDomain" {
-                userMessage = "Could not save to Photos. Please check Settings > Privacy & Security > Photos and allow AxrTube to add photos."
-            } else if let urlErr = error as? URLError, urlErr.code == .fileDoesNotExist {
-                userMessage = "Download failed — the video file was removed before saving. Please try again."
-            } else {
-                userMessage = error.localizedDescription
-            }
-            state = .failed(userMessage)
+            fail(videoID: video.id, message: error.localizedDescription)
+        }
+    }
+
+    private func handle(_ event: PlaylistDownloadBackend.Event) {
+        switch event {
+        case let .restored(videoID, progress):
+            guard let entry = DownloadStore.shared.entry(videoId: videoID, kind: .video),
+                  entry.status != .completed else { return }
             DownloadStore.shared.update(
-                videoId: video.id,
-                kind: kind,
-                status: .failed,
-                progress: 0,
-                errorMessage: userMessage
+                videoId: videoID,
+                kind: .video,
+                status: .downloading,
+                progress: progress,
+                resumePolicy: .automatic
             )
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await endLiveActivity(phase: .failed) }
-            #endif
-        }
-    }
+            if activeVideo?.id == videoID { state = .downloading(progress: progress) }
 
-    /// Resolves a fresh format list for every attempt, then follows the bounded
-    /// native ladder: direct M4A, other AVFoundation audio, or AAC extraction from
-    /// an already downloaded / remotely available muxed MP4.
-    private func performAudioDownload(video: Video) async throws {
-        let resolution = try await OfflineAudioFormatSelector.resolve(
-            preferSmallestRepresentation: preferLowBandwidthAudio
-        ) { [api] in
-            let info = try await api.fetchPlayerInfoAndroid(videoId: video.id)
-            return info.formats
-        }
-        let safeFormats = OfflineAudioFormatSelector.safeFormatSummary(resolution.formats)
-        downloadLog.notice("[audio] resolved formats=\(safeFormats.count)")
-        for (index, summary) in safeFormats.enumerated() {
-            downloadLog.notice("[audio] [\(index)] \(summary)")
-        }
+        case let .progress(videoID, progress):
+            DownloadStore.shared.update(
+                videoId: videoID,
+                kind: .video,
+                status: .downloading,
+                progress: progress,
+                resumePolicy: .automatic
+            )
+            if activeVideo?.id == videoID { state = .downloading(progress: progress) }
 
-        state = .downloading(progress: 0.1)
-        DownloadStore.shared.update(
-            videoId: video.id,
-            kind: .audio,
-            status: .downloading,
-            progress: 0.15
-        )
-
-        var disposableURLs: [URL] = []
-        defer {
-            for url in disposableURLs { try? FileManager.default.removeItem(at: url) }
-        }
-
-        let localVideoURL = DownloadStore.shared
-            .entry(videoId: video.id, kind: .video)
-            .flatMap { entry -> URL? in
-                guard entry.status == .completed,
-                      FileManager.default.fileExists(atPath: entry.fileURL.path) else { return nil }
-                return entry.fileURL
+        case let .completed(videoID, location):
+            guard let entry = DownloadStore.shared.entry(videoId: videoID, kind: .video) else { return }
+            state = .saving
+            do {
+                let finalURL = try PlaylistDownloadBackend.preparePermanentLocation(
+                    source: location,
+                    videoID: videoID,
+                    store: DownloadStore.shared
+                )
+                let bytes = PlaylistDownloadBackend.allocatedSize(at: finalURL)
+                guard DownloadStore.shared.canStore(
+                    additionalBytes: max(0, bytes - entry.fileSizeBytes),
+                    limitBytes: storageLimitBytes
+                ) else { throw PlaylistDownloadError.storageLimit }
+                DownloadStore.shared.complete(
+                    video: entry.video,
+                    kind: .video,
+                    fileURL: finalURL,
+                    fileSizeBytes: bytes
+                )
+                lastCompletedKind = .video
+                state = .done
+            } catch {
+                fail(videoID: videoID, message: error.localizedDescription)
             }
 
-        let preparedAudioURL: URL
-        if let plan = resolution.plan {
-            guard let streamURL = plan.format.url else {
-                throw Self.offlineAudioError(code: 1, message: String(localized: "YouTube did not provide a downloadable URL for the selected audio format.", bundle: .module))
-            }
-            switch plan.source {
-            case .directM4A:
-                downloadLog.notice("[audio] selected direct M4A bitrate=\(plan.format.bitrate ?? 0)")
-                preparedAudioURL = try await downloadToTemp(
-                    url: streamURL,
-                    videoId: video.id,
-                    userAgent: InnerTubeClients.Android.userAgent,
-                    fileExtension: plan.downloadFileExtension
-                )
-                disposableURLs.append(preparedAudioURL)
-
-            case .directNativeAudio:
-                downloadLog.notice("[audio] selected native audio container=\(plan.downloadFileExtension) bitrate=\(plan.format.bitrate ?? 0)")
-                let downloaded = try await downloadToTemp(
-                    url: streamURL,
-                    videoId: video.id,
-                    userAgent: InnerTubeClients.Android.userAgent,
-                    fileExtension: plan.downloadFileExtension
-                )
-                disposableURLs.append(downloaded)
-                preparedAudioURL = try await Self.extractAudioToM4A(
-                    inputURL: downloaded,
-                    videoId: video.id
-                )
-                disposableURLs.append(preparedAudioURL)
-
-            case .muxedMP4Extraction:
-                let sourceVideoURL: URL
-                if let localVideoURL {
-                    downloadLog.notice("[audio] selected local completed MP4 extraction fallback")
-                    sourceVideoURL = localVideoURL
-                } else {
-                    downloadLog.notice("[audio] selected remote muxed MP4 extraction fallback bitrate=\(plan.format.bitrate ?? 0)")
-                    sourceVideoURL = try await downloadToTemp(
-                        url: streamURL,
-                        videoId: video.id,
-                        userAgent: InnerTubeClients.Android.userAgent,
-                        fileExtension: "mp4"
-                    )
-                    disposableURLs.append(sourceVideoURL)
+        case let .failed(videoID, source, message):
+            if source == .hls, !attemptedFileFallbacks.contains(videoID),
+               let video = DownloadStore.shared.entry(videoId: videoID, kind: .video)?.video {
+                attemptedFileFallbacks.insert(videoID)
+                state = .fetching
+                resolverTask = Task { [weak self] in
+                    guard let self else { return }
+                    do {
+                        let fallback = try await api.fetchPlayerInfoAndroid(videoId: videoID)
+                        try Task.checkCancellation()
+                        guard let fileURL = fallback.bestMuxedDownloadURL else {
+                            throw PlaylistDownloadError.noVideoResource
+                        }
+                        backend.startFile(video: video, url: fileURL)
+                    } catch is CancellationError {
+                        return
+                    } catch {
+                        fail(videoID: videoID, message: "HLS недоступен. MP4 fallback: \(error.localizedDescription)")
+                    }
                 }
-                preparedAudioURL = try await Self.extractAudioToM4A(
-                    inputURL: sourceVideoURL,
-                    videoId: video.id
-                )
-                disposableURLs.append(preparedAudioURL)
+            } else {
+                fail(videoID: videoID, message: message)
             }
-        } else if let localVideoURL {
-            // A previous app version may have persisted the compatible video even
-            // when the current extractor response omits every direct stream URL.
-            downloadLog.notice("[audio] extractor has no usable URL; extracting from local completed MP4")
-            preparedAudioURL = try await Self.extractAudioToM4A(
-                inputURL: localVideoURL,
-                videoId: video.id
-            )
-            disposableURLs.append(preparedAudioURL)
-        } else {
-            let reason = OfflineAudioFormatSelector.unsupportedReason(for: resolution.formats)
-            throw Self.offlineAudioError(code: 1, message: Self.localizedUnsupportedAudioReason(reason))
         }
-
-        let asset = AVURLAsset(url: preparedAudioURL)
-        guard try await !asset.loadTracks(withMediaType: .audio).isEmpty else {
-            throw Self.offlineAudioError(
-                code: 2,
-                message: String(localized: "Downloaded audio could not be opened.", bundle: .module)
-            )
-        }
-
-        state = .saving
-        DownloadStore.shared.update(
-            videoId: video.id,
-            kind: .audio,
-            status: .saving,
-            progress: 0.9
-        )
-        try storeInDownloadStore(video: video, kind: .audio, sourceURL: preparedAudioURL)
-        lastCompletedKind = .audio
-        lastSavedToPhotos = false
-        state = .done
-        #if os(iOS)
-        if #available(iOS 16.1, *) { await endLiveActivity(phase: .done) }
-        #endif
     }
 
-    nonisolated static func extractAudioToM4A(inputURL: URL, videoId: String) async throws -> URL {
-        let asset = AVURLAsset(url: inputURL)
-        guard try await !asset.loadTracks(withMediaType: .audio).isEmpty else {
-            throw offlineAudioError(
-                code: 2,
-                message: String(localized: "The compatible MP4 video does not contain an audio track.", bundle: .module)
-            )
-        }
-
-        let destination = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(videoId)-\(UUID().uuidString)-audio.m4a")
-        try? FileManager.default.removeItem(at: destination)
-
-        let passthroughCompatible = await AVAssetExportSession.compatibility(
-            ofExportPreset: AVAssetExportPresetPassthrough,
-            with: asset,
-            outputFileType: AVFileType.m4a
+    private func fail(videoID: String, message: String) {
+        DownloadStore.shared.update(
+            videoId: videoID,
+            kind: .video,
+            status: .failed,
+            progress: DownloadStore.shared.entry(videoId: videoID, kind: .video)?.progress ?? 0,
+            errorMessage: message,
+            resumePolicy: .automatic
         )
-        let preferredPreset = passthroughCompatible
-            ? AVAssetExportPresetPassthrough
-            : AVAssetExportPresetAppleM4A
-        guard var session = AVAssetExportSession(asset: asset, presetName: preferredPreset) else {
-            throw offlineAudioError(
-                code: 4,
-                message: String(localized: "iOS could not create an audio export session for this format.", bundle: .module)
-            )
-        }
+        if activeVideo?.id == videoID { state = .failed(message) }
+    }
+}
 
-        if preferredPreset == AVAssetExportPresetPassthrough,
-           !session.supportedFileTypes.contains(AVFileType.m4a),
-           let conversionSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetAppleM4A) {
-            // Re-encode only when the source codec cannot be remuxed into M4A.
-            session = conversionSession
-        }
-        guard session.supportedFileTypes.contains(AVFileType.m4a) else {
-            throw offlineAudioError(
-                code: 5,
-                message: String(localized: "The available audio format cannot be exported to M4A by iOS.", bundle: .module)
-            )
-        }
+private enum PlaylistDownloadError: LocalizedError {
+    case noVideoResource
+    case storageLimit
+    case invalidTemporaryFile
 
-        session.outputURL = destination
-        session.outputFileType = AVFileType.m4a
-        await session.export()
-        if let error = session.error {
-            try? FileManager.default.removeItem(at: destination)
-            throw error
+    var errorDescription: String? {
+        switch self {
+        case .noVideoResource: "Для этого ролика не найден совместимый видеопоток."
+        case .storageLimit: "Видеофайл превышает доступный лимит офлайн-хранилища."
+        case .invalidTemporaryFile: "Система не сохранила загруженное видео."
         }
-        let size = Int64((try? FileManager.default.attributesOfItem(atPath: destination.path)[.size] as? NSNumber)?.int64Value ?? 0)
-        guard size > 0 else {
-            throw URLError(.zeroByteResource)
+    }
+}
+
+private final class PlaylistDownloadBackend: NSObject, @unchecked Sendable,
+    URLSessionDownloadDelegate, AVAssetDownloadDelegate {
+
+    enum Event: Sendable {
+        case restored(videoID: String, progress: Double)
+        case progress(videoID: String, progress: Double)
+        case completed(videoID: String, location: URL)
+        case failed(videoID: String, source: PlaylistTaskIdentity.Kind, message: String)
+    }
+
+    static let shared = PlaylistDownloadBackend()
+    var onEvent: (@Sendable (Event) -> Void)?
+
+    private let lock = NSLock()
+    private var hlsLocations: [Int: URL] = [:]
+    private var backgroundCompletionHandlers: [String: () -> Void] = [:]
+
+    func handleBackgroundEvents(identifier: String, completionHandler: @escaping () -> Void) {
+        lock.withLock { backgroundCompletionHandlers[identifier] = completionHandler }
+        _ = identifier == fileSession.configuration.identifier ? fileSession : hlsSession
+    }
+
+    private lazy var fileSession: URLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: "com.axrtube.playlist.files")
+        config.sessionSendsLaunchEvents = true
+        config.isDiscretionary = false
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    private lazy var hlsSession: AVAssetDownloadURLSession = {
+        let config = URLSessionConfiguration.background(withIdentifier: "com.axrtube.playlist.hls")
+        config.sessionSendsLaunchEvents = true
+        config.isDiscretionary = false
+        return AVAssetDownloadURLSession(
+            configuration: config,
+            assetDownloadDelegate: self,
+            delegateQueue: nil
+        )
+    }()
+
+    func startFile(video: Video, url: URL) {
+        var request = URLRequest(url: url)
+        request.setValue(InnerTubeClients.iOS.userAgent, forHTTPHeaderField: "User-Agent")
+        let task = fileSession.downloadTask(with: request)
+        task.taskDescription = PlaylistTaskIdentity(kind: .file, videoID: video.id).taskDescription
+        task.resume()
+    }
+
+    func startHLS(video: Video, url: URL) {
+        let asset = AVURLAsset(
+            url: url,
+            options: ["AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": InnerTubeClients.iOS.userAgent]]
+        )
+        let configuration = AVAssetDownloadConfiguration(asset: asset, title: video.title)
+        let task = hlsSession.makeAssetDownloadTask(downloadConfiguration: configuration)
+        task.taskDescription = PlaylistTaskIdentity(kind: .hls, videoID: video.id).taskDescription
+        task.resume()
+    }
+
+    func cancel(videoID: String) {
+        fileSession.getAllTasks { tasks in
+            tasks.filter { PlaylistTaskIdentity(taskDescription: $0.taskDescription)?.videoID == videoID }.forEach { $0.cancel() }
         }
-        downloadLog.notice("[audio] AVFoundation M4A export complete bytes=\(size) preset=\(preferredPreset)")
+        hlsSession.getAllTasks { tasks in
+            tasks.filter { PlaylistTaskIdentity(taskDescription: $0.taskDescription)?.videoID == videoID }.forEach { $0.cancel() }
+        }
+    }
+
+    func restoreTasks() {
+        let report: @Sendable ([URLSessionTask]) -> Void = { [weak self] tasks in
+            guard let self else { return }
+            for task in tasks where task.state == .running || task.state == .suspended {
+                guard let videoID = PlaylistTaskIdentity(taskDescription: task.taskDescription)?.videoID else { continue }
+                self.onEvent?(.restored(videoID: videoID, progress: task.progress.fractionCompleted))
+                if task.state == .suspended { task.resume() }
+            }
+        }
+        fileSession.getAllTasks(completionHandler: report)
+        hlsSession.getAllTasks(completionHandler: report)
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData bytesWritten: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        guard let videoID = PlaylistTaskIdentity(taskDescription: downloadTask.taskDescription)?.videoID,
+              totalBytesExpectedToWrite > 0 else { return }
+        onEvent?(.progress(
+            videoID: videoID,
+            progress: min(0.99, Double(totalBytesWritten) / Double(totalBytesExpectedToWrite))
+        ))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        guard let videoID = PlaylistTaskIdentity(taskDescription: downloadTask.taskDescription)?.videoID else { return }
+        do {
+            let staging = FileManager.default.temporaryDirectory
+                .appendingPathComponent("axrtube-\(UUID().uuidString).mp4")
+            try FileManager.default.moveItem(at: location, to: staging)
+            onEvent?(.completed(videoID: videoID, location: staging))
+        } catch {
+            onEvent?(.failed(videoID: videoID, source: .file, message: error.localizedDescription))
+        }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        assetDownloadTask: AVAssetDownloadTask,
+        willDownloadTo location: URL
+    ) {
+        lock.withLock { hlsLocations[assetDownloadTask.taskIdentifier] = location }
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        assetDownloadTask: AVAssetDownloadTask,
+        didLoad timeRange: CMTimeRange,
+        totalTimeRangesLoaded loadedTimeRanges: [NSValue],
+        timeRangeExpectedToLoad: CMTimeRange
+    ) {
+        guard let videoID = PlaylistTaskIdentity(taskDescription: assetDownloadTask.taskDescription)?.videoID else { return }
+        let expected = timeRangeExpectedToLoad.duration.seconds
+        let loaded = loadedTimeRanges.reduce(0.0) { $0 + $1.timeRangeValue.duration.seconds }
+        guard expected.isFinite, expected > 0 else { return }
+        onEvent?(.progress(videoID: videoID, progress: min(0.99, loaded / expected)))
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let videoID = PlaylistTaskIdentity(taskDescription: task.taskDescription)?.videoID else { return }
+        if let error {
+            if (error as NSError).code != NSURLErrorCancelled {
+                let source = PlaylistTaskIdentity(taskDescription: task.taskDescription)?.kind ?? .file
+                onEvent?(.failed(videoID: videoID, source: source, message: error.localizedDescription))
+            }
+            return
+        }
+        guard task is AVAssetDownloadTask else { return }
+        let location = lock.withLock { hlsLocations.removeValue(forKey: task.taskIdentifier) }
+        guard let location else {
+            onEvent?(.failed(videoID: videoID, source: .hls, message: PlaylistDownloadError.invalidTemporaryFile.localizedDescription))
+            return
+        }
+        onEvent?(.completed(videoID: videoID, location: location))
+    }
+
+    func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
+        guard let identifier = session.configuration.identifier else { return }
+        let completion = lock.withLock { backgroundCompletionHandlers.removeValue(forKey: identifier) }
+        DispatchQueue.main.async { completion?() }
+    }
+
+    @MainActor
+    static func preparePermanentLocation(source: URL, videoID: String, store: DownloadStore) throws -> URL {
+        if source.pathExtension == "movpkg" {
+            return source
+        }
+        let destination = store.destinationURL(for: videoID, kind: .video)
+        try? FileManager.default.removeItem(at: destination)
+        try FileManager.default.moveItem(at: source, to: destination)
         return destination
     }
 
-    nonisolated private static func offlineAudioError(code: Int, message: String) -> NSError {
-        NSError(
-            domain: "iPocketTubeOffline",
-            code: code,
-            userInfo: [NSLocalizedDescriptionKey: message]
-        )
-    }
-
-    nonisolated private static func localizedUnsupportedAudioReason(_ reason: String) -> String {
-        switch reason {
-        case "Audio formats were returned, but YouTube did not provide a downloadable URL.":
-            String(localized: "Audio formats were returned, but YouTube did not provide a downloadable URL.", bundle: .module)
-        case "Only WebM/Opus audio is downloadable, and iOS cannot export that container with AVFoundation.":
-            String(localized: "Only WebM/Opus audio is downloadable, and iOS cannot export that container with AVFoundation.", bundle: .module)
-        case "The available audio format cannot be decoded by iOS.":
-            String(localized: "The available audio format cannot be decoded by iOS.", bundle: .module)
-        default:
-            String(localized: "No downloadable audio or compatible MP4 video stream was returned.", bundle: .module)
+    static func allocatedSize(at url: URL) -> Int64 {
+        if let bytes = try? url.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize {
+            return Int64(bytes)
+        }
+        guard let enumerator = FileManager.default.enumerator(
+            at: url,
+            includingPropertiesForKeys: [.totalFileAllocatedSizeKey]
+        ) else { return 0 }
+        return enumerator.reduce(into: Int64(0)) { total, value in
+            guard let fileURL = value as? URL,
+                  let size = try? fileURL.resourceValues(forKeys: [.totalFileAllocatedSizeKey]).totalFileAllocatedSize else { return }
+            total += Int64(size)
         }
     }
 
-    /// Tries Web client then Android client for a direct muxed MP4 download.
-    /// Returns the temp file URL on success, nil if no muxed stream could be found.
-    /// Note: TVHTML5-signed CDN URLs always return 403 when fetched without session cookies,
-    /// so the Android client (c=ANDROID URLs) is used as the reliable fallback.
-    private func tryDirectDownload(videoId: String) async -> URL? {
-        let candidates: [(String, String, () async throws -> PlayerInfo)] = [
-            ("Web", InnerTubeClients.Web.userAgent,
-             { [self] in try await api.fetchPlayerInfoForDownload(videoId: videoId) }),
-            ("Android", InnerTubeClients.Android.userAgent,
-             { [self] in try await api.fetchPlayerInfoAndroid(videoId: videoId) }),
-        ]
-        for (label, clientUA, fetch) in candidates {
-            guard let info = try? await fetch() else {
-                downloadLog.notice("[download] \(label) client failed or UNPLAYABLE, trying next")
-                continue
-            }
-            downloadLog.notice("[download] \(label) formats=\(info.formats.count) hlsURL=\(info.hlsURL != nil)")
-            for (i, fmt) in info.formats.enumerated() {
-                downloadLog.notice("[download]   [\(i)] mime=\(fmt.mimeType) label=\(fmt.label) hasURL=\(fmt.url != nil) bitrate=\(fmt.bitrate ?? 0)")
-            }
-            guard let muxedURL = info.bestMuxedDownloadURL else {
-                downloadLog.notice("[download] \(label) — no muxed MP4, trying next")
-                continue
-            }
-            downloadLog.notice("[download] \(label) ✅ muxed URL found, downloading")
-            state = .downloading(progress: 0)
-            #if os(iOS)
-            if #available(iOS 16.1, *) { await updateLiveActivity(phase: .downloading, progress: 0) }
-            #endif
-            if let tempURL = try? await downloadToTemp(url: muxedURL, videoId: videoId, userAgent: clientUA) {
-                let size = (try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? Int) ?? 0
-                downloadLog.notice("[download] \(label) download complete bytes=\(size)")
-                guard size > 0 else {
-                    downloadLog.notice("[download] \(label) — 0 bytes, YouTube rejected URL, trying next")
-                    try? FileManager.default.removeItem(at: tempURL)
-                    continue
-                }
-                return tempURL
-            }
-        }
-        return nil
-    }
-
-    /// Remuxes an MP4 file into a new container using passthrough (no re-encoding).
-    /// Fixes PHPhotosErrorDomain 3302 caused by moov-at-end MP4 containers from YouTube.
-    private nonisolated func passthroughRemux(inputURL: URL, videoId: String, suffix: String) async throws -> URL {
-        let destURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("\(videoId)-\(suffix)-remux.mp4")
-        try? FileManager.default.removeItem(at: destURL)
-        let asset = AVURLAsset(url: inputURL)
-        guard let session = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else {
-            throw URLError(.badServerResponse)
-        }
-        session.outputURL = destURL
-        session.outputFileType = .mp4
-        await session.export()
-        if let error = session.error {
-            downloadLog.error("[download] passthrough remux error: \(error.localizedDescription)")
-            throw error
-        }
-        let size = (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-        downloadLog.notice("[download] passthrough remux done bytes=\(size)")
-        return destURL
-    }
-
-    /// Downloads best adaptive video-only and audio-only MP4 streams concurrently,
-    /// then merges them into a single MP4 using AVAssetWriter for true passthrough
-    /// (sample-level copy, no re-encode of codec data).
-    private nonisolated func mergeAdaptiveStreams(videoURL: URL, audioURL: URL, videoId: String,
-                                                  userAgent: String = InnerTubeClients.iOS.userAgent) async throws -> URL {
-        // Download both streams concurrently with explicit UA per-request
-        let videoReq = VideoDownloadService.cdnRequest(for: videoURL, userAgent: userAgent)
-        let audioReq = VideoDownloadService.cdnRequest(for: audioURL, userAgent: userAgent)
-        async let videoTemp = VideoDownloadService.cdnSession.download(for: videoReq)
-        async let audioTemp = VideoDownloadService.cdnSession.download(for: audioReq)
-        let (videoResult, audioResult) = try await (videoTemp, audioTemp)
-
-        let videoStatus = (videoResult.1 as? HTTPURLResponse)?.statusCode ?? 0
-        let audioStatus = (audioResult.1 as? HTTPURLResponse)?.statusCode ?? 0
-        let videoFile = FileManager.default.temporaryDirectory.appendingPathComponent("\(videoId)-vid.mp4")
-        let audioFile = FileManager.default.temporaryDirectory.appendingPathComponent("\(videoId)-aud.mp4")
-        try? FileManager.default.removeItem(at: videoFile)
-        try? FileManager.default.removeItem(at: audioFile)
-        try FileManager.default.moveItem(at: videoResult.0, to: videoFile)
-        try FileManager.default.moveItem(at: audioResult.0, to: audioFile)
-
-        let videoSize = (try? FileManager.default.attributesOfItem(atPath: videoFile.path)[.size] as? Int) ?? 0
-        let audioSize = (try? FileManager.default.attributesOfItem(atPath: audioFile.path)[.size] as? Int) ?? 0
-        downloadLog.notice("[download] adaptive downloaded videoStatus=\(videoStatus) video=\(videoSize)B audioStatus=\(audioStatus) audio=\(audioSize)B")
-
-        defer {
-            try? FileManager.default.removeItem(at: videoFile)
-            try? FileManager.default.removeItem(at: audioFile)
-        }
-
-        guard videoSize > 0, audioSize > 0 else {
-            throw URLError(.zeroByteResource)
-        }
-
-        let destURL = FileManager.default.temporaryDirectory.appendingPathComponent("\(videoId)-merged.mp4")
-        try? FileManager.default.removeItem(at: destURL)
-
-        // Use AVAssetWriter for true passthrough mux — reads compressed samples directly
-        // from the source tracks and writes them to the new container without decoding.
-        let videoAsset = AVURLAsset(url: videoFile)
-        let audioAsset = AVURLAsset(url: audioFile)
-
-        let videoTrackSrc = try await videoAsset.loadTracks(withMediaType: .video).first
-        let audioTrackSrc = try await audioAsset.loadTracks(withMediaType: .audio).first
-        guard let videoTrackSrc, let audioTrackSrc else {
-            throw URLError(.badServerResponse)
-        }
-
-        let videoFmt = try await videoTrackSrc.load(.formatDescriptions).first!
-        let audioFmt = try await audioTrackSrc.load(.formatDescriptions).first!
-        let duration  = try await videoAsset.load(.duration)
-
-        let writer = try AVAssetWriter(outputURL: destURL, fileType: .mp4)
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFmt)
-        let audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFmt)
-        videoInput.expectsMediaDataInRealTime = false
-        audioInput.expectsMediaDataInRealTime = false
-        writer.add(videoInput)
-        writer.add(audioInput)
-
-        let videoReader = try AVAssetReader(asset: videoAsset)
-        let audioReader = try AVAssetReader(asset: audioAsset)
-        let videoOut  = AVAssetReaderTrackOutput(track: videoTrackSrc, outputSettings: nil)
-        let audioOut  = AVAssetReaderTrackOutput(track: audioTrackSrc, outputSettings: nil)
-        videoOut.alwaysCopiesSampleData = false
-        audioOut.alwaysCopiesSampleData = false
-        videoReader.add(videoOut)
-        audioReader.add(audioOut)
-
-        writer.startWriting()
-        videoReader.startReading()
-        audioReader.startReading()
-        writer.startSession(atSourceTime: .zero)
-
-        try await withCheckedThrowingContinuation { (cont: CheckedContinuation<Void, Error>) in
-            let group = DispatchGroup()
-            let queue = DispatchQueue(label: "com.ipockettube.merge", qos: .userInitiated)
-            nonisolated(unsafe) let videoInput = videoInput
-            nonisolated(unsafe) let videoOut = videoOut
-            nonisolated(unsafe) let audioInput = audioInput
-            nonisolated(unsafe) let audioOut = audioOut
-            nonisolated(unsafe) let writer = writer
-
-            group.enter()
-            videoInput.requestMediaDataWhenReady(on: queue) {
-                while videoInput.isReadyForMoreMediaData {
-                    if let buf = videoOut.copyNextSampleBuffer() {
-                        videoInput.append(buf)
-                    } else {
-                        videoInput.markAsFinished()
-                        group.leave()
-                        return
-                    }
-                }
-            }
-
-            group.enter()
-            audioInput.requestMediaDataWhenReady(on: queue) {
-                while audioInput.isReadyForMoreMediaData {
-                    if let buf = audioOut.copyNextSampleBuffer() {
-                        audioInput.append(buf)
-                    } else {
-                        audioInput.markAsFinished()
-                        group.leave()
-                        return
-                    }
-                }
-            }
-
-            group.notify(queue: queue) {
-                writer.finishWriting {
-                    if let err = writer.error {
-                        cont.resume(throwing: err)
-                    } else {
-                        cont.resume()
-                    }
-                }
-            }
-        }
-
-        let mergedSize = (try? FileManager.default.attributesOfItem(atPath: destURL.path)[.size] as? Int) ?? 0
-        downloadLog.notice("[download] adaptive merge done bytes=\(mergedSize)")
-        _ = duration // suppress unused warning
-        return destURL
-    }
-
-    private func requestPhotoAddAccess() async -> Bool {
-        #if os(iOS)
-        let current = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        switch current {
-        case .authorized, .limited:
-            downloadLog.notice("[download] Photos access already authorized")
-            return true
-        case .notDetermined:
-            downloadLog.notice("[download] Requesting Photos add-only permission")
-            let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            let result = granted == .authorized || granted == .limited
-            downloadLog.notice("[download] Photos permission result: \(result ? "granted" : "denied")")
-            return result
-        case .denied:
-            downloadLog.error("[download] ❌ Photos access denied — user must enable in Settings → Privacy & Security → Photos")
-            return false
-        case .restricted:
-            downloadLog.error("[download] ❌ Photos access restricted by device policy")
-            return false
-        @unknown default:
-            downloadLog.error("[download] ❌ Unknown Photos authorization status")
-            return false
-        }
-        #else
-        return false
-        #endif
-    }
-
-    /// Copies a completed media file into iPocketTube's internal collection and
-    /// atomically replaces the lifecycle entry. The hard collection limit is
-    /// checked against the real file size immediately before the copy.
-    private func storeInDownloadStore(
-        video: Video,
-        kind: OfflineMediaKind,
-        sourceURL: URL
-    ) throws {
-        let store = DownloadStore.shared
-        let fileSize = Int64(
-            (try FileManager.default.attributesOfItem(atPath: sourceURL.path)[.size] as? NSNumber)?.int64Value ?? 0
-        )
-        guard fileSize > 0 else { throw URLError(.zeroByteResource) }
-        guard store.canStore(additionalBytes: fileSize, limitBytes: storageLimitBytes) else {
-            throw NSError(
-                domain: "iPocketTubeOffline",
-                code: 3,
-                userInfo: [NSLocalizedDescriptionKey: String(localized: "Offline collection storage limit reached. Delete items or raise the limit in Settings.", bundle: .module)]
-            )
-        }
-
-        let destURL = store.destinationURL(for: video.id, kind: kind)
-        let fm = FileManager.default
-        try fm.createDirectory(at: destURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try? fm.removeItem(at: destURL)
-        try fm.copyItem(at: sourceURL, to: destURL)
-        store.complete(video: video, kind: kind, fileURL: destURL, fileSizeBytes: fileSize)
-        downloadLog.notice("[download] registered \(kind.rawValue) in DownloadStore \(video.id) bytes=\(fileSize)")
-    }
-
-    /// Bounded CDN retry. Signed URLs and their query values are deliberately
-    /// never included in diagnostics.
-    private func downloadToTemp(
-        url: URL,
-        videoId: String,
-        userAgent: String = InnerTubeClients.iOS.userAgent,
-        fileExtension: String = "mp4"
-    ) async throws -> URL {
-        let maximumAttempts = 3
-        var lastError: Error = URLError(.unknown)
-        var resumeData: Data?
-
-        for attempt in 1...maximumAttempts {
-            try Task.checkCancellation()
-            do {
-                let tempURL: URL
-                let response: URLResponse
-                if let resumeData {
-                    (tempURL, response) = try await VideoDownloadService.cdnSession.download(resumeFrom: resumeData)
-                } else {
-                    let req = VideoDownloadService.cdnRequest(for: url, userAgent: userAgent)
-                    (tempURL, response) = try await VideoDownloadService.cdnSession.download(for: req)
-                }
-                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-                let size = Int64((try? FileManager.default.attributesOfItem(atPath: tempURL.path)[.size] as? NSNumber)?.int64Value ?? 0)
-                downloadLog.notice("[download] CDN attempt=\(attempt) status=\(status) bytes=\(size)")
-                guard (200...299).contains(status), size > 0 else {
-                    try? FileManager.default.removeItem(at: tempURL)
-                    throw URLError(status == 403 ? .userAuthenticationRequired : .badServerResponse)
-                }
-                let destURL = FileManager.default.temporaryDirectory
-                    .appendingPathComponent("\(videoId)-\(UUID().uuidString).\(fileExtension)")
-                try FileManager.default.moveItem(at: tempURL, to: destURL)
-                return destURL
-            } catch is CancellationError {
-                throw CancellationError()
-            } catch {
-                lastError = error
-                resumeData = (error as NSError).userInfo["NSURLSessionDownloadTaskResumeData"] as? Data
-                DownloadStore.shared.update(
-                    videoId: videoId,
-                    kind: currentKind,
-                    status: .downloading,
-                    progress: 0.15,
-                    retryCount: attempt
-                )
-                guard attempt < maximumAttempts, Self.isRetryableDownloadError(error) else { break }
-                try await Task.sleep(for: .milliseconds(250 * attempt))
-            }
-        }
-        throw lastError
-    }
-
-    nonisolated private static func isRetryableDownloadError(_ error: Error) -> Bool {
-        guard let urlError = error as? URLError else { return false }
-        switch urlError.code {
-        case .timedOut, .networkConnectionLost, .notConnectedToInternet,
-             .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
-             .badServerResponse, .resourceUnavailable:
-            return true
-        default:
-            return false
-        }
-    }
-
-    // nonisolated so the closures passed to performChanges carry no @MainActor
-    // isolation — Photos calls them on its own serial queue and would crash if
-    // the closures were actor-isolated (libdispatch queue assertion).
-    private nonisolated func saveToPhotoLibrary(fileURL: URL) async throws {
-        #if os(iOS)
-        guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            let desc = "Video file was removed before saving to Photos: \(fileURL.lastPathComponent)"
-            downloadLog.error("[download] ❌ \(desc)")
-            throw URLError(.fileDoesNotExist, userInfo: [NSLocalizedDescriptionKey: desc])
-        }
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-            PHPhotoLibrary.shared().performChanges({
-                PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: fileURL)
-            }, completionHandler: { success, error in
-                if let error {
-                    let nsErr = error as NSError
-                    downloadLog.error("[download] ❌ PHPhotoLibrary save error: domain=\(nsErr.domain) code=\(nsErr.code) desc=\(nsErr.localizedDescription)")
-                    continuation.resume(throwing: error)
-                } else if success {
-                    continuation.resume()
-                } else {
-                    // success=false, error=nil means permission was denied or restricted at save time
-                    let desc = "Could not save to Photos. Please check Settings > Privacy & Security > Photos and allow AxrTube to add photos."
-                    downloadLog.error("[download] ❌ PHPhotoLibrary performChanges returned success=false with no error — likely permission denied")
-                    let permissionError = NSError(
-                        domain: "PHPhotosErrorDomain",
-                        code: PHPhotosError.accessRestricted.rawValue,
-                        userInfo: [NSLocalizedDescriptionKey: desc]
-                    )
-                    continuation.resume(throwing: permissionError)
-                }
-            })
-        }
-        #else
-        throw URLError(.unsupportedURL)
-        #endif
-    }
 }

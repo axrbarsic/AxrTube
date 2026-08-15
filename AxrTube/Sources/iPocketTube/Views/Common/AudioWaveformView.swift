@@ -90,7 +90,7 @@ private final class WaveformFrameDriver {
             lastSnapshotSequence = snapshot.sequence
             if !reportedFirstEnvelope {
                 reportedFirstEnvelope = true
-                let progress = DownloadStore.shared.entry(videoId: videoID, kind: .audio)?.progress ?? 0
+                let progress = DownloadStore.shared.entry(videoId: videoID, kind: .video)?.progress ?? 0
                 AudioDiagnostics.shared.record(
                     source: "audio-scope",
                     event: "pcm-tap.first-envelope",

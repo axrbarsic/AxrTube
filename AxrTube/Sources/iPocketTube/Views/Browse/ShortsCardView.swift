@@ -191,7 +191,7 @@ struct ShortsCardView: View {
                 downloadService.download(
                     video: video,
                     kind: .video,
-                    saveVideoToPhotos: true,
+                    saveVideoToPhotos: false,
                     storageLimitMB: store.settings.offlineStorageLimitMB
                 )
             } label: {

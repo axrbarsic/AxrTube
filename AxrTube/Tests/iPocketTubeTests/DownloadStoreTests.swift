@@ -55,15 +55,15 @@ struct DownloadStoreTests {
         defer { try? FileManager.default.removeItem(at: dir) }
         let video = fixture()
         let first = DownloadStore(baseDirectory: dir)
-        let fileURL = first.destinationURL(for: video.id, kind: .audio)
+        let fileURL = first.destinationURL(for: video.id, kind: .video)
         try Data(repeating: 0x22, count: 32).write(to: fileURL)
-        first.complete(video: video, kind: .audio, fileURL: fileURL, fileSizeBytes: 32)
+        first.complete(video: video, kind: .video, fileURL: fileURL, fileSizeBytes: 32)
 
         let reopened = DownloadStore(baseDirectory: dir)
-        let entry = reopened.entry(videoId: video.id, kind: .audio)
+        let entry = reopened.entry(videoId: video.id, kind: .video)
         #expect(entry?.status == .completed)
         #expect(entry?.video.localFileURL == fileURL)
-        #expect(entry?.video.localMediaKind == .audio)
+        #expect(entry?.video.localMediaKind == .video)
         #expect(entry?.fileSizeBytes == 32)
     }
 
@@ -108,6 +108,7 @@ struct DownloadStoreTests {
         #expect(entry?.progress == 0.5)
         #expect(entry?.resumePolicy == .automatic)
         #expect(entry?.errorMessage?.contains("automatically") == true)
+        #expect(reopened.automaticallyResumableEntries.map(\.id) == [entry?.id].compactMap { $0 })
     }
 
     @Test("Missing completed file remains visible as a recoverable failure")
@@ -222,7 +223,9 @@ struct DownloadStoreTests {
             additionalBytes: 1,
             limitBytes: reopened.totalSizeBytes
         ))
-        #expect(reopened.automaticallyResumableEntries.map(\.id) == [entry?.id].compactMap { $0 })
+        // Legacy audio partials remain on disk for data preservation, but the
+        // video-first runtime must never restart the removed audio pipeline.
+        #expect(reopened.automaticallyResumableEntries.isEmpty)
     }
 
     @Test("Explicit user pause survives relaunch and is excluded from automatic reconciliation")

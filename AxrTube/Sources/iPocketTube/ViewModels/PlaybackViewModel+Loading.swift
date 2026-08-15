@@ -504,7 +504,9 @@ extension PlaybackViewModel {
             let downloadsDir = FileManager.default
                 .urls(for: .documentDirectory, in: .userDomainMask)[0]
                 .appendingPathComponent("SmartTubeDownloads").path
-            if localURL.path.hasPrefix(downloadsDir),
+            let isManagedHLSAsset = localURL.pathExtension == "movpkg"
+                && DownloadStore.shared.entry(videoId: video.id, kind: .video)?.fileURL.standardizedFileURL == localURL.standardizedFileURL
+            if (localURL.path.hasPrefix(downloadsDir) || isManagedHLSAsset),
                FileManager.default.fileExists(atPath: localURL.path) {
                 // A local M4A uses the exact same AVPlayer/audio-session/remote-command
                 // path as video, but keeps the thumbnail visible as player chrome.
@@ -1055,10 +1057,6 @@ extension PlaybackViewModel {
                     }
                 }
             }
-
-            // Audio-only mode: if enabled, replace the HLS item with an audio-only asset.
-            // Falls back to HLS (already in player) on any failure. No-op when disabled.
-            await loadAudioOnlyItemIfEnabled()
 
             #if canImport(UIKit)
             // Re-register lock screen commands before starting playback.

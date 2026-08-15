@@ -773,7 +773,7 @@ extension PlayerView {
             let kind: OfflineMediaKind
             switch store.settings.offlineAutoSaveMode {
             case .off: return
-            case .audio: kind = .audio
+            case .audio: kind = .video
             case .video: kind = .video
             }
             downloadService.download(
@@ -782,7 +782,7 @@ extension PlayerView {
                 saveVideoToPhotos: false,
                 storageLimitMB: store.settings.offlineStorageLimitMB,
                 isAutomatic: true,
-                preferLowBandwidthAudio: store.settings.lowBandwidthAudioMode
+                preferLowBandwidthAudio: false
             )
         }
         .confirmationDialog(
@@ -790,26 +790,17 @@ extension PlayerView {
             isPresented: $showDownloadFormatPicker,
             titleVisibility: .visible
         ) {
-            Button("Video: AxrTube + Photos") {
+            Button("Сохранить видео в AxrTube") {
                 downloadService.download(
                     video: vm.playerInfo?.video ?? video,
                     kind: .video,
-                    saveVideoToPhotos: true,
-                    storageLimitMB: store.settings.offlineStorageLimitMB
-                )
-            }
-            Button("Audio: AxrTube") {
-                downloadService.download(
-                    video: vm.playerInfo?.video ?? video,
-                    kind: .audio,
                     saveVideoToPhotos: false,
-                    storageLimitMB: store.settings.offlineStorageLimitMB,
-                    preferLowBandwidthAudio: store.settings.lowBandwidthAudioMode
+                    storageLimitMB: store.settings.offlineStorageLimitMB
                 )
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Choose what to save in the offline collection.")
+            Text("Видео будет доступно в медиатеке AxrTube без интернета.")
         }
         #endif
         // Intercept ipockettube://seek/<seconds> links emitted by timestamp spans in

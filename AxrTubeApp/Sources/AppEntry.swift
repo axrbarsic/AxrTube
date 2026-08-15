@@ -297,7 +297,6 @@ struct AppEntry: App {
                             if playerStateStore.presentation == .miniPlayer {
                                 playerStateStore.vm.handleForeground()
                             }
-                            playerRouter.audioFirst.setApplicationActive(true)
                             #endif
                         } else if phase == .inactive {
                             #if os(iOS)
@@ -310,7 +309,6 @@ struct AppEntry: App {
                             if playerStateStore.presentation == .miniPlayer {
                                 playerStateStore.vm.handleBackground()
                             }
-                            playerRouter.audioFirst.setApplicationActive(false)
                             #endif
                         }
                     }

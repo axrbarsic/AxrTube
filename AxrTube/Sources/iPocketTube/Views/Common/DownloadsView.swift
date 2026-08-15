@@ -31,13 +31,12 @@ struct DownloadsView: View {
     private var iOSBody: some View {
         VStack(spacing: 0) {
             collectionHeader
-            if downloadStore.entries.isEmpty {
+            if videoEntries.isEmpty {
                 emptyState
             } else {
                 List {
                     ForEach(sortedEntries) { entry in
-                        let isCurrent = entry.videoId == playerRouter.audioFirst.currentVideo?.id
-                            && entry.kind == (playerRouter.audioFirst.currentVideo?.localMediaKind ?? .audio)
+                        let isCurrent = entry.videoId == playerState.currentVideo?.id
                         let layoutVariant = VideoCardLayoutPolicy.variant(
                             for: .downloads,
                             compactCards: settingsStore.settings.compactSearchCards,
@@ -47,23 +46,22 @@ struct DownloadsView: View {
                             if isCurrent {
                                 DownloadedNowPlayingCard(
                                     entry: entry,
-                                    statusText: playerRouter.audioFirst.statusText,
-                                    downloadProgress: playerRouter.audioFirst.downloadProgress,
-                                    playbackTime: playerState.vm.isScrubbing ? playerState.vm.scrubTime : playerRouter.audioFirst.displayedPlaybackTime,
+                                    statusText: entry.status == .completed ? "Готово" : "Загружается",
+                                    downloadProgress: entry.progress,
+                                    playbackTime: playerState.vm.isScrubbing ? playerState.vm.scrubTime : playerState.vm.currentTime,
                                     playbackDuration: playerState.vm.duration,
-                                    bufferedProgress: playerRouter.audioFirst.playbackBufferedProgress,
+                                    bufferedProgress: 0,
                                     isScrubbing: playerState.vm.isScrubbing,
                                     isPlaying: playerState.vm.isPlaying,
-                                    lowBandwidthAudioMode: activeAudioQualityBinding,
                                     onPlayPause: {
                                         iPocketTubeHaptics.shared.perform(.playbackTransport)
-                                        playerRouter.audioFirst.togglePlayPauseByUser()
+                                        playerState.vm.togglePlayPause()
                                     },
-                                    onScrubBegan: { playerRouter.audioFirst.beginScrubbing() },
-                                    onScrubChanged: { playerRouter.audioFirst.updateScrubbing(to: $0) },
+                                    onScrubBegan: { playerState.vm.beginScrubbing() },
+                                    onScrubChanged: { playerState.vm.updateScrub(to: $0) },
                                     onScrubEnded: {
                                         iPocketTubeHaptics.shared.perform(.seekCommit)
-                                        playerRouter.audioFirst.commitScrubbing()
+                                        playerState.vm.commitScrub()
                                     },
                                     onTranscript: {
                                         iPocketTubeHaptics.shared.perform(.contentSelection)
@@ -80,7 +78,7 @@ struct DownloadsView: View {
                                     onRetry: { retry(entry) },
                                     onCancel: {
                                         iPocketTubeHaptics.shared.perform(.downloadPauseResume)
-                                        playerRouter.audioFirst.pauseDownload(entry)
+                                        downloadService.cancel()
                                     },
                                     onPlay: {
                                         iPocketTubeHaptics.shared.perform(.downloadSelection)
@@ -124,10 +122,6 @@ struct DownloadsView: View {
         }
         .iPocketTubeScreenSurface()
         .toolbar(.hidden, for: .navigationBar)
-        .onAppear {
-            playerRouter.audioFirst.synchronizePlaybackTime(reason: "downloads active row")
-            playerRouter.audioFirst.reconcileDownloads(trigger: "downloads-screen")
-        }
         .alert(
             "Delete Offline Item",
             isPresented: Binding(
@@ -158,7 +152,7 @@ struct DownloadsView: View {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
             }
         } message: {
-            Text("All downloaded video and audio files will be removed from AxrTube.")
+            Text("Все сохранённые офлайн-видео будут удалены из AxrTube.")
         }
         .fullScreenCover(isPresented: $showTranscript) {
             CurrentPlaybackTranscriptPanel {
@@ -189,7 +183,7 @@ struct DownloadsView: View {
                         Text("8 GB").tag(8192)
                         Text("16 GB").tag(16384)
                     }
-                    if !downloadStore.entries.isEmpty {
+                    if !videoEntries.isEmpty {
                         Divider()
                         Button("Clear Offline Collection", role: .destructive) {
                             iPocketTubeHaptics.shared.perform(.primaryAction)
@@ -224,10 +218,6 @@ struct DownloadsView: View {
 
     private func retry(_ entry: DownloadedVideo) {
         iPocketTubeHaptics.shared.perform(.downloadRetry)
-        if entry.kind == .audio {
-            playerRouter.open(video: entry.video, api: api)
-            return
-        }
         downloadService.retry(
             entry: entry,
             storageLimitMB: settingsStore.settings.offlineStorageLimitMB
@@ -236,26 +226,20 @@ struct DownloadsView: View {
 
     private var sortedEntries: [DownloadedVideo] {
         DownloadHistorySortPolicy.sorted(
-            downloadStore.entries,
+            videoEntries,
             currentItemID: currentItemID
         )
     }
 
-    private var currentItemID: String? {
-        guard let video = playerRouter.audioFirst.currentVideo ?? playerState.vm.currentVideo else { return nil }
-        return "\(video.id)::\((video.localMediaKind ?? .audio).rawValue)"
+    private var videoEntries: [DownloadedVideo] {
+        downloadStore.entries.filter { $0.kind == .video }
     }
 
-    private var activeAudioQualityBinding: Binding<Bool>? {
-        guard playerRouter.audioFirst.canSwitchCurrentAudioQuality else { return nil }
-        return Binding(
-            get: { playerRouter.audioFirst.usesLowBandwidthAudio },
-            set: { enabled in
-                iPocketTubeHaptics.shared.perform(.settingsPicker)
-                playerRouter.audioFirst.setLowBandwidthAudioMode(enabled)
-            }
-        )
+    private var currentItemID: String? {
+        guard let video = playerState.vm.currentVideo else { return nil }
+        return "\(video.id)::\((video.localMediaKind ?? .video).rawValue)"
     }
+
     #endif
 
     private var emptyState: some View {
@@ -265,7 +249,7 @@ struct DownloadsView: View {
                 .foregroundStyle(iPocketTubeVisualTokens.mint)
             Text("No Offline Media")
                 .font(.title3.bold())
-            Text("Tap any video to save and play its audio. To save video, press and hold a card and choose Save Video.")
+            Text("Нажмите и удерживайте карточку ролика, затем выберите сохранение видео. Готовые ролики воспроизводятся без интернета.")
                 .font(.subheadline)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 .multilineTextAlignment(.center)
@@ -289,7 +273,6 @@ private struct DownloadedNowPlayingCard: View {
     let bufferedProgress: Double
     let isScrubbing: Bool
     let isPlaying: Bool
-    let lowBandwidthAudioMode: Binding<Bool>?
     let onPlayPause: () -> Void
     let onScrubBegan: () -> Void
     let onScrubChanged: (TimeInterval) -> Void
@@ -380,13 +363,6 @@ private struct DownloadedNowPlayingCard: View {
                 ProgressView(value: downloadProgress)
                     .tint(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: 1, y: 0.55, anchor: .center)
-                if let lowBandwidthAudioMode {
-                    AudioDownloadQualityPicker(
-                        lowBandwidthAudioMode: lowBandwidthAudioMode
-                    )
-                    .padding(.vertical, 2)
-                    .accessibilityIdentifier("downloads.nowPlaying.audioQualityPicker")
-                }
                 Button(action: onTranscript) {
                     Label("Стенограмма", systemImage: "text.quote")
                         .font(.subheadline.weight(.semibold))

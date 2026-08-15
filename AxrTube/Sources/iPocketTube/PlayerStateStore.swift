@@ -4,7 +4,6 @@ import UIKit
 import Observation
 import iPocketTubeCore
 import OSLog
-import UniformTypeIdentifiers
 
 private let storeLog = Logger(subsystem: "com.void.ipockettube.app", category: "PlayerStateStore")
 
@@ -130,92 +129,6 @@ public final class PlayerStateStore {
         currentVideo = video
         presentation = .fullScreen
         storeLog.notice("[PlayerStateStore] play — presentation set to .fullScreen")
-    }
-
-    /// Audio-first tap path: show the compact player immediately while the
-    /// coordinator resolves native playback and durable offline sources.
-    func prepareAudioFirst(video: Video) {
-        currentVideo = video
-        presentation = .miniPlayer
-    }
-
-    /// Installs the native HTTPS item without waiting for offline progress.
-    /// AVPlayer owns its proven HTTP scheduler while the coordinator keeps the
-    /// durable offline transfer independent and lower priority.
-    func prepareProgressiveAudio(item: AVPlayerItem, video: Video) {
-        currentVideo = video
-        presentation = .miniPlayer
-        vm.loadPreparedAudio(item: item, video: video, startImmediately: false)
-    }
-
-    func startPreparedAudioPlayback() {
-        vm.startPreparedAudioPlayback()
-    }
-
-    /// Resolves and validates a local asset before touching the current player.
-    /// This path intentionally never enters the extractor/BotGuard pipeline.
-    func validatedLocalAudioItem(for video: Video) async throws -> AVPlayerItem {
-        guard let localURL = video.localFileURL else {
-            throw NSError(domain: "iPocketTubeOffline", code: 20, userInfo: [
-                NSLocalizedDescriptionKey: "Offline item has no local file."
-            ])
-        }
-        let downloadsDirectory = FileManager.default
-            .urls(for: .documentDirectory, in: .userDomainMask)[0]
-            // Legacy on-disk directory: changing it would hide existing offline files after install-over.
-            .appendingPathComponent("SmartTubeDownloads", isDirectory: true)
-            .standardizedFileURL.path
-        let standardizedURL = localURL.standardizedFileURL
-        guard standardizedURL.path.hasPrefix(downloadsDirectory + "/"),
-              FileManager.default.isReadableFile(atPath: standardizedURL.path),
-              let values = try? standardizedURL.resourceValues(forKeys: [.fileSizeKey]),
-              (values.fileSize ?? 0) > 0 else {
-            throw NSError(domain: "iPocketTubeOffline", code: 21, userInfo: [
-                NSLocalizedDescriptionKey: "Offline file is missing or unreadable."
-            ])
-        }
-        guard UTType(filenameExtension: standardizedURL.pathExtension)?.conforms(to: .audiovisualContent) == true
-                || ["m4a", "mp4", "mov"].contains(standardizedURL.pathExtension.lowercased()) else {
-            throw NSError(domain: "iPocketTubeOffline", code: 22, userInfo: [
-                NSLocalizedDescriptionKey: "Offline file type is not supported by iOS."
-            ])
-        }
-
-        let asset = AVURLAsset(url: standardizedURL)
-        let isPlayable = try await asset.load(.isPlayable)
-        let audioTracks = try await asset.loadTracks(withMediaType: .audio)
-        guard isPlayable, !audioTracks.isEmpty else {
-            throw NSError(domain: "iPocketTubeOffline", code: 23, userInfo: [
-                NSLocalizedDescriptionKey: "Offline file does not contain playable audio."
-            ])
-        }
-        let item = AVPlayerItem(asset: asset)
-        item.audioTimePitchAlgorithm = .spectral
-        return item
-    }
-
-    func playAudioFirstLocal(video: Video, item: AVPlayerItem) {
-        currentVideo = video
-        presentation = .miniPlayer
-        vm.loadPreparedAudio(item: item, video: video, startImmediately: true)
-    }
-
-    /// Replaces a failed or never-audible network item with the completed local
-    /// file without reopening the screen or rebuilding the download pipeline.
-    func switchProgressiveAudioToLocal(
-        video: Video,
-        item: AVPlayerItem,
-        resumeAt: TimeInterval,
-        startImmediately: Bool
-    ) {
-        currentVideo = video
-        presentation = .miniPlayer
-        vm.loadPreparedAudio(
-            item: item,
-            video: video,
-            startImmediately: startImmediately,
-            resumePosition: resumeAt
-        )
     }
 
     /// Collapse the full-screen player to the mini-player bar. Playback continues.

@@ -65,7 +65,7 @@ public struct SettingsView: View {
             Button("Clear All", role: .destructive) { downloadStore.clearAll() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("All downloaded video and audio files will be removed from AxrTube.")
+            Text("Все сохранённые офлайн-видео будут удалены из AxrTube.")
         }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
             Button("OK", role: .cancel) {}
@@ -735,7 +735,7 @@ public struct SettingsView: View {
     }
     #endif
 
-    // MARK: - Audio-first contract
+    // MARK: - Video playlist contract
 
     private var audioSection: some View {
         @Bindable var store = store
@@ -743,9 +743,9 @@ public struct SettingsView: View {
             Toggle("Wi-Fi Only Downloads", isOn: $store.settings.downloadsWiFiOnly)
                 .accessibilityIdentifier("settings.downloadsWiFiOnly")
         } header: {
-            Text("Audio")
+            Text("Офлайн-видео")
         } footer: {
-            Text("Качество аудио меняется прямо на активной карточке загрузки.")
+            Text("AxrTube сохраняет полноценное видео и продолжает системную фоновую загрузку.")
         }
     }
 

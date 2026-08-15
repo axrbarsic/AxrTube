@@ -49,12 +49,9 @@ public struct RootView: View {
                     cardDownloadService.reset()
                     return
                 }
-                let isAudio = cardDownloadService.lastCompletedKind == .audio
                 cardDownloadAlertItem = DownloadAlertItem(
-                    title: String(localized: isAudio ? "Audio Saved" : "Video Saved", bundle: .module),
-                    message: cardDownloadService.lastSavedToPhotos
-                        ? String(localized: "The video is in Photos and AxrTube's offline collection.", bundle: .module)
-                        : String(localized: "The item is available in AxrTube's offline collection.", bundle: .module)
+                    title: String(localized: "Видео сохранено", bundle: .module),
+                    message: String(localized: "Ролик доступен в медиатеке AxrTube без интернета.", bundle: .module)
                 )
                 iPocketTubeHaptics.shared.perform(.operationSucceeded)
                 cardDownloadService.reset()

@@ -216,7 +216,7 @@ public struct DownloadedVideo: Codable, Sendable, Identifiable {
     }
 
     public var shouldAutomaticallyResume: Bool {
-        guard kind == .audio, resumePolicy == .automatic else { return false }
+        guard kind == .video, resumePolicy == .automatic else { return false }
         return status.isActive || status == .paused || status == .finalizationPending
     }
 

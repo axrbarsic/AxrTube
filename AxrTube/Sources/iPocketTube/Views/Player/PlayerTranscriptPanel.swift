@@ -18,14 +18,14 @@ struct CurrentPlaybackTranscriptPanel: View {
     let onDismiss: () -> Void
 
     private var currentVideo: Video? {
-        playerRouter.audioFirst.currentVideo ?? playerState.currentVideo
+        playerState.currentVideo
     }
 
     var body: some View {
         PlayerTranscriptPanel(
             captions: playerState.vm.captionsManager,
             videoTitle: currentVideo?.title ?? "Текущее видео",
-            onSeek: { playerRouter.audioFirst.seek(to: $0) },
+            onSeek: { playerState.vm.seek(to: $0) },
             onRetry: { playerState.vm.retryLoad() },
             onDismiss: onDismiss
         )

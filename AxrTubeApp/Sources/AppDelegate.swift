@@ -14,6 +14,17 @@ private let appDelegateLog = Logger(subsystem: "com.void.ipockettube.app", categ
 final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(
         _ application: UIApplication,
+        handleEventsForBackgroundURLSession identifier: String,
+        completionHandler: @escaping () -> Void
+    ) {
+        VideoDownloadService.handleBackgroundEvents(
+            identifier: identifier,
+            completionHandler: completionHandler
+        )
+    }
+
+    func application(
+        _ application: UIApplication,
         supportedInterfaceOrientationsFor window: UIWindow?
     ) -> UIInterfaceOrientationMask {
         // Return .allButUpsideDown at all times so that:

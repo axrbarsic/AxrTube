@@ -191,7 +191,6 @@ extension PlayerView {
             moreMenuShareRow
             #if os(tvOS)
             moreMenuSleepTimerRow
-            moreMenuAudioOnlyRow
             #endif
             moreMenuQueueShuffleRow
             moreMenuDownloadRow
@@ -489,41 +488,6 @@ extension PlayerView {
         .background(moreMenuFocusedRow == .sleepTimer ? Color.gray.opacity(0.35) : .clear)
         .clipShape(RoundedRectangle(cornerRadius: 10))
         .focused($moreMenuFocusedRow, equals: .sleepTimer)
-        #endif
-        Divider()
-    }
-
-    @ViewBuilder private var moreMenuAudioOnlyRow: some View {
-        Button {
-            iPocketTubeHaptics.shared.perform(.settingsToggle)
-            menuLog.notice("[moreMenu] Audio-Only row tapped — toggling audioOnlyMode: \(store.settings.audioOnlyMode) → \(!store.settings.audioOnlyMode)")
-            vm.toggleAudioOnlyLive()
-            store.settings.audioOnlyMode = vm.isAudioOnlyMode
-            showMoreMenu = false
-        } label: {
-            HStack {
-                Label(
-                    store.settings.audioOnlyMode
-                        ? String(localized: "Audio-Only (On)", bundle: .module)
-                        : String(localized: "Audio-Only", bundle: .module),
-                    systemImage: AppSymbol.audioOnly
-                )
-                Spacer()
-                if store.settings.audioOnlyMode {
-                    Image(systemName: AppSymbol.checkmark)
-                        .foregroundStyle(Color.accentColor)
-                }
-            }
-            .padding()
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.primary)
-        .accessibilityIdentifier("player.moreMenu.audioOnlyRow")
-        #if os(tvOS)
-        .background(moreMenuFocusedRow == .audioOnly ? Color.gray.opacity(0.35) : .clear)
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .focused($moreMenuFocusedRow, equals: .audioOnly)
         #endif
         Divider()
     }

@@ -25,7 +25,6 @@ import iPocketTubeCore
 public final class PlayerRouter {
     private let playerState: PlayerStateStore
     private let tosState: TOSPlayerStateStore
-    public let audioFirst: AudioFirstPlaybackCoordinator
     public let playbackLiveActivity: PlaybackLiveActivityController
     public let transcriptSummary: TranscriptSummaryManager
 
@@ -41,31 +40,21 @@ public final class PlayerRouter {
         let playbackLiveActivity = PlaybackLiveActivityController(settingsStore: settingsStore)
         self.transcriptSummary = transcriptSummary
         self.playbackLiveActivity = playbackLiveActivity
-        self.audioFirst = AudioFirstPlaybackCoordinator(
-            api: api,
-            playerState: playerState,
-            settingsStore: settingsStore,
-            playbackLiveActivity: playbackLiveActivity,
-            transcriptSummary: transcriptSummary
-        )
         transcriptSummary.onSummaryReady = { [weak playerState] videoID, text in
             playerState?.vm.applyNowPlayingSummary(videoID: videoID, text: text)
         }
     }
 
-    /// The production tap contract is permanently audio-first. It never enters
-    /// the fullscreen video/TOS route and therefore never executes YouTube's
-    /// pre/mid/post-roll or end-card playback paths.
+    /// One production route owns both streamed and downloaded video playback.
+    /// A local file in `video.localFileURL` is consumed by the same AVPlayer
+    /// owner, so opening an offline item never starts a second audio pipeline.
     public func open(video: Video, api: InnerTubeAPI) {
         if tosState.presentation != .hidden { tosState.stop() }
-        switch AudioFirstPresentationPolicy.destination(for: video) {
-        case .miniPlayer:
-            audioFirst.open(video: video)
-        }
+        playerState.play(video: video)
     }
 
-    public func closeAudioFirst() {
-        audioFirst.close()
+    public func closePlayback() {
+        playerState.stop()
     }
 }
 #endif // os(iOS)

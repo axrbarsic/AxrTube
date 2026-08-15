@@ -6,7 +6,17 @@
 
 ## Не выпущено
 
-### Завершённый конвейер 1–7
+### Video-first медиатека Brave Playlist
+
+- Production routing больше не создаёт отдельный audio-first coordinator. Сетевое, локальное, полноэкранное и компактное видео принадлежат одному `AVPlayer`.
+- Офлайн-сохранение теперь выбирает HLS, затем muxed MP4, использует системные фоновые download sessions и восстанавливает задачи по стабильной identity после relaunch.
+- Новые загрузки всегда содержат видео. Старые M4A и manifest записи сохранены на диске для безопасного install-over, но скрыты из нового flow и автоматически не возобновляются.
+- Из production tree удалены audio-first coordinator, progressive resource loader, direct-audio factory и их специализированные tests. Добавлены policy tests выбора источника и восстановления фоновой task identity.
+- Дизайн фонового downloader адаптирован из Brave iOS Playlist под MPL-2.0; браузерный DOM detector заменён существующим native InnerTube resolver AxrTube.
+
+### Архив прежнего audio-first конвейера
+
+Пункты ниже сохраняют историю уже заменённой реализации и не описывают текущий production flow.
 
 1. **Главная лента:** refresh и pagination больше не очищают видимые карточки; страницы добавляются по порядку без дублей, устаревшие ответы и повторный sentinel игнорируются, а Shorts не расходуют continuation основной ленты.
 2. **Progressive audio и устойчивость:** первый тап атомарно забирает незавершённую загрузку у supervisor, подтверждённые HTTP-диапазоны переживают отмену и перезапуск, а пересекающиеся interruption/spoken prompt не дают преждевременный либо двойной resume.
