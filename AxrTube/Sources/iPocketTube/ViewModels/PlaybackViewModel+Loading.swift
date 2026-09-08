@@ -914,32 +914,6 @@ extension PlaybackViewModel {
                                 errorDescription: item.error?.localizedDescription
                             )
                         }
-                        // Refresh duration from the AVPlayerItem now that it is
-                        // ready — the API metadata may have been absent (nil) or
-                        // inaccurate, which would leave duration=0 and break scrubbing
-                        // (every seekBar drag computes fraction*0 = 0).
-                        let itemDur = item.duration.seconds
-                        if itemDur.isFinite && itemDur > 0 {
-                            let prevDur = self.duration
-                            self.duration = itemDur
-                            playerLog.notice("[duration] updated from AVPlayerItem: \(String(format: "%.1f", itemDur))s (was \(String(format: "%.1f", prevDur))s from metadata)")
-                        } else if self.duration == 0 {
-                            // Some HLS streams report .invalid duration at readyToPlay and
-                            // deliver it later via KVO once playlist segments are parsed.
-                            // Watch for the first valid value so the scrubber is not
-                            // permanently greyed out (#183).
-                            self.durationObserverTask?.cancel()
-                            self.durationObserverTask = Task { [weak self, weak item] in
-                                guard let self, let item else { return }
-                                for await seconds in item.firstValidDurationStream {
-                                    guard !Task.isCancelled else { return }
-                                    let prev = self.duration
-                                    self.duration = seconds
-                                    playerLog.notice("[duration] deferred KVO update: \(String(format: "%.1f", seconds))s (was \(String(format: "%.1f", prev))s)")
-                                    break
-                                }
-                            }
-                        }
                         if let pos = self.savedPositionToRestore, pos > 0 {
                             self.savedPositionToRestore = nil
                             self.seek(to: pos)
@@ -1229,8 +1203,6 @@ extension PlaybackViewModel {
         endObserverTask = nil
         stallObserverTask?.cancel()
         stallObserverTask = nil
-        durationObserverTask?.cancel()
-        durationObserverTask = nil
         // Defense-in-depth, same reasoning as suspend(): a live rateObserver's KVO
         // closure can independently spawn a new exhaustiveRetryTask after this
         // function returns. stop()'s synchronous pause()/isPlaying=false ordering

@@ -178,6 +178,13 @@ public enum PlaybackPositionPolicy {
     public static let completionRemainingSeconds: TimeInterval = 10
     public static let periodicSaveInterval: TimeInterval = 5
 
+    /// Unknown duration must not erase a valid observed playback position.
+    public static func displayedPosition(observed: TimeInterval, duration: TimeInterval) -> TimeInterval {
+        guard observed.isFinite else { return 0 }
+        let position = max(0, observed)
+        return duration.isFinite && duration > 0 ? min(position, duration) : position
+    }
+
     public static func isCompleted(position: TimeInterval, duration: TimeInterval) -> Bool {
         guard duration.isFinite, duration > 0, position.isFinite else { return false }
         let clamped = min(max(position, 0), duration)

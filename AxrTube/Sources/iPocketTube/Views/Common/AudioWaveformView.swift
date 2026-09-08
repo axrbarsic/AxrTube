@@ -13,9 +13,6 @@ final class WaveformFrameDriver {
     private(set) var waveform: [Float] = []
     private var displayLink: CADisplayLink?
     private var videoID = ""
-    private var anchorTime: TimeInterval = 0
-    private var anchorTimestamp: CFTimeInterval = 0
-    private var duration: TimeInterval = 0
     private var lastSnapshotSequence: UInt64 = 0
     private var previousSamples: [Float] = []
     private var targetSamples: [Float] = []
@@ -42,13 +39,10 @@ final class WaveformFrameDriver {
             lastSnapshotSequence = 0
             reportedFirstEnvelope = false
         }
-        displayedTime = min(max(time, 0), max(duration, 0))
-        anchorTime = displayedTime
-        self.duration = duration
+        displayedTime = PlaybackPositionPolicy.displayedPosition(observed: time, duration: duration)
         self.reduceMotion = reduceMotion
-        guard running, duration > 0 else { stop(); return }
-        anchorTimestamp = CACurrentMediaTime()
-        updateScope(at: anchorTimestamp, force: true)
+        guard running else { stop(); return }
+        updateScope(at: CACurrentMediaTime(), force: true)
         if displayLink == nil {
             let link = CADisplayLink(target: self, selector: #selector(tick(_:)))
             let constrained = ProcessInfo.processInfo.isLowPowerModeEnabled
@@ -69,7 +63,8 @@ final class WaveformFrameDriver {
     }
 
     @objc private func tick(_ link: CADisplayLink) {
-        displayedTime = min(duration, anchorTime + max(0, link.timestamp - anchorTimestamp))
+        // The clock only follows AVPlayer observations. Rendering the scope must
+        // not invent elapsed playback while a player is waiting for data or audio.
         updateScope(at: link.timestamp, force: false)
     }
 
@@ -166,6 +161,7 @@ struct InlineAudioPulseView: View {
         .onAppear { synchronizeDriver() }
         .onDisappear { frameDriver.stop() }
         .onChange(of: playbackTime) { _, _ in synchronizeDriver() }
+        .onChange(of: duration) { _, _ in synchronizeDriver() }
         .onChange(of: isPlaying) { _, _ in synchronizeDriver() }
         .onChange(of: scenePhase) { _, _ in synchronizeDriver() }
         .accessibilityElement(children: .ignore)
@@ -219,6 +215,7 @@ struct AudioWaveformView: View {
         .onAppear { synchronizeDriver() }
         .onDisappear { frameDriver.stop() }
         .onChange(of: playbackTime) { _, _ in synchronizeDriver() }
+        .onChange(of: duration) { _, _ in synchronizeDriver() }
         .onChange(of: isPlaying) { _, _ in synchronizeDriver() }
         .onChange(of: isScrubbing) { _, _ in synchronizeDriver() }
         .onChange(of: scenePhase) { _, _ in synchronizeDriver() }

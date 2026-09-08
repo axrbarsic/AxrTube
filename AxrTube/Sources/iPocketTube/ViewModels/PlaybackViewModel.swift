@@ -256,6 +256,7 @@ public final class PlaybackViewModel {
 
     public let player = AVPlayer()
     @ObservationIgnored nonisolated(unsafe) var timeObserver: Any?
+    @ObservationIgnored nonisolated(unsafe) var durationItemObservation: NSKeyValueObservation?
     @ObservationIgnored nonisolated(unsafe) var audioSessionObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var audioRouteChangeObserver: Any?
     @ObservationIgnored nonisolated(unsafe) var mediaServicesLostObserver: Any?
@@ -305,9 +306,9 @@ public final class PlaybackViewModel {
     @ObservationIgnored var audioScopeInstallationTask: Task<Void, Never>?
     @ObservationIgnored var audioScopeItemObservation: NSKeyValueObservation?
     #endif
-    /// Observes `AVPlayerItem.duration` via KVO after `.readyToPlay` for HLS streams
-    /// where the duration is `.invalid` at ready-time and arrives later. Cancelled in `stop()`.
-    var durationObserverTask: Task<Void, Never>?
+    /// Observes the installed item's duration, including delayed local/HLS metadata.
+    /// It follows item lifetime rather than screen or playback lifetime.
+    @ObservationIgnored nonisolated(unsafe) var durationObserverTask: Task<Void, Never>?
     /// Number of `AVPlayerItemPlaybackStalled` (or rateObserver rate→0) events in this session.
     var stallCount: Int = 0
     /// Wall-clock time of the first stall in the current sequence. Used by rateObserver to
@@ -569,6 +570,7 @@ public final class PlaybackViewModel {
         _ = Self.configurePlaybackAudioSession(reason: "player initialization")
         #endif
         setupTimeObserver()
+        setupItemDurationObserver()
         setupRateObserver()
         #if canImport(UIKit)
         setupAudioScopeObserver()
@@ -596,6 +598,8 @@ public final class PlaybackViewModel {
 
     deinit {
         if let obs = timeObserver { player.removeTimeObserver(obs) }
+        durationItemObservation?.invalidate()
+        durationObserverTask?.cancel()
         rateObserver?.invalidate()
         airPlayObserver?.invalidate()
         if let obs = audioSessionObserver { NotificationCenter.default.removeObserver(obs) }
