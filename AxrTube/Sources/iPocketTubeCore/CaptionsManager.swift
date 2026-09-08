@@ -210,6 +210,17 @@ public final class CaptionsManager {
         return identity
     }
 
+    /// Restores a complete document without starting media playback or network work.
+    @discardableResult
+    public func restoreTranscript(_ result: TranscriptBookResult, for identity: CaptionPlaybackIdentity) -> Bool {
+        guard activePlaybackIdentity == identity,
+              result.document.metadata.videoID == identity.itemID else { return false }
+        transcriptBookResult = result
+        transcriptState = .ready
+        transcriptBookState = .ready
+        return true
+    }
+
     @discardableResult
     public func applyAvailableCaptions(
         _ tracks: [CaptionTrack],

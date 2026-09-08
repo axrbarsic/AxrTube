@@ -72,7 +72,7 @@ struct AppEntry: App {
             api: api
         ))
         #endif
-        _cardDownloadService = State(initialValue: VideoDownloadService(api: api))
+        _cardDownloadService = State(initialValue: VideoDownloadService(api: api, settingsStore: settingsStore))
 
         // --uitesting-force-stream-method=<method>: restricts exhaustiveRetry to a
         // single named stream-fetching client.  Written here (main thread, before any

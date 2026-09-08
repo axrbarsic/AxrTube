@@ -178,10 +178,8 @@ final class YouTubeWebViewHLSExtractor: NSObject {
 
                 let config = WKWebViewConfiguration()
                 config.userContentController = contentController
-                // Allow programmatic video playback (no user gesture required) so that
-                // after we get the hlsManifestUrl we can call video.play() to let the YouTube
-                // player seed googlevideo.com session cookies into the WKWebView cookie store.
-                config.mediaTypesRequiringUserActionForPlayback = []
+                // This page resolves metadata only. Native playback owns all audio.
+                ResolverWebViewPolicy.configure(config)
                 // Use .default() so existing WKWebView cookies from earlier loads are reused.
                 config.websiteDataStore = .default()
 
@@ -224,6 +222,7 @@ final class YouTubeWebViewHLSExtractor: NSObject {
             // Accept-Language: YouTube uses this to pick the page language; using en-US
             // avoids consent-wall redirects seen in some locales.
             request.setValue("en-US,en;q=0.9", forHTTPHeaderField: "Accept-Language")
+            ResolverWebViewPolicy.isolate(wv)
             wv.load(request)
 
             // Timeout safety net. Captures `myGeneration` so that if `extractHLSURL`
@@ -392,8 +391,12 @@ final class YouTubeWebViewHLSExtractor: NSObject {
         // Set to true as soon as tryExtractHLS starts its async resolution,
         // to suppress xhrManifest/fetchManifest fallbacks from firing.
         var hlsExtractionStarted = false;
+        var verifiedContentVideoId = null;
 
         function sendHLSURL(hlsUrl, poToken, source, unsolvedN, solvedN, playerID, capturedPageVideoId) {
+            // A DOM video URL can belong to an advertisement. Only use the
+            // primary response whose content identity matched this request.
+            if (source !== 'apiResponse' || !verifiedContentVideoId) return;
             if (sentFinalURL) return;
             sentFinalURL = true;
             // fix29: Include the page's own videoId so Swift can reject stale JS
@@ -416,6 +419,7 @@ final class YouTubeWebViewHLSExtractor: NSObject {
                 JSON.stringify({
                     hlsManifestUrl: hlsUrl,
                     videoId:        vid,
+                    contentVideoId: verifiedContentVideoId,
                     poToken:        poToken   || null,
                     source:         source    || 'unknown',
                     unsolvedN:      unsolvedN || null,
@@ -551,6 +555,10 @@ final class YouTubeWebViewHLSExtractor: NSObject {
                           JSON.parse(responseData) : responseData;
                 if (!obj || !obj.streamingData || !obj.streamingData.hlsManifestUrl)
                     return false;
+
+                var contentId = obj.videoDetails && obj.videoDetails.videoId;
+                if (!contentId || contentId !== capturedPageVideoId) return false;
+                verifiedContentVideoId = contentId;
 
                 var hlsUrl  = obj.streamingData.hlsManifestUrl;
                 var poToken = null;
@@ -832,6 +840,8 @@ extension YouTubeWebViewHLSExtractor: WKScriptMessageHandler {
         var unsolvedNValue: String? = nil
         var solvedNValue: String? = nil
         var playerIDValue: String? = nil
+        var pageVideoID: String? = nil
+        var contentVideoID: String? = nil
 
         if let body = message.body as? String {
             // Try to parse as JSON first (new format)
@@ -848,6 +858,8 @@ extension YouTubeWebViewHLSExtractor: WKScriptMessageHandler {
                 unsolvedNValue = json["unsolvedN"] as? String
                 solvedNValue = json["solvedN"] as? String
                 playerIDValue = json["playerID"] as? String
+                pageVideoID = json["videoId"] as? String
+                contentVideoID = json["contentVideoId"] as? String
                 // fix29: Reject stale JS callbacks from a previous page. When wv.load()
                 // switches to a new video, any in-flight XHR/fetch callbacks from the
                 // old page may fire after `currentExtractionVideoId` has changed. The
@@ -867,7 +879,9 @@ extension YouTubeWebViewHLSExtractor: WKScriptMessageHandler {
 
         guard let urlString = hlsURLString,
               let url = URL(string: urlString),
-              urlString.contains("googlevideo.com") || urlString.contains("manifest") else {
+              AdFreePlaybackPolicy.acceptsManifest(url: url, source: urlSource,
+                  requestedVideoID: currentExtractionVideoId, pageVideoID: pageVideoID,
+                  contentVideoID: contentVideoID) else {
             return
         }
 

@@ -150,7 +150,12 @@ final class RecommendedChipUITests: XCTestCase {
         guard card.waitForExistence(timeout: 10) else {
             try captureAndSkip("Injected audio test card did not appear", in: app)
         }
-        card.tap()
+        let play = card.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'video.card.play.'")
+        ).firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 5),
+                      "Injected card must expose its explicit playback action")
+        play.tap()
         Thread.sleep(forTimeInterval: 5)
 
         XCTAssertEqual(
@@ -187,11 +192,12 @@ final class RecommendedChipUITests: XCTestCase {
         XCTAssertFalse(homeChip.isSelected, "Home chip must be deselected after tapping Recommended")
     }
 
-    /// Tapping a video in the Recommended feed must open PlayerView.
-    func testTappingRecommendedVideoOpensPlayer() throws {
+    /// The informational card surface stays in the feed. Its explicit play
+    /// control starts inline playback and must not present PlayerView.
+    func testRecommendedVideoRequiresExplicitPlaybackAction() throws {
         tapTab(named: "Home")
 
-        let chipBar = app.scrollViews["home.chipBar"]
+        let chipBar = app.descendants(matching: .any)["home.chipBar"].firstMatch
         XCTAssertTrue(chipBar.waitForExistence(timeout: 10),
                       "home.chipBar must appear on the Home tab")
 
@@ -212,11 +218,71 @@ final class RecommendedChipUITests: XCTestCase {
         XCTAssertTrue(firstCard.waitForExistence(timeout: 20),
                       "No video cards in Recommended feed within 20 s — injected IDs should have populated the feed")
 
-        firstCard.tap()
+        // The physical failure was a tap on the thumbnail/banner itself. Cover
+        // both the thumbnail edge (outside the centred 44 pt Play control) and
+        // the metadata surface so an oversized hidden Button cannot regress.
+        firstCard.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
 
         let titleLabel = app.staticTexts["player.titleLabel"].firstMatch
-        XCTAssertTrue(titleLabel.waitForExistence(timeout: 15),
-                      "player.titleLabel must appear — PlayerView did not open from Recommended feed")
+        XCTAssertFalse(titleLabel.waitForExistence(timeout: 2),
+                       "Tapping the thumbnail banner outside Play must not present PlayerView")
+
+        firstCard.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.85)).tap()
+
+        XCTAssertFalse(titleLabel.waitForExistence(timeout: 2),
+                       "Tapping the card surface must not present PlayerView")
+
+        let play = firstCard.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'video.card.play.'")
+        ).firstMatch
+        XCTAssertTrue(play.waitForExistence(timeout: 5),
+                      "Every feed card must expose an explicit playback action")
+        play.tap()
+
+        XCTAssertEqual(app.state, .runningForeground,
+                       "Starting inline playback must not terminate the app")
+        XCTAssertFalse(titleLabel.waitForExistence(timeout: 5),
+                       "The explicit Play control must keep playback inside the banner")
+        XCTAssertEqual(play.label.hasPrefix("Pause"), true,
+                       "The inline transport must change from Play to Pause")
+    }
+
+    /// Regression for CC-20260825-2253: choosing the real download action from a
+    /// card context menu must not also trigger the card's primary playback action.
+    /// This exercises the production SwiftUI View/gesture boundary, not only the
+    /// intent policy model.
+    func testDownloadContextMenuDoesNotOpenPlayer() throws {
+        tapTab(named: "Home")
+
+        let englishChip = app.buttons["Recommended"].firstMatch
+        let russianChip = app.buttons["Рекомендуемое"].firstMatch
+        let chip = englishChip.waitForExistence(timeout: 2) ? englishChip : russianChip
+        guard chip.waitForExistence(timeout: 5) else {
+            try captureAndSkip("Recommended chip not found", in: app)
+        }
+        chip.tap()
+
+        let card = app.images["video.card.dQw4w9WgXcQ"].firstMatch
+        guard card.waitForExistence(timeout: 15) else {
+            try captureAndSkip("Injected download card did not appear", in: app)
+        }
+        card.press(forDuration: 1.2)
+
+        let englishShare = app.buttons["Share"].firstMatch
+        let russianShare = app.buttons["Поделиться"].firstMatch
+        let share = englishShare.waitForExistence(timeout: 2) ? englishShare : russianShare
+        XCTAssertTrue(share.waitForExistence(timeout: 5),
+                      "The card's existing menu actions must remain available")
+        let englishSave = app.buttons["Save Video"].firstMatch
+        let russianSave = app.buttons["Сохранить видео"].firstMatch
+        let saveVideo = englishSave.waitForExistence(timeout: 2) ? englishSave : russianSave
+        XCTAssertTrue(saveVideo.waitForExistence(timeout: 5),
+                      "The production Save Video action must be available")
+        saveVideo.tap()
+
+        let playerTitle = app.staticTexts["player.titleLabel"].firstMatch
+        XCTAssertFalse(playerTitle.waitForExistence(timeout: 3),
+                       "Save Video must not present the fullscreen player")
     }
 
     /// Tapping Recommended then Home must switch back to the merged home feed.
@@ -357,15 +423,21 @@ final class RecommendedChipUITests: XCTestCase {
 
     // MARK: - Helpers
 
-    private func tapTab(named label: String, timeout: TimeInterval = 5) {        let tabBarButton = app.tabBars.buttons[label]
-        if tabBarButton.waitForExistence(timeout: min(timeout, 3)) {
-            tabBarButton.tap()
-            return
+    private func tapTab(named label: String, timeout: TimeInterval = 5) {
+        let candidates = label == "Home" ? ["Home", "Search", "Поиск"] : [label]
+        for candidate in candidates {
+            let tabBarButton = app.tabBars.buttons[candidate]
+            if tabBarButton.waitForExistence(timeout: min(timeout, 1)) {
+                tabBarButton.tap()
+                return
+            }
+            let sidebarButton = app.buttons[candidate].firstMatch
+            if sidebarButton.waitForExistence(timeout: min(timeout, 1)) {
+                sidebarButton.tap()
+                return
+            }
         }
-        let sidebarButton = app.buttons[label].firstMatch
-        XCTAssertTrue(sidebarButton.waitForExistence(timeout: timeout),
-                      "'\(label)' navigation item not found in tab bar or sidebar")
-        sidebarButton.tap()
+        XCTFail("'\(label)' navigation item not found in tab bar or sidebar")
     }
 
     private func scrollChipIntoView(_ chip: XCUIElement, in chipBar: XCUIElement) {

@@ -33,6 +33,7 @@ extension PlaybackViewModel {
             playerLog.notice("[load] already loading \(video.id) — ignoring duplicate call")
             return
         }
+        audioInterruptionState.selectedItem()
         #if canImport(WebKit)
         wkHLSEarlyWaitTimedOut = false
         #endif
@@ -98,12 +99,10 @@ extension PlaybackViewModel {
                 }
             }
             #if canImport(UIKit)
-            Self.activatePlaybackAudioSession(reason: "same-video resume")
             setupRemoteCommandCenter()
             UIApplication.shared.isIdleTimerDisabled = true
             #endif
-            player.rate = Float(settings.playbackSpeed)
-            isPlaying = true
+            requestPlaybackStart(expectedItem: parkedItem, reason: "same-video resume")
             return
         }
         // Different video or parked item expired — clear parked state and tear down old item.
@@ -136,7 +135,7 @@ extension PlaybackViewModel {
         remotePauseClassificationTask?.cancel()
         endInterruptionBackgroundTask()
         #endif
-        audioInterruptionState.reset()
+        // Preserve any active system interruption while replacing the item.
         videoEnded = false
         wasPlayingBeforeSuspend = false
         currentTime = 0
@@ -436,7 +435,8 @@ extension PlaybackViewModel {
         // re-activating here (rather than waiting until readyToPlay) closes the gap
         // during which PlayerRemoteXPC reports err=-12860/-12785 and the widget is absent.
         setupRemoteCommandCenter()
-        if Self.activatePlaybackAudioSession(reason: "load pre-seed") {
+        if audioInterruptionState.allowsAutomaticPlayback,
+           Self.activatePlaybackAudioSession(reason: "load pre-seed") {
             playerLog.notice("[loadAsync] AVAudioSession activated early (lock-screen pre-seed)")
         }
         updateNowPlayingInfo()
@@ -586,7 +586,7 @@ extension PlaybackViewModel {
                                 ) { [weak self] _ in
                                     Task { @MainActor [weak self] in
                                         guard let self, self.isPlaying else { return }
-                                        self.player.rate = Float(self.settings.playbackSpeed)
+                                        self.requestPlaybackStart(reason: "buffer recovery")
                                         playerLog.notice("[stall] recovery#\(recoveryCount): rate restored")
                                     }
                                 }
@@ -596,10 +596,8 @@ extension PlaybackViewModel {
                 }
                 #if canImport(UIKit)
                 setupRemoteCommandCenter()
-                Self.activatePlaybackAudioSession(reason: "local-file playback")
                 #endif
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
+                requestPlaybackStart(reason: "local-file playback")
                 // Downloaded videos have no related videos — clear any stale state from a
                 // previous YouTube session so autoplay does not fire a YouTube video when
                 // the download ends. (Bug #224: wrong video played after local file ends.)
@@ -1049,7 +1047,7 @@ extension PlaybackViewModel {
                             ) { [weak self] _ in
                                 Task { @MainActor [weak self] in
                                     guard let self, self.isPlaying else { return }
-                                    self.player.rate = Float(self.settings.playbackSpeed)
+                                    self.requestPlaybackStart(reason: "buffer recovery")
                                     playerLog.notice("[stall] recovery#\(recoveryCount): rate restored")
                                 }
                             }
@@ -1066,11 +1064,9 @@ extension PlaybackViewModel {
             // Re-activate the audio session. stop() calls setActive(false) to release
             // the session to other apps; without this call on the next load() the player
             // starts silently because AVFoundation cannot acquire the inactive session.
-            Self.activatePlaybackAudioSession(reason: "network playback")
             #endif
             playerLog.notice("[loadAsync] setting rate=\(self.settings.playbackSpeed) — player.timeControlStatus=\(self.player.timeControlStatus.rawValue) isAudioOnlyMode=\(self.isAudioOnlyMode)")
-            player.rate = Float(settings.playbackSpeed)
-            isPlaying = true
+            requestPlaybackStart(reason: "network playback")
             playerLog.notice("[loadAsync] rate set — player.rate=\(self.player.rate) timeControlStatus=\(self.player.timeControlStatus.rawValue)")
             #if canImport(UIKit)
             UIApplication.shared.isIdleTimerDisabled = true
@@ -1150,7 +1146,7 @@ extension PlaybackViewModel {
 
     // MARK: - Cleanup
 
-    public func stop() {
+    public func stop(discardItem: Bool = false) {
         playerLog.notice("[stop] stop() called — currentVideo=\(self.currentVideo?.id ?? "nil") currentTime=\(Int(self.currentTime))s isLoading=\(self.isLoading)")
         // Save watch position before stopping (mirrors VideoStateController)
         if settings.historyState == .enabled, duration > 0 {
@@ -1166,14 +1162,15 @@ extension PlaybackViewModel {
         // alive so load() can detect and reuse it if the same video is re-opened within
         // a short window. Saves the ~1.27s exhaustiveRetry race for hot same-video replays.
         // load() calls replaceCurrentItem(nil) when a different video is requested.
-        parkedVideoId = currentVideo?.id
+        parkedVideoId = discardItem ? nil : currentVideo?.id
+        if discardItem { player.replaceCurrentItem(with: nil) }
         isPlaying = false
         #if canImport(UIKit)
         audioInterruptionResumeTask?.cancel()
         remotePauseClassificationTask?.cancel()
         endInterruptionBackgroundTask()
         #endif
-        audioInterruptionState.reset()
+        audioInterruptionState.userPaused()
         #if canImport(UIKit)
         Self.deactivatePlaybackAudioSession(reason: "player stop")
         #endif
@@ -1205,7 +1202,7 @@ extension PlaybackViewModel {
         // exhaustiveRetry race entirely → ~0.5s faster). The task is also assigned to
         // wkHLSEarlyTask so racePathB can use it if the re-tap happens before extraction
         // completes (< 1.25s after stop).
-        if let stoppedVideoId = currentVideo?.id {
+        if !discardItem, let stoppedVideoId = currentVideo?.id {
             Task { await VideoPreloadCache.shared.invalidateWKHLSURL(for: stoppedVideoId) }
             #if canImport(WebKit)
             wkHLSEarlyTaskVideoId = stoppedVideoId

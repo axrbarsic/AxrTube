@@ -20,26 +20,29 @@ extension PlayerView {
     @ViewBuilder
     private var titleAndBackButtonOverlay: some View {
         HStack(spacing: 0) {
-            Button {
-                iPocketTubeHaptics.shared.perform(.primaryAction)
-                #if os(iOS)
-                swipeLog.notice("[PlayerView] backButton tapped — miniPlayerEnabled=\(store.settings.miniPlayerEnabled) presentation=\(String(describing: playerState.presentation))")
-                if store.settings.miniPlayerEnabled { playerState.minimize() } else { playerState.stop() }
-                swipeLog.notice("[PlayerView] backButton — done, presentation=\(String(describing: playerState.presentation))")
-                #else
-                vm.stop(); withAnimation(.none) { dismiss() }
-                #if os(macOS)
-                browseVM.deepLinkedVideo = nil
+            // UI automation needs an always-present dismissal target while the
+            // visible controls are hidden. Never mount that transparent duplicate
+            // in production, where it overlaps the real back button and can race a
+            // second minimize/stop during the same touch.
+            if ProcessInfo.processInfo.arguments.contains("--uitesting") {
+                Button {
+                    #if os(iOS)
+                    if store.settings.miniPlayerEnabled { playerState.minimize() } else { playerState.stop() }
+                    #else
+                    vm.stop(); withAnimation(.none) { dismiss() }
+                    #if os(macOS)
+                    browseVM.deepLinkedVideo = nil
+                    #endif
+                    #endif
+                } label: {
+                    Color.clear.frame(width: 60, height: 60)
+                }
+                .accessibilityIdentifier("player.backButton")
+                #if os(tvOS)
+                .buttonStyle(.plain)
+                .focusable(false)
                 #endif
-                #endif
-            } label: {
-                Color.clear.frame(width: 60, height: 60)
             }
-            .accessibilityIdentifier("player.backButton")
-            #if os(tvOS)
-            .buttonStyle(.plain)
-            .focusable(false)
-            #endif
             Text(vm.playerInfo?.video.title ?? video.title)
                 .font(.caption)
                 .opacity(0)   // visually invisible (including emoji), accessible

@@ -129,17 +129,14 @@ extension InnerTubeAPI {
         return info
     }
 
-    /// Fetches player info using the Web client, which returns muxed (video+audio)
-    /// MP4 streams suitable for direct file download and saving to Photos.
-    /// The iOS client only returns adaptive-only streams; the Web client includes
-    /// itag 18 (360p muxed) and itag 22 (720p muxed) in the `formats` array.
+    /// Fetches player info suitable for an iOS offline download.
+    ///
+    /// The generic Web client currently returns `Video unavailable` without the
+    /// browser session and integrity context required by YouTube. The native iOS
+    /// client is the same trusted source used by playback and normally provides
+    /// an HLS manifest that AVAssetDownloadURLSession can persist directly.
     public func fetchPlayerInfoForDownload(videoId: String) async throws -> PlayerInfo {
-        var body = makeBody(client: webClientContext)
-        body["videoId"] = videoId
-        body["racyCheckOk"] = true
-        body["contentCheckOk"] = true
-        let data = try await post(endpoint: "player", body: body)
-        return try parsePlayerInfo(from: data, videoId: videoId)
+        try await fetchPlayerInfo(videoId: videoId)
     }
 
     /// Fetches player info using the WebSafari client with `serviceIntegrityDimensions.poToken`

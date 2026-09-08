@@ -723,7 +723,7 @@ extension PlayerControlsOverlay {
             HStack(spacing: 8) {
                 quickAccessButton(
                     systemImage: "book.closed",
-                    label: "Книга",
+                    label: "Показать стенограмму",
                     accessibilityId: "player.quickAccess.transcript"
                 ) { showTranscript = true }
 

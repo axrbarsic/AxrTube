@@ -1192,8 +1192,7 @@ extension PlaybackViewModel {
                         hasError: false
                     )
                 }
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
+                requestPlaybackStart(expectedItem: item, reason: "fallback ready")
                 launchPhase2(video: video, info: info)
                 // Track whether the succeeded stream is muxed so quality-switch attempts
                 // can detect the state and trigger fresh WKWebView extraction (#210).
@@ -1499,8 +1498,7 @@ extension PlaybackViewModel {
                             hasError: false
                         )
                     }
-                    player.rate = Float(settings.playbackSpeed)
-                    isPlaying = true
+                    requestPlaybackStart(expectedItem: compositeItem, reason: "fallback ready")
                     launchPhase2(video: video, info: info)
                     return true
                 case .failed:
@@ -1811,8 +1809,7 @@ extension PlaybackViewModel {
                     playerLog.notice("[quality/DASH] readyToPlay — seekTarget=\(seekTarget)s (currentTime=\(currentTime)s savedSeekTo=\(seekTo)s)")
                     if seekTarget > 0 { seek(to: seekTarget) }
                     loadAudioTracks(from: compositeItem)
-                    player.rate = Float(settings.playbackSpeed)
-                    isPlaying = true
+                    requestPlaybackStart(expectedItem: compositeItem, reason: "fallback ready")
                     return
                 case .failed:
                     let itemError = compositeItem.error
@@ -2270,8 +2267,7 @@ extension PlaybackViewModel {
                         hasError: false
                     )
                 }
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
+                requestPlaybackStart(expectedItem: item, reason: "fallback ready")
                 qualityManager.isMuxedFallback = false
                 // Fast-start quality ramp: first frame is on screen at 360p. Upgrade ABR hints
                 // to preferred quality (same pattern as primary HLS path in loadAsync).
@@ -2364,7 +2360,7 @@ extension PlaybackViewModel {
                     let target = CMTime(seconds: position, preferredTimescale: 600)
                     await item.seek(to: target, toleranceBefore: .zero, toleranceAfter: .zero)
                 }
-                player.rate = Float(settings.playbackSpeed)
+                requestPlaybackStart(expectedItem: item, reason: "fallback ready")
                 return
             case .failed:
                 let err = item.error?.localizedDescription ?? "nil"
@@ -2503,8 +2499,7 @@ extension PlaybackViewModel {
                 playerLog.notice("✅ [ytDlp[sim]/HLS] readyToPlay")
                 needsQuickStartup = false
                 isLoading = false
-                player.rate = Float(settings.playbackSpeed)
-                isPlaying = true
+                requestPlaybackStart(expectedItem: item, reason: "fallback ready")
                 return true
             case .failed:
                 let err = item.error?.localizedDescription ?? "nil"

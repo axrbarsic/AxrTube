@@ -35,7 +35,12 @@ public struct VideoCardView: View {
 
     @Environment(AuthService.self) private var authService
     @Environment(SettingsStore.self) private var store
+    @Environment(DownloadStore.self) private var downloadStore
     @Environment(\.innerTubeAPI) private var api
+    #if os(iOS)
+    @Environment(PlayerStateStore.self) private var playerState
+    @Environment(PlayerRouter.self) private var playerRouter
+    #endif
     @State private var localProgress: Double?
     @State private var watchLaterAlert: DownloadAlertItem?
     /// Index into `video.thumbnailFallbackURLs`. -1 = use primary `thumbnailURL`.
@@ -250,6 +255,7 @@ public struct VideoCardView: View {
             #if !os(tvOS)
             Button {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
+                perform(intent: .download)
                 downloadService.download(
                     video: video,
                     kind: .video,
@@ -356,6 +362,21 @@ public struct VideoCardView: View {
         #endif
     }
 
+    private func perform(intent: VideoCardIntent) {
+        switch VideoCardInteractionPolicy.presentation(for: intent) {
+        case .none:
+            return
+        case .inlinePlayer:
+            #if os(iOS)
+            playerRouter.playInline(video: video)
+            #else
+            onSelect?()
+            #endif
+        case .player:
+            onSelect?()
+        }
+    }
+
     @ViewBuilder
     private var selectedLayout: some View {
         if store.settings.themeName.usesTimelineLayout {
@@ -381,7 +402,7 @@ public struct VideoCardView: View {
         VStack(alignment: .leading, spacing: 6) {
             Color.clear
                 .aspectRatio(16 / 9, contentMode: .fit)
-                .overlay(thumbnailView.clipped())
+                .overlay(playbackThumbnail.clipped())
                 .overlay(alignment: .bottom) {
                     if let progress = effectiveProgress, progress > 0 {
                         watchProgressBar(progress)
@@ -433,7 +454,7 @@ public struct VideoCardView: View {
 
     private var compactLayout: some View {
         HStack(alignment: .center, spacing: 12) {
-            thumbnailView
+            playbackThumbnail
                 .frame(width: 144, height: 81)
                 .overlay(alignment: .bottom) {
                     if let progress = effectiveProgress, progress > 0 {
@@ -484,7 +505,7 @@ public struct VideoCardView: View {
         HStack(alignment: .center, spacing: 10) {
             timelineRail
 
-            thumbnailView
+            playbackThumbnail
                 .frame(width: 126, height: 71)
                 .overlay(alignment: .bottom) {
                     if let progress = effectiveProgress, progress > 0 {
@@ -528,7 +549,7 @@ public struct VideoCardView: View {
         Color.clear
             .aspectRatio(compact ? 16 / 7 : 16 / 9, contentMode: .fit)
             .overlay {
-                thumbnailView
+                playbackThumbnail
                     .overlay {
                         LinearGradient(
                             colors: [.clear, .black.opacity(0.18), .black.opacity(0.92)],
@@ -585,7 +606,7 @@ public struct VideoCardView: View {
                     .fill(Color.purple.opacity(0.25))
                     .frame(width: 146, height: 86)
                     .offset(x: 7, y: 7)
-                thumbnailView
+                playbackThumbnail
                     .frame(width: 146, height: 86)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(alignment: .bottom) {
@@ -613,7 +634,7 @@ public struct VideoCardView: View {
                 .fill(creativeAccent)
                 .frame(width: 5, height: 72)
 
-            thumbnailView
+            playbackThumbnail
                 .frame(width: 116, height: 72)
                 .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                 .overlay(alignment: .bottom) {
@@ -635,7 +656,7 @@ public struct VideoCardView: View {
 
     private var prismLayout: some View {
         HStack(alignment: .center, spacing: 13) {
-            thumbnailView
+            playbackThumbnail
                 .frame(width: 138, height: 84)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .overlay(alignment: .bottom) {
@@ -796,6 +817,185 @@ public struct VideoCardView: View {
             }
         }
     }
+
+    /// The card and thumbnail surfaces remain informational and own the context
+    /// menu. Playback is deliberately limited to the 44 pt play control. Keeping
+    /// the thumbnail outside the Button is important: a Button whose label is the
+    /// whole thumbnail makes the entire banner a hidden playback hit target.
+    private var playbackThumbnail: some View {
+        ZStack {
+            #if os(iOS)
+            if isInlinePlayback {
+                FullScreenPlayerLayerView(
+                    hostView: playerState.playerHostView,
+                    videoGravity: .resizeAspectFill
+                )
+                .background(Color.black)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+                if playerState.vm.isLoading {
+                    thumbnailView
+                        .allowsHitTesting(false)
+                    Color.black.opacity(0.38)
+                        .allowsHitTesting(false)
+                    VStack(spacing: 6) {
+                        ProgressView()
+                            .tint(.white)
+                        Text("Подготавливаем видео")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityLabel("Подготавливаем видео")
+                }
+            } else {
+                thumbnailView
+                    .allowsHitTesting(false)
+            }
+            #else
+            thumbnailView
+                .allowsHitTesting(false)
+            #endif
+
+            #if os(iOS)
+            if isInlinePlayback, playerState.vm.isPlaying {
+                VStack {
+                    HStack {
+                        InlineAudioPulseView(
+                            videoID: video.id,
+                            playbackTime: playerState.vm.currentTime,
+                            duration: playerState.vm.duration,
+                            isPlaying: playerState.vm.isPlaying
+                        )
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(7)
+                .allowsHitTesting(false)
+            }
+
+            if let entry = offlineEntry, entry.status.isActive {
+                VStack(spacing: 0) {
+                    HStack {
+                        Label(offlineStatusTitle(for: entry), systemImage: "arrow.down.circle.fill")
+                            .font(.caption2.weight(.bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(.black.opacity(0.68), in: Capsule())
+                        Spacer()
+                    }
+                    Spacer()
+                    GeometryReader { proxy in
+                        ZStack(alignment: .leading) {
+                            Rectangle().fill(.black.opacity(0.42))
+                            Rectangle()
+                                .fill(iPocketTubeVisualTokens.mint)
+                                .frame(width: proxy.size.width * CGFloat(min(max(entry.progress, 0), 1)))
+                        }
+                    }
+                    .frame(height: 4)
+                }
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(offlineStatusTitle(for: entry))
+                .accessibilityValue("\(Int((entry.progress * 100).rounded())) процентов")
+            }
+            #endif
+
+            Button {
+                iPocketTubeHaptics.shared.perform(.contentSelection)
+                #if os(iOS)
+                if isInlinePlayback {
+                    playerState.vm.togglePlayPause()
+                } else {
+                    startInlinePlaybackAndOfflineSave()
+                }
+                #else
+                perform(intent: .playback)
+                #endif
+            } label: {
+                Image(systemName: playbackControlSymbol)
+                    .font(.system(size: compact ? 17 : 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(.black.opacity(0.58), in: Circle())
+                    .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
+            }
+            .buttonStyle(.plain)
+            .contentShape(Circle())
+            #if os(iOS)
+            .disabled(isInlinePlayback && playerState.vm.isLoading)
+            .opacity(isInlinePlayback && playerState.vm.isLoading ? 0 : 1)
+            #endif
+            .accessibilityLabel("\(playbackControlLabel) \(video.title)")
+            .accessibilityIdentifier("video.card.play.\(video.id)")
+        }
+    }
+
+    #if os(iOS)
+    private func startInlinePlaybackAndOfflineSave() {
+        perform(intent: .playback)
+
+        let status = DownloadStore.shared.entry(videoId: video.id, kind: .video)?.status
+        guard VideoCardOfflineSavePolicy.shouldRequestDownload(
+            existingStatus: status,
+            downloadServiceIsActive: downloadService.state.isActive
+        ) else { return }
+
+        downloadService.download(
+            video: video,
+            kind: .video,
+            saveVideoToPhotos: false,
+            storageLimitMB: store.settings.offlineStorageLimitMB,
+            isAutomatic: true,
+            preferLowBandwidthAudio: false
+        )
+    }
+    #endif
+
+    private var playbackControlSymbol: String {
+        #if os(iOS)
+        if isInlinePlayback, playerState.vm.isPlaying { return "pause.fill" }
+        #endif
+        return "play.fill"
+    }
+
+    private var playbackControlLabel: String {
+        #if os(iOS)
+        if isInlinePlayback, playerState.vm.isPlaying { return "Pause" }
+        #endif
+        return "Play"
+    }
+
+    #if os(iOS)
+    private var isInlinePlayback: Bool {
+        playerState.presentation == .inline && playerState.currentVideo?.id == video.id
+    }
+
+    private var offlineEntry: DownloadedVideo? {
+        downloadStore.entry(videoId: video.id, kind: .video)
+    }
+
+    private func offlineStatusTitle(for entry: DownloadedVideo) -> String {
+        switch entry.status {
+        case .queued:
+            "В очереди офлайн"
+        case .fetching, .reconnecting:
+            "Готовим офлайн-копию"
+        case .downloading:
+            "Сохраняем офлайн, \(Int((entry.progress * 100).rounded()))%"
+        case .saving, .finalizationPending:
+            "Завершаем сохранение"
+        case .waitingForWiFi:
+            "Ждём Wi-Fi"
+        default:
+            "Сохраняем офлайн"
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func themedThumbnail(_ image: Image) -> some View {

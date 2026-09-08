@@ -164,8 +164,8 @@ public struct SearchView: View {
                 iPocketTubeHaptics.shared.perform(.filterPresentation)
                 showFilterSheet = true
             } label: {
-                Image(systemName: vm.filter.isDefault ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
-                    .foregroundStyle(vm.filter.isDefault ? .secondary : Color.accentColor)
+                Image(systemName: vm.filter.isDefault && !store.settings.russianOnlySearchEnabled ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(store.settings.russianOnlySearchEnabled ? Color.accentColor : .secondary)
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(.plain)
@@ -436,6 +436,7 @@ private struct FilterChip: View {
 // MARK: - SearchFilterSheet
 
 struct SearchFilterSheet: View {
+    @Environment(SettingsStore.self) private var store
     let current: SearchFilter
     let onApply: (SearchFilter) -> Void
 
@@ -451,6 +452,14 @@ struct SearchFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
+                Section("Язык видео") {
+                    Toggle("Только русский", isOn: Binding(
+                        get: { store.settings.russianOnlySearchEnabled },
+                        set: { store.settings.russianOnlySearchEnabled = $0 }
+                    ))
+                    Text("Применяется к главной, рекомендациям и поиску. Неизвестный язык скрывается.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 Section("Sort by") {
                     Picker("Sort", selection: $draft.sortOrder) {
                         ForEach(SearchFilter.SortOrder.allCases, id: \.self) { order in

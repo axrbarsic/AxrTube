@@ -54,6 +54,7 @@ public final class PlayerStateStore {
 
     public enum Presentation: Equatable {
         case hidden
+        case inline
         case miniPlayer
         case fullScreen
     }
@@ -97,6 +98,7 @@ public final class PlayerStateStore {
     /// The UIView that owns the AVPlayerLayer. Never deallocated; transplanted
     /// between full-screen and mini-player containers via UIView.addSubview.
     let playerHostView: PersistentPlayerHostView
+    private var lifecycleObservers: [NSObjectProtocol] = []
 
     // MARK: - Init
 
@@ -106,6 +108,25 @@ public final class PlayerStateStore {
         let hostView = PersistentPlayerHostView()
         hostView.playerLayer.player = vm.player
         self.playerHostView = hostView
+        // Inline/mini playback never mounts PlayerView, so its scene handlers
+        // cannot own the lifecycle of this app-lifetime player.
+        for name in [UIApplication.willResignActiveNotification,
+                     UIApplication.didEnterBackgroundNotification,
+                     UIApplication.didBecomeActiveNotification] {
+            let observer = NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] notification in
+                let name = notification.name
+                MainActor.assumeIsolated {
+                    guard let self, self.presentation == .inline || self.presentation == .miniPlayer else { return }
+                    switch name {
+                    case UIApplication.willResignActiveNotification: self.vm.handleSceneInactive()
+                    case UIApplication.didEnterBackgroundNotification: self.vm.handleBackground()
+                    case UIApplication.didBecomeActiveNotification: self.vm.handleForeground()
+                    default: break
+                    }
+                }
+            }
+            lifecycleObservers.append(observer)
+        }
     }
 
     // MARK: - Actions
@@ -131,9 +152,29 @@ public final class PlayerStateStore {
         storeLog.notice("[PlayerStateStore] play — presentation set to .fullScreen")
     }
 
+    /// Load `video` into the shared player without presenting PlayerView. The
+    /// persistent AVPlayerLayer is hosted by the matching feed thumbnail, so
+    /// playback remains inside the banner and no second player is created.
+    public func playInline(video: Video) {
+        storeLog.notice("[PlayerStateStore] playInline — id=\(video.id) currentPresentation=\(String(describing: self.presentation))")
+        CrashlyticsLogger.setIntendedVideo(id: video.id, title: video.title)
+        if vm.currentVideoId != video.id || vm.player.currentItem == nil {
+            vm.load(video: video)
+        } else if !vm.isPlaying {
+            vm.togglePlayPause()
+        }
+        currentVideo = video
+        presentation = .inline
+        storeLog.notice("[PlayerStateStore] playInline — presentation set to .inline")
+    }
+
     /// Collapse the full-screen player to the mini-player bar. Playback continues.
     func minimize() {
         storeLog.notice("[PlayerStateStore] minimize — currentPresentation=\(String(describing: self.presentation))")
+        guard presentation == .fullScreen else {
+            storeLog.notice("[PlayerStateStore] minimize — ignored duplicate request")
+            return
+        }
         presentation = .miniPlayer
         let action = dismissPlayerAction
         dismissPlayerAction = nil
@@ -149,9 +190,13 @@ public final class PlayerStateStore {
     }
 
     /// Stop playback completely and hide the player UI.
-    func stop() {
+    func stop(discardItem: Bool = false) {
         storeLog.notice("[PlayerStateStore] stop — currentPresentation=\(String(describing: self.presentation))")
-        vm.stop()
+        guard presentation != .hidden || discardItem else {
+            storeLog.notice("[PlayerStateStore] stop — ignored duplicate request")
+            return
+        }
+        vm.stop(discardItem: discardItem)
         currentVideo = nil
         presentation = .hidden
         let action = dismissPlayerAction

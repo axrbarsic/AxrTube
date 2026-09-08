@@ -77,9 +77,10 @@ struct NowPlayingAccessoryChrome<Artwork: View>: View {
 
                 if let openTranscript {
                     Button(action: openTranscript) {
-                        Text("Стенограмма")
+                        Text("Показать\nстенограмму")
                             .font(.caption.weight(.semibold))
-                            .lineLimit(1)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
                             .padding(.horizontal, 6)
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())

@@ -303,6 +303,7 @@ public final class PlaybackViewModel {
     /// task is cancelled on item replacement so a late track load cannot attach
     /// a stale signal identity to a newer playback session.
     @ObservationIgnored var audioScopeInstallationTask: Task<Void, Never>?
+    @ObservationIgnored var audioScopeItemObservation: NSKeyValueObservation?
     #endif
     /// Observes `AVPlayerItem.duration` via KVO after `.readyToPlay` for HLS streams
     /// where the duration is `.invalid` at ready-time and arrives later. Cancelled in `stop()`.
@@ -559,6 +560,9 @@ public final class PlaybackViewModel {
         self.comments = CommentsController(api: api)
 
         player.allowsExternalPlayback = true
+        // Inline video has no AVPlayerViewController to choose a background
+        // policy. Keep its audio eligible to continue while the app is locked.
+        player.audiovisualBackgroundPlaybackPolicy = .continuesIfPossible
         #if canImport(UIKit)
         // Configure without activating: cold launch must not interrupt another app.
         // Every later activation reasserts the same playback/spokenAudio contract.
@@ -567,6 +571,7 @@ public final class PlaybackViewModel {
         setupTimeObserver()
         setupRateObserver()
         #if canImport(UIKit)
+        setupAudioScopeObserver()
         setupRemoteCommandCenter()
         setupAirPlayObserver()
         #endif
@@ -601,6 +606,7 @@ public final class PlaybackViewModel {
         audioRecoveryVerificationTask?.cancel()
         #if canImport(UIKit)
         audioScopeInstallationTask?.cancel()
+        audioScopeItemObservation?.invalidate()
         audioInterruptionResumeTask?.cancel()
         remotePauseClassificationTask?.cancel()
         #endif
@@ -628,6 +634,36 @@ public final class PlaybackViewModel {
         settings = newSettings
         isAudioOnlyMode = newSettings.audioOnlyMode
     }
+
+    #if canImport(UIKit)
+    private func setupAudioScopeObserver() {
+        audioScopeItemObservation = player.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
+            let item = player.currentItem
+            Task { @MainActor [weak self, weak item] in
+                guard let self else { return }
+                self.audioScopeInstallationTask?.cancel()
+                guard let item, self.player.currentItem === item,
+                      let videoID = self.currentVideo?.id else { return }
+                self.audioScopeInstallationTask = Task { @MainActor [weak self, weak item] in
+                    guard let self, let item else { return }
+                    do {
+                        let attachment = try await RealtimeAudioScopeCapture.makeAttachment(
+                            on: item,
+                            videoID: videoID
+                        )
+                        guard !Task.isCancelled,
+                              self.player.currentItem === item,
+                              self.currentVideo?.id == videoID else { return }
+                        item.audioMix = attachment.mix
+                        RealtimeAudioScopeRegistry.shared.activate(attachment.context)
+                    } catch {
+                        playerLog.notice("[audio-scope] signal unavailable for \(videoID): \(error.localizedDescription)")
+                    }
+                }
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - Delegate conformances
@@ -644,6 +680,7 @@ extension PlaybackViewModel: QualityEventHandler {
     }
 
     func qualityItemDidBecomeReady(_ item: AVPlayerItem, seekTo time: TimeInterval) {
+        guard player.currentItem === item else { return }
         // Clear the quality-change freeze so the time observer resumes.
         isQualityChangePending = false
         // currentTime was preserved during the transition (time observer suspended).
@@ -655,7 +692,7 @@ extension PlaybackViewModel: QualityEventHandler {
         let seekTarget = currentTime > 0 ? currentTime : time
         playerLog.notice("[quality] readyToPlay — seekTarget=\(seekTarget)s (currentTime=\(currentTime)s savedTime=\(time)s)")
         if seekTarget > 0 { seek(to: seekTarget) }
-        isPlaying = true
+        requestPlaybackStart(expectedItem: item, reason: "quality ready")
         loadAudioTracks(from: item)
     }
 

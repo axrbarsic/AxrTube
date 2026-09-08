@@ -13,8 +13,8 @@ import WebKit
 @MainActor
 struct CurrentPlaybackTranscriptPanel: View {
     @Environment(PlayerStateStore.self) private var playerState
-    @Environment(PlayerRouter.self) private var playerRouter
     @Environment(SettingsStore.self) private var settingsStore
+    @Environment(\.innerTubeAPI) private var api
     let onDismiss: () -> Void
 
     private var currentVideo: Video? {
@@ -22,102 +22,110 @@ struct CurrentPlaybackTranscriptPanel: View {
     }
 
     var body: some View {
-        PlayerTranscriptPanel(
-            captions: playerState.vm.captionsManager,
-            videoTitle: currentVideo?.title ?? "Текущее видео",
-            onSeek: { playerState.vm.seek(to: $0) },
-            onRetry: { playerState.vm.retryLoad() },
-            onDismiss: onDismiss
-        )
+        Group {
+            if let video = currentVideo, video.localFileURL != nil {
+                SavedVideoTranscriptPanel(video: video, api: api,
+                    translation: playerState.vm.russianTranscriptTranslation, onDismiss: onDismiss)
+            } else {
+                PlayerTranscriptPanel(
+                    captions: playerState.vm.captionsManager,
+                    videoTitle: currentVideo?.title ?? "Текущее видео",
+                    onSeek: { playerState.vm.seek(to: $0) },
+                    onRetry: { playerState.vm.retryLoad() },
+                    onDismiss: onDismiss
+                )
+            }
+        }
         .preferredColorScheme(settingsStore.settings.themeName.colorScheme)
     }
 }
 #endif
 
-struct PlayerTranscriptPanel: View {
-    private enum Preview: Equatable {
-        case adaptive
-        case pdf
+#if os(iOS)
+@MainActor
+struct SavedVideoTranscriptPanel: View {
+    let video: Video
+    let api: InnerTubeAPI
+    let onDismiss: () -> Void
+    @State private var captions: CaptionsManager
+    @State private var retryID = 0
+    private let service: TranscriptBookService
+
+    init(video: Video, api: InnerTubeAPI, translation: RussianTranscriptTranslationService,
+         onDismiss: @escaping () -> Void) {
+        self.video = video
+        self.api = api
+        self.onDismiss = onDismiss
+        let service = TranscriptBookService()
+        self.service = service
+        _captions = State(initialValue: CaptionsManager(
+            russianTranscriptLoader: { request, progress in
+                try await translation.translate(request: request, progress: progress)
+            },
+            transcriptBookLoader: { request in try await service.prepare(request) }
+        ))
     }
 
+    var body: some View {
+        PlayerTranscriptPanel(captions: captions, videoTitle: video.title,
+                              onSeek: { _ in }, onRetry: { retryID += 1 }, onDismiss: onDismiss)
+            .task(id: retryID) {
+                let identity = captions.beginPlaybackItem(video.id, bookMetadata: TranscriptBookMetadata(
+                    videoID: video.id, title: video.title, channelTitle: video.channelTitle,
+                    duration: video.duration
+                ))
+                if let cached = await service.cachedTranscript(videoID: video.id) {
+                    captions.restoreTranscript(cached, for: identity)
+                    return
+                }
+                do {
+                    let info = try await api.fetchPlayerInfo(videoId: video.id)
+                    try Task.checkCancellation()
+                    captions.applyAvailableCaptions(info.captionTracks, for: identity, preferredLanguage: "ru")
+                } catch {
+                    if !Task.isCancelled { captions.failCaptionMetadata(for: identity) }
+                }
+            }
+            .onDisappear { captions.reset() }
+    }
+}
+#endif
+
+struct PlayerTranscriptPanel: View {
+
     @Bindable var captions: CaptionsManager
-    #if os(iOS)
-    @Environment(PlayerRouter.self) private var playerRouter
-    #endif
     let videoTitle: String
     let onSeek: (TimeInterval) -> Void
     let onRetry: () -> Void
     let onDismiss: () -> Void
 
-    @State private var preview: Preview?
     @State private var exportPayload: TranscriptBookExportPayload?
     @State private var isFileExporterPresented = false
     @State private var exportFailureMessage: String?
+    @State private var didCopyTranscript = false
 
     private var result: TranscriptBookResult? { captions.transcriptBookResult }
 
     var body: some View {
-        ZStack {
-            Color.black.opacity(0.48).ignoresSafeArea()
-            NavigationStack {
-                Group {
-                    #if os(iOS)
-                    if preview == .adaptive, let result {
-                        HTMLBookPreview(url: result.artifacts.htmlURL)
-                            .ignoresSafeArea(edges: .bottom)
-                            .accessibilityIdentifier("player.transcriptBook.htmlPreview")
-                    } else if preview == .pdf, let result {
-                        PDFBookPreview(url: result.artifacts.pdfURL)
-                            .ignoresSafeArea(edges: .bottom)
-                            .accessibilityIdentifier("player.transcriptBook.pdfPreview")
-                    } else {
-                        bookContent
-                    }
-                    #else
-                    bookContent
-                    #endif
-                }
-                .navigationTitle(previewTitle)
+        NavigationStack {
+            bookContent
+                .navigationTitle("Стенограмма")
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        if preview != nil {
-                            Button("Назад", systemImage: "chevron.backward") {
-                                preview = nil
-                            }
-                            .accessibilityIdentifier("player.transcriptBook.previewBack")
-                        } else {
-                            Button("Закрыть", systemImage: "xmark", action: onDismiss)
-                                .accessibilityIdentifier("player.transcript.close")
-                        }
-                    }
-                    if let preview, let result {
-                        ToolbarItem(placement: .primaryAction) {
-                            Menu {
-                                Button("Сохранить в Файлы", systemImage: "folder.badge.plus") {
-                                    beginFileExport(
-                                        preview == .adaptive ? .html : .pdf,
-                                        result: result
-                                    )
-                                }
-                                ShareLink(item: preview == .adaptive
-                                    ? result.artifacts.htmlURL
-                                    : result.artifacts.pdfURL) {
-                                    Label("Поделиться", systemImage: "square.and.arrow.up")
-                                }
-                            } label: {
-                                Label("Экспорт", systemImage: "square.and.arrow.up")
-                            }
-                            .accessibilityIdentifier("player.transcriptBook.previewShareToolbar")
-                        }
+                        Button("Закрыть", systemImage: "xmark", action: onDismiss)
+                            .accessibilityIdentifier("player.transcript.close")
                     }
                 }
-            }
-            .background(.regularMaterial)
-            .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .accessibilityIdentifier("player.transcript.panel")
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if let result, captions.transcriptBookState == .ready {
+                        transcriptActions(result)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(.regularMaterial)
+                    }
+                }
         }
+        .accessibilityIdentifier("player.transcript.panel")
         .fileExporter(
             isPresented: $isFileExporterPresented,
             document: exportPayload.map { TranscriptBookFileDocument(data: $0.data) },
@@ -142,13 +150,6 @@ struct PlayerTranscriptPanel: View {
         }
     }
 
-    private var previewTitle: String {
-        switch preview {
-        case .adaptive: "Адаптивная книга"
-        case .pdf: "PDF"
-        case nil: "Книга стенограммы"
-        }
-    }
 
     @ViewBuilder
     private var bookContent: some View {
@@ -222,111 +223,64 @@ struct PlayerTranscriptPanel: View {
         case .translationPreparing:
             "iPhone подготавливает встроенный системный переводчик. Английский текст не показывается."
         case .translationCurrentFragment, .translationAhead, .translationRemaining:
-            "Перевод выполняется на устройстве. Книга появится целиком на русском языке."
+            "Перевод выполняется на устройстве. Полный текст появится после завершения перевода."
         default:
-            "Получаем всю дорожку целиком, убираем повторы и оформляем русскую книгу."
+            "Получаем полную дорожку субтитров и убираем повторы."
         }
     }
 
     private func readyCard(_ result: TranscriptBookResult) -> some View {
-        VStack(spacing: 22) {
-            VStack(spacing: 14) {
-                Image(systemName: "book.closed.fill")
-                    .font(.system(size: 48, weight: .medium))
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(.red)
-                    .accessibilityHidden(true)
-                VStack(spacing: 7) {
-                    Text(videoTitle)
-                        .font(.title2.weight(.bold))
-                        .multilineTextAlignment(.center)
-                        .fixedSize(horizontal: false, vertical: true)
-                    Text("Русский · \(result.artifacts.pageCount) стр. · \(result.document.paragraphCount) абз.")
-                        .font(.subheadline)
+        VStack(alignment: .leading, spacing: 20) {
+            Text(result.document.metadata.title)
+                .font(.title2.bold())
+                .fixedSize(horizontal: false, vertical: true)
+            Text(result.document.languageDisplayName)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            ForEach(result.document.sections) { section in
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(TranscriptExportPolicy.timestamp(section.startTime))
+                        .font(.headline)
                         .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                    if result.wasCached {
-                        Label("Открыто из сохранённой книги", systemImage: "checkmark.icloud")
-                            .font(.footnote.weight(.medium))
-                            .foregroundStyle(.secondary)
+                    ForEach(Array(section.paragraphs.enumerated()), id: \.offset) { _, paragraph in
+                        Text(verbatim: paragraph.text)
+                            .font(.body)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .textSelection(.enabled)
                     }
-                    Text("HTML · PDF · Markdown")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Форматы: адаптивная веб-книга, PDF и Markdown")
                 }
             }
-            .frame(maxWidth: .infinity)
-
-            #if os(iOS)
-            TranscriptAILensCard(
-                manager: playerRouter.transcriptSummary,
-                document: result.document,
-                onSeek: onSeek
-            )
-            #endif
-
-            VStack(spacing: 12) {
-                Button {
-                    preview = .adaptive
-                } label: {
-                    Label("Открыть адаптивную книгу", systemImage: "rectangle.expand.vertical")
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                }
-                .iPocketTubeLiquidButtonStyle(prominent: true)
-                .accessibilityHint("Текст подстраивается под ширину экрана и системную тему")
-                .accessibilityIdentifier("player.transcriptBook.openHTML")
-
-                Button {
-                    preview = .pdf
-                } label: {
-                    Label("Открыть PDF", systemImage: "doc.richtext")
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                }
-                .iPocketTubeLiquidButtonStyle()
-                .accessibilityIdentifier("player.transcriptBook.openPDF")
-
-                Menu {
-                    Section("Сохранить в Файлы") {
-                        Button("Адаптивная книга HTML", systemImage: "safari") {
-                            beginFileExport(.html, result: result)
-                        }
-                        Button("PDF", systemImage: "doc.richtext") {
-                            beginFileExport(.pdf, result: result)
-                        }
-                        Button("Markdown", systemImage: "doc.text") {
-                            beginFileExport(.markdown, result: result)
-                        }
-                    }
-                    Section("Поделиться") {
-                        ShareLink(item: result.artifacts.htmlURL) {
-                            Label("Адаптивная книга HTML", systemImage: "safari")
-                        }
-                        ShareLink(item: result.artifacts.pdfURL) {
-                            Label("PDF", systemImage: "doc.richtext")
-                        }
-                        ShareLink(item: result.artifacts.markdownURL) {
-                            Label("Markdown", systemImage: "doc.text")
-                        }
-                    }
-                } label: {
-                    Label("Сохранить или поделиться", systemImage: "square.and.arrow.up")
-                        .frame(maxWidth: .infinity, minHeight: 50)
-                }
-                .iPocketTubeLiquidButtonStyle()
-                .accessibilityIdentifier("player.transcriptBook.shareMenu")
-            }
-
-            Button("Пересобрать", systemImage: "arrow.clockwise") {
-                captions.rebuildTranscriptBook()
-            }
-            .font(.callout.weight(.medium))
-            .frame(minHeight: 44)
-            .accessibilityIdentifier("player.transcriptBook.rebuild")
         }
-        .padding(24)
-        .iPocketTubeGlassSurface(cornerRadius: 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityIdentifier("player.transcriptBook.ready")
+    }
+
+    private func transcriptActions(_ result: TranscriptBookResult) -> some View {
+        VStack(spacing: 8) {
+            #if os(iOS)
+            Button {
+                UIPasteboard.general.string = result.document.searchableText
+                didCopyTranscript = true
+                iPocketTubeHaptics.shared.perform(.operationSucceeded)
+            } label: {
+                Label(didCopyTranscript ? "Скопировано" : "Копировать всё",
+                      systemImage: didCopyTranscript ? "checkmark.circle.fill" : "doc.on.doc")
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .iPocketTubeLiquidButtonStyle(prominent: true)
+            .accessibilityHint("Копирует всю готовую стенограмму одним нажатием")
+            .accessibilityIdentifier("player.transcriptBook.copyAll")
+            #endif
+            Button {
+                beginFileExport(.markdown, result: result)
+            } label: {
+                Label("Сохранить Markdown", systemImage: "square.and.arrow.down")
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .iPocketTubeLiquidButtonStyle()
+            .accessibilityIdentifier("player.transcriptBook.saveMarkdown")
+        }
+        .onChange(of: result.document.cacheKey) { _, _ in didCopyTranscript = false }
     }
 
     private func beginFileExport(
@@ -340,7 +294,7 @@ struct PlayerTranscriptPanel: View {
             )
             isFileExporterPresented = true
         } catch {
-            exportFailureMessage = "Файл книги повреждён или недоступен. Пересоберите книгу и повторите попытку."
+            exportFailureMessage = "Не удалось подготовить Markdown. Повторите попытку."
         }
     }
 
@@ -371,10 +325,10 @@ struct PlayerTranscriptPanel: View {
         } else {
         statusView(
             icon: "exclamationmark.triangle.fill",
-            title: "Не удалось собрать книгу",
-            detail: "Исходные субтитры не повреждены. Повторите подготовку документа.",
+            title: "Не удалось получить стенограмму",
+            detail: "Повторите загрузку субтитров или подготовку текста.",
             retryTitle: "Пересобрать"
-        ) { captions.rebuildTranscriptBook() }
+        ) { if captions.transcriptState == .failed { onRetry() } else { captions.rebuildTranscriptBook() } }
         }
     }
 

@@ -26,7 +26,6 @@ public final class PlayerRouter {
     private let playerState: PlayerStateStore
     private let tosState: TOSPlayerStateStore
     public let playbackLiveActivity: PlaybackLiveActivityController
-    public let transcriptSummary: TranscriptSummaryManager
 
     public init(
         playerState: PlayerStateStore,
@@ -36,13 +35,8 @@ public final class PlayerRouter {
     ) {
         self.playerState = playerState
         self.tosState = tosState
-        let transcriptSummary = TranscriptSummaryManager()
         let playbackLiveActivity = PlaybackLiveActivityController(settingsStore: settingsStore)
-        self.transcriptSummary = transcriptSummary
         self.playbackLiveActivity = playbackLiveActivity
-        transcriptSummary.onSummaryReady = { [weak playerState] videoID, text in
-            playerState?.vm.applyNowPlayingSummary(videoID: videoID, text: text)
-        }
     }
 
     /// One production route owns both streamed and downloaded video playback.
@@ -51,6 +45,13 @@ public final class PlayerRouter {
     public func open(video: Video, api: InnerTubeAPI) {
         if tosState.presentation != .hidden { tosState.stop() }
         playerState.play(video: video)
+    }
+
+    /// Starts playback in the feed thumbnail without presenting PlayerView.
+    /// Uses the same AVPlayer owner as full-screen and downloaded playback.
+    public func playInline(video: Video) {
+        if tosState.presentation != .hidden { tosState.stop() }
+        playerState.playInline(video: video)
     }
 
     public func closePlayback() {

@@ -52,6 +52,7 @@ public struct AppSettings: Codable {
     public var compactMediaLibraryCards: Bool
     /// Strict explicit-search filter backed by YouTube audio/caption metadata.
     public var russianOnlySearchEnabled: Bool
+    public var oscilloscopeEnabled: Bool
     public var hideShorts: Bool
     /// User-facing positive form of the persisted legacy `hideShorts` flag.
     /// Keeping the stored key preserves existing settings compatibility.
@@ -353,6 +354,7 @@ public struct AppSettings: Codable {
         compactSearchCards   = true
         compactMediaLibraryCards = true
         russianOnlySearchEnabled = true
+        oscilloscopeEnabled = false
         hideShorts           = true
         hideLiveShorts       = false
         hideVideoPremieres   = false
@@ -443,6 +445,7 @@ extension AppSettings {
         case compactSearchCards
         case compactMediaLibraryCards
         case russianOnlySearchEnabled
+        case oscilloscopeEnabled
         case hideShorts
         case hideLiveShorts
         case hideVideoPremieres
@@ -496,6 +499,7 @@ extension AppSettings {
         compactSearchCards           = c.safeDecode(Bool.self,              forKey: .compactSearchCards,           default: d.compactSearchCards)
         compactMediaLibraryCards     = c.safeDecode(Bool.self,              forKey: .compactMediaLibraryCards,     default: d.compactMediaLibraryCards)
         russianOnlySearchEnabled     = c.safeDecode(Bool.self,              forKey: .russianOnlySearchEnabled,     default: d.russianOnlySearchEnabled)
+        oscilloscopeEnabled = c.safeDecode(Bool.self, forKey: .oscilloscopeEnabled, default: false)
         hideShorts                   = c.safeDecode(Bool.self,              forKey: .hideShorts,                   default: d.hideShorts)
         hideLiveShorts               = c.safeDecode(Bool.self,              forKey: .hideLiveShorts,               default: d.hideLiveShorts)
         hideVideoPremieres           = c.safeDecode(Bool.self,              forKey: .hideVideoPremieres,           default: d.hideVideoPremieres)

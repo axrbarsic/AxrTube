@@ -5,6 +5,38 @@ import Foundation
 @Suite("Offline collection lifecycle")
 @MainActor
 struct DownloadStoreTests {
+    @Test("Deleting playing media stops it before cancelling and removing files")
+    func removalStopsPlaybackFirst() {
+        for ids: Set<String> in [["playing"], ["playing", "other"]] {
+            var events: [String] = []
+            OfflineRemovalTransaction.perform(
+                removingVideoIDs: ids, currentVideoID: "playing",
+                stopPlayback: { events.append("stop") },
+                cancelDownloads: { events.append("cancel") },
+                removeFiles: { events.append("remove") }
+            )
+            #expect(events == ["stop", "cancel", "remove"])
+        }
+    }
+
+    @Test("Deleting another video leaves unrelated playback running")
+    func removalKeepsOtherPlayback() {
+        var events: [String] = []
+        OfflineRemovalTransaction.perform(
+            removingVideoIDs: ["other"], currentVideoID: "playing",
+            stopPlayback: { events.append("stop") },
+            cancelDownloads: { events.append("cancel") },
+            removeFiles: { events.append("remove") }
+        )
+        #expect(events == ["cancel", "remove"])
+    }
+
+    @Test("A stale unavailable source remains retryable after resolver replacement")
+    func staleUnavailableSourceCanRetry() {
+        #expect(OfflineFailurePresentationPolicy.allowsManualRetry(for: .unavailable))
+        #expect(OfflineFailurePresentationPolicy.message(for: .unavailable).contains("Повторите"))
+    }
+
     private func fixture(id: String = "offline-test") -> Video {
         Video(
             id: id,
@@ -32,6 +64,11 @@ struct DownloadStoreTests {
         #expect(videoURL.pathExtension == "mp4")
         #expect(audioURL.pathExtension == "m4a")
         #expect(videoURL == store.destinationURL(for: "abc-123", kind: .video))
+        #expect(store.destinationURL(
+            for: "abc-123",
+            kind: .video,
+            fileExtension: ".movpkg"
+        ).pathExtension == "movpkg")
     }
 
     @Test("Completed representation prevents a duplicate begin")

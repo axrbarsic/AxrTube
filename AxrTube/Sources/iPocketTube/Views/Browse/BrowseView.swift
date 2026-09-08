@@ -217,12 +217,11 @@ struct VideoGridSection: View {
                         }
                     #else
 
-                    VideoCardView(video: video, compact: true)
+                    VideoCardView(video: video, compact: true, onSelect: { select(video) })
                         .padding(.horizontal)
                         .padding(.vertical, 2)
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .accessibilityValue(video.isShort ? "short" : "")
-                        .onTapGesture { select(video) }
                         .onAppear {
                             if video.id == videos.last?.id { loadMore?() }
                         }
@@ -272,10 +271,9 @@ struct VideoGridSection: View {
             )
             LazyVGrid(columns: columns, spacing: videoGridRowSpacing) {
                 ForEach(videos) { video in
-                    VideoCardView(video: video, compact: false)
+                    VideoCardView(video: video, compact: false, onSelect: { select(video) })
                         .accessibilityIdentifier("video.card.\(video.id)")
                         .accessibilityValue(video.isShort ? "short" : "")
-                        .onTapGesture { select(video) }
                         .onAppear {
                             if video.id == videos.last?.id { loadMore?() }
                         }
@@ -309,10 +307,9 @@ struct VideoRowSection: View {
                         .frame(width: 360)
                         .accessibilityIdentifier("video.card.\(video.id)")
                     #else
-                    VideoCardView(video: video, compact: false)
+                    VideoCardView(video: video, compact: false, onSelect: { select(video) })
                         .frame(width: 220)
                         .accessibilityIdentifier("video.card.\(video.id)")
-                        .onTapGesture { select(video) }
                     #endif
                 }
             }

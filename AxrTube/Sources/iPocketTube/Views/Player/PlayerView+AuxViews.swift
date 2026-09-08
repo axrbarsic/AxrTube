@@ -96,12 +96,10 @@ struct RelatedVideosView: View {
         ScrollView {
             LazyVStack(spacing: 8) {
                 ForEach(videos) { video in
-                    VideoCardView(video: video, compact: true)
+                    VideoCardView(video: video, compact: true, onSelect: {
+                        onSelect(video)
+                    })
                         .padding(.horizontal)
-                        .onTapGesture {
-                            iPocketTubeHaptics.shared.perform(.contentSelection)
-                            onSelect(video)
-                        }
                 }
             }
         }

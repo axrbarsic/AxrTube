@@ -129,8 +129,7 @@ extension PlaybackViewModel {
         }
         #endif
         guard player.currentItem != nil,
-              !isHandlingAudioInterruption,
-              !audioInterruptionState.mediaServicesAreLost else {
+              audioInterruptionState.allowsAutomaticPlayback else {
             AudioDiagnostics.shared.record(
                 event: "recovery.resume.rejected",
                 decision: reason,
@@ -143,9 +142,7 @@ extension PlaybackViewModel {
             videoEnded = false
             seek(to: 0)
         }
-        player.playImmediately(atRate: Float(settings.playbackSpeed))
-        audioInterruptionState.playbackBecameActive()
-        isPlaying = true
+        guard requestPlaybackStart(reason: reason) else { return false }
         if countAutomaticResume { audioInterruptionResumeCount &+= 1 }
         updateNowPlayingPlayback()
         AudioDiagnostics.shared.record(
@@ -506,6 +503,14 @@ extension PlaybackViewModel {
             )
             return
         }
+        // Session activation must succeed before a manual Play can take audio
+        // ownership back from a missing-ended interruption.
+        guard Self.activatePlaybackAudioSession(reason: reason) else {
+            player.pause()
+            isPlaying = false
+            updateNowPlayingPlayback()
+            return
+        }
         let wasRecoveringMissingEnded = isHandlingAudioInterruption
         let action = audioInterruptionState.userRequestedPlay()
         if wasRecoveringMissingEnded {
@@ -516,12 +521,6 @@ extension PlaybackViewModel {
                 recoveryGeneration: audioInterruptionGeneration,
                 itemID: currentVideo?.id
             )
-        }
-        guard Self.activatePlaybackAudioSession(reason: reason) else {
-            player.pause()
-            isPlaying = false
-            updateNowPlayingPlayback()
-            return
         }
         _ = resumeAudiblePlayback(reason: reason)
     }
@@ -570,6 +569,7 @@ extension PlaybackViewModel {
                 commandGeneration: nowPlayingSourceState.generation
             )
             guard action == .pauseAndYield else {
+                enforcePlaybackAuthority()
                 playerLog.notice("[interruption] duplicate began ignored")
                 return
             }

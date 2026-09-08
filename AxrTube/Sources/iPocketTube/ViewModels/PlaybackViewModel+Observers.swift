@@ -76,6 +76,14 @@ extension PlaybackViewModel {
             guard let self, let newRate = change.newValue else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                if self.player.rate > 0, self.enforcePlaybackAuthority() {
+                    #if canImport(UIKit)
+                    AudioDiagnostics.shared.record(event: "rate.unauthorized.blocked",
+                        decision: "interruptionOrUserPauseWins", player: self.player,
+                        recoveryGeneration: self.audioInterruptionGeneration)
+                    #endif
+                    return
+                }
                 #if os(iOS)
                 if LocalDubbingAudioOwnershipPolicy.shouldSuppressSourceRate(
                     localPlaybackIsActive: self.localDubbingManager.isPlaying,
@@ -150,7 +158,7 @@ extension PlaybackViewModel {
                             itemID: self.currentVideo?.id
                         )
                         #endif
-                        self.player.playImmediately(atRate: Float(self.settings.playbackSpeed))
+                        self.requestPlaybackStart(reason: "scene or buffer recovery")
                         #if canImport(UIKit)
                         self.updateNowPlayingInfo()
                         self.updateNowPlayingPlayback()
@@ -171,7 +179,7 @@ extension PlaybackViewModel {
                             itemID: self.currentVideo?.id
                         )
                         #endif
-                        self.player.playImmediately(atRate: Float(self.settings.playbackSpeed))
+                        self.requestPlaybackStart(reason: "scene or buffer recovery")
                         return
                     }
                     self.isPlaying = false
@@ -245,8 +253,7 @@ extension PlaybackViewModel {
                                     guard let self, !self.isPlaying, self.player.rate == 0,
                                           !self.isHandlingAudioInterruption,
                                           self.audioInterruptionGeneration == interruptionGeneration else { return }
-                                    self.player.rate = Float(self.settings.playbackSpeed)
-                                    self.isPlaying = true
+                                    guard self.requestPlaybackStart(reason: "stall recovery") else { return }
                                     playerLog.notice("[rateObserver] recovery#\(recoveryCount): rate restored, isPlaying=true")
                                 }
                             }

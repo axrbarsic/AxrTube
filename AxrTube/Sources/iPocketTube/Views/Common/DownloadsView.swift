@@ -17,6 +17,7 @@ struct DownloadsView: View {
     @State private var showClearConfirmation = false
     #if os(iOS)
     @State private var showTranscript = false
+    @State private var transcriptVideo: Video?
     #endif
 
     var body: some View {
@@ -64,8 +65,7 @@ struct DownloadsView: View {
                                         playerState.vm.commitScrub()
                                     },
                                     onTranscript: {
-                                        iPocketTubeHaptics.shared.perform(.contentSelection)
-                                        showTranscript = true
+                                        openTranscript(for: entry)
                                     },
                                     onRetry: { retry(entry) },
                                     onDelete: { deleteConfirmationEntry = entry }
@@ -78,19 +78,17 @@ struct DownloadsView: View {
                                     onRetry: { retry(entry) },
                                     onCancel: {
                                         iPocketTubeHaptics.shared.perform(.downloadPauseResume)
-                                        downloadService.cancel()
+                                        downloadService.pause(videoID: entry.videoId)
                                     },
                                     onPlay: {
                                         iPocketTubeHaptics.shared.perform(.downloadSelection)
-                                        playerRouter.open(video: entry.video, api: api)
+                                        perform(intent: .playback, for: entry)
+                                    },
+                                    onTranscript: {
+                                        openTranscript(for: entry)
                                     }
                                 )
                                 .contentShape(Rectangle())
-                                .onTapGesture {
-                                    guard entry.status == .completed else { return }
-                                    iPocketTubeHaptics.shared.perform(.downloadSelection)
-                                    playerRouter.open(video: entry.video, api: api)
-                                }
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button(role: .destructive) {
                                         iPocketTubeHaptics.shared.perform(.primaryAction)
@@ -105,6 +103,24 @@ struct DownloadsView: View {
                         .listRowSeparator(.hidden)
                         .listRowBackground(Color.clear)
                         .contextMenu {
+                            if entry.status == .completed, !isCurrent {
+                                Button {
+                                    iPocketTubeHaptics.shared.perform(.downloadSelection)
+                                    perform(intent: .playback, for: entry)
+                                } label: {
+                                    Label("Play", systemImage: "play.fill")
+                                }
+                            }
+                            Button {
+                                openTranscript(for: entry)
+                            } label: {
+                                Label("Показать стенограмму", systemImage: "text.quote")
+                            }
+                            if let shareURL = URL(string: "https://www.youtube.com/watch?v=\(entry.videoId)") {
+                                ShareLink(item: shareURL) {
+                                    Label("Share", systemImage: AppSymbol.share)
+                                }
+                            }
                             Button(role: .destructive) {
                                 iPocketTubeHaptics.shared.perform(.primaryAction)
                                 deleteConfirmationEntry = entry
@@ -132,7 +148,7 @@ struct DownloadsView: View {
             Button("Delete", role: .destructive) {
                 iPocketTubeHaptics.shared.perform(.downloadDelete)
                 if let entry = deleteConfirmationEntry {
-                    downloadStore.remove(videoId: entry.videoId, kind: entry.kind)
+                    removeDownloads([entry])
                 }
                 deleteConfirmationEntry = nil
             }
@@ -146,7 +162,7 @@ struct DownloadsView: View {
         .alert("Clear Offline Collection", isPresented: $showClearConfirmation) {
             Button("Clear All", role: .destructive) {
                 iPocketTubeHaptics.shared.perform(.downloadClear)
-                downloadStore.clearAll()
+                removeDownloads(downloadStore.entries, clearAll: true)
             }
             Button("Cancel", role: .cancel) {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
@@ -155,8 +171,16 @@ struct DownloadsView: View {
             Text("Все сохранённые офлайн-видео будут удалены из AxrTube.")
         }
         .fullScreenCover(isPresented: $showTranscript) {
-            CurrentPlaybackTranscriptPanel {
-                showTranscript = false
+            if let video = transcriptVideo, video.id != playerState.currentVideo?.id {
+                SavedVideoTranscriptPanel(video: video, api: api,
+                    translation: playerState.vm.russianTranscriptTranslation) {
+                    showTranscript = false
+                }
+                .preferredColorScheme(settingsStore.settings.themeName.colorScheme)
+            } else {
+                CurrentPlaybackTranscriptPanel {
+                    showTranscript = false
+                }
             }
         }
     }
@@ -216,12 +240,45 @@ struct DownloadsView: View {
         .padding(.bottom, 10)
     }
 
+    private func removeDownloads(_ entries: [DownloadedVideo], clearAll: Bool = false) {
+        let videoIDs = Set(entries.map(\.videoId))
+        OfflineRemovalTransaction.perform(
+            removingVideoIDs: videoIDs,
+            currentVideoID: playerState.currentVideo?.id,
+            stopPlayback: { playerState.stop(discardItem: true) },
+            cancelDownloads: { downloadService.cancel(videoIDs: videoIDs) },
+            removeFiles: {
+                if clearAll {
+                    downloadStore.clearAll()
+                } else {
+                    for entry in entries {
+                        downloadStore.remove(videoId: entry.videoId, kind: entry.kind)
+                    }
+                }
+            }
+        )
+    }
+
     private func retry(_ entry: DownloadedVideo) {
         iPocketTubeHaptics.shared.perform(.downloadRetry)
         downloadService.retry(
             entry: entry,
             storageLimitMB: settingsStore.settings.offlineStorageLimitMB
         )
+    }
+
+    private func perform(intent: VideoCardIntent, for entry: DownloadedVideo) {
+        switch VideoCardInteractionPolicy.presentation(for: intent) {
+        case .none: return
+        case .inlinePlayer: playerRouter.playInline(video: entry.video)
+        case .player: playerRouter.open(video: entry.video, api: api)
+        }
+    }
+
+    private func openTranscript(for entry: DownloadedVideo) {
+        iPocketTubeHaptics.shared.perform(.contentSelection)
+        transcriptVideo = entry.video
+        showTranscript = true
     }
 
     private var sortedEntries: [DownloadedVideo] {
@@ -363,15 +420,6 @@ private struct DownloadedNowPlayingCard: View {
                 ProgressView(value: downloadProgress)
                     .tint(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: 1, y: 0.55, anchor: .center)
-                Button(action: onTranscript) {
-                    Label("Стенограмма", systemImage: "text.quote")
-                        .font(.subheadline.weight(.semibold))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                }
-                .buttonStyle(.bordered)
-                .tint(.red)
-                .accessibilityLabel("Открыть стенограмму")
-                .accessibilityIdentifier("downloads.nowPlaying.transcriptButton")
                 if entry.status == .finalizationPending {
                     Button("Retry Offline Saving", action: onRetry)
                         .buttonStyle(.borderedProminent)
@@ -380,6 +428,16 @@ private struct DownloadedNowPlayingCard: View {
                         .frame(minHeight: 44)
                 }
             }
+
+            Button(action: onTranscript) {
+                Label("Показать стенограмму", systemImage: "text.quote")
+                    .font(.subheadline.weight(.semibold))
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .tint(iPocketTubeVisualTokens.mint)
+            .accessibilityLabel("Открыть стенограмму")
+            .accessibilityIdentifier("downloads.nowPlaying.transcriptButton")
         }
         .iPocketTubeActivePlaybackSurface(cornerRadius: 18, contentPadding: 14)
         .overlay(alignment: .topLeading) {
@@ -404,6 +462,7 @@ private struct DownloadedMediaRow: View {
     let onRetry: () -> Void
     let onCancel: () -> Void
     let onPlay: () -> Void
+    let onTranscript: () -> Void
 
     var body: some View {
         HStack(alignment: .top, spacing: compact ? 10 : 12) {
@@ -412,10 +471,14 @@ private struct DownloadedMediaRow: View {
                 width: compact ? 84 : 100,
                 height: compact ? 47 : 56
             )
+            .contentShape(Rectangle())
+            .onTapGesture { if entry.status == .completed { onPlay() } }
             VStack(alignment: .leading, spacing: compact ? 3 : 5) {
                 Text(entry.title)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(compact ? 1 : 2)
+                    .contentShape(Rectangle())
+                    .onTapGesture { if entry.status == .completed { onPlay() } }
                 Text(entry.channelTitle)
                     .font(.caption)
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
@@ -430,6 +493,15 @@ private struct DownloadedMediaRow: View {
                     DownloadTimestampLabel(date: entry.downloadedAt)
                 }
                 statusContent
+                Button(action: onTranscript) {
+                    Label("Показать стенограмму", systemImage: "text.quote")
+                        .font(.caption.weight(.semibold))
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(iPocketTubeVisualTokens.mint)
+                .accessibilityLabel("Открыть стенограмму")
+                .accessibilityIdentifier("downloads.transcriptButton")
             }
             Spacer(minLength: 4)
             if entry.status == .completed {

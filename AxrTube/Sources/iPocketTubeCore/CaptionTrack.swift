@@ -72,7 +72,11 @@ public actor WebVTTParser {
     public func fetchCues(from url: URL) async throws -> [CaptionCue] {
         var request = URLRequest(url: url)
         request.setValue("text/vtt, */*", forHTTPHeaderField: "Accept")
-        let (data, _) = try await session.data(for: request)
+        let (data, response) = try await session.data(for: request)
+        if let response = response as? HTTPURLResponse,
+           !(200...299).contains(response.statusCode) {
+            throw URLError(.badServerResponse)
+        }
         guard let text = String(data: data, encoding: .utf8) else {
             throw URLError(.cannotDecodeContentData)
         }

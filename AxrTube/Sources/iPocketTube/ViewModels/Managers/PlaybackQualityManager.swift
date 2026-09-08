@@ -260,7 +260,6 @@ final class PlaybackQualityManager {
                 case .readyToPlay:
                     let size = item.presentationSize
                     playerLog.notice("✅ Quality-switch readyToPlay — presentationSize=\(Int(size.width))x\(Int(size.height))")
-                    self.player.rate = Float(self.delegate?.settings.playbackSpeed ?? 1)
                     self.delegate?.qualityItemDidBecomeReady(item, seekTo: time)
                 case .failed:
                     let err = item.error.map { "\($0)" } ?? "nil"
@@ -534,7 +533,6 @@ final class PlaybackQualityManager {
                 guard let self, !Task.isCancelled else { return }
                 switch status {
                 case .readyToPlay:
-                    self.player.rate = Float(self.delegate?.settings.playbackSpeed ?? 1)
                     self.delegate?.qualityItemDidBecomeReady(item, seekTo: time)
                     playerLog.notice("✅ H.264-capped AVPlayerItem readyToPlay")
                 case .failed:
@@ -608,7 +606,6 @@ final class PlaybackQualityManager {
                 case .readyToPlay:
                     let size = item.presentationSize
                     playerLog.notice("✅ [wkHLS quality] readyToPlay — presentationSize=\(Int(size.width))x\(Int(size.height))")
-                    self.player.rate = Float(self.delegate?.settings.playbackSpeed ?? 1)
                     self.delegate?.qualityItemDidBecomeReady(item, seekTo: time)
                 case .failed:
                     let err = item.error.map { "\($0)" } ?? "nil"

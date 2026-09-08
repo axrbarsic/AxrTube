@@ -8,6 +8,7 @@ struct RealtimeAudioScopeSnapshot: Sendable {
     let identity: AudioScopeRenderIdentity
     let sequence: UInt64
     let samples: [Float]
+    let waveform: [Float]
 }
 
 private final class WeakAudioScopeContext: @unchecked Sendable {
@@ -63,6 +64,7 @@ final class AudioScopeTapContext: @unchecked Sendable {
     private static let capacity = 256
     private var lock = os_unfair_lock_s()
     private var values = Array(repeating: Float.zero, count: capacity)
+    private var waveform = Array(repeating: Float.zero, count: 128)
     private var times = Array(repeating: TimeInterval.zero, count: capacity)
     private var writeIndex = 0
     private var storedCount = 0
@@ -148,6 +150,23 @@ final class AudioScopeTapContext: @unchecked Sendable {
 
         elapsedTime += Double(frameCount) / sampleRate
         guard os_unfair_lock_trylock(&lock) else { return }
+        // Capture signed PCM from the latest audio buffer, not a synthetic wave.
+        if let buffer = buffers.first, let data = buffer.mData {
+            let scalarSize = Int(bitsPerChannel / 8)
+            let count = scalarSize > 0 ? Int(buffer.mDataByteSize) / scalarSize : 0
+            for point in waveform.indices {
+                let index = count > 0 ? min(count - 1, point * count / waveform.count) : 0
+                var value: Float = 0
+                if count > 0, isFloat, bitsPerChannel == 32 {
+                    value = data.assumingMemoryBound(to: Float.self)[index]
+                } else if count > 0, isSignedInteger, bitsPerChannel == 16 {
+                    value = Float(data.assumingMemoryBound(to: Int16.self)[index]) / 32_768
+                } else if count > 0, isSignedInteger, bitsPerChannel == 32 {
+                    value = Float(data.assumingMemoryBound(to: Int32.self)[index]) / 2_147_483_648
+                }
+                waveform[point] = value.isFinite ? min(1, max(-1, value / max(0.02, gainReference * 3))) : 0
+            }
+        }
         if startsNewStream {
             writeIndex = 0
             storedCount = 0
@@ -198,7 +217,8 @@ final class AudioScopeTapContext: @unchecked Sendable {
         return RealtimeAudioScopeSnapshot(
             identity: identity,
             sequence: sequence,
-            samples: bars
+            samples: bars,
+            waveform: waveform
         )
     }
 }

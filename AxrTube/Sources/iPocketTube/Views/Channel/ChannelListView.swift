@@ -10,6 +10,7 @@ import iPocketTubeCore
 struct ChannelListView: View {
     let channels: [Channel]
     let onSelect: (Channel) -> Void
+    @State private var pins = PinnedChannelStore.shared
     #if os(tvOS)
     @FocusState private var focusedChannelId: String?
     #endif
@@ -17,7 +18,8 @@ struct ChannelListView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 8) {
-                ForEach(channels) { channel in
+                ForEach(pins.orderedChannels(channels)) { channel in
+                    HStack(spacing: 4) {
                     Button {
                         iPocketTubeHaptics.shared.perform(.channelSelection)
                         onSelect(channel)
@@ -36,6 +38,16 @@ struct ChannelListView: View {
                     #if os(tvOS)
                     .focused($focusedChannelId, equals: channel.id)
                     #endif
+                    Button {
+                        pins.toggle(channel)
+                    } label: {
+                        Image(systemName: pins.contains(channel.id) ? "pin.fill" : "pin")
+                            .frame(width: 44, height: 64)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(pins.contains(channel.id) ? iPocketTubeVisualTokens.mint : iPocketTubeVisualTokens.secondaryText)
+                    .accessibilityLabel("\(pins.contains(channel.id) ? "Открепить" : "Закрепить"): \(channel.title)")
+                    }
                 }
             }
             .padding(.horizontal, iPocketTubeVisualTokens.horizontalPadding)

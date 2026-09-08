@@ -116,24 +116,15 @@ public struct PlaylistView: View {
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
                         #else
-                        VideoCardView(video: video, compact: true, currentPlaylistId: playlistId)
+                        VideoCardView(
+                            video: video,
+                            compact: true,
+                            currentPlaylistId: playlistId,
+                            onSelect: { selectVideo(video) }
+                        )
                             .padding(.horizontal)
                             .padding(.vertical, 6)
                             .accessibilityIdentifier("video.card.\(video.id)")
-                            .onTapGesture {
-                                iPocketTubeHaptics.shared.perform(.contentSelection)
-                                #if os(iOS)
-                                Task { @MainActor in
-                                    let captured = displayVideos
-                                    await CurrentQueueStore.shared.replaceAll(with: captured)
-                                    let startIdx = video.playlistIndex ?? captured.firstIndex(where: { $0.id == video.id }) ?? 0
-                                    let toPlay = await CurrentQueueStore.shared.videoAt(index: startIdx) ?? video
-                                    playerRouter.open(video: toPlay, api: api)
-                                }
-                                #else
-                                selectedVideo = video
-                                #endif
-                            }
                             .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
                         #endif
                         Divider().padding(.horizontal)
@@ -178,27 +169,13 @@ public struct PlaylistView: View {
                 #else
                 LazyVGrid(columns: videoGridColumns, spacing: videoGridRowSpacing) {
                     ForEach(displayVideos) { video in
-                        VideoCardView(video: video, compact: false, currentPlaylistId: playlistId)
+                        VideoCardView(
+                            video: video,
+                            compact: false,
+                            currentPlaylistId: playlistId,
+                            onSelect: { selectVideo(video) }
+                        )
                             .accessibilityIdentifier("video.card.\(video.id)")
-                            .onTapGesture {
-                                iPocketTubeHaptics.shared.perform(.contentSelection)
-                                #if os(iOS)
-                                Task { @MainActor in
-                                    let captured = displayVideos
-                                    await CurrentQueueStore.shared.replaceAll(with: captured)
-                                    let startIdx = video.playlistIndex ?? captured.firstIndex(where: { $0.id == video.id }) ?? 0
-                                    let toPlay = await CurrentQueueStore.shared.videoAt(index: startIdx) ?? video
-                                    playerRouter.open(video: toPlay, api: api)
-                                }
-                                #else
-                                Task { @MainActor in
-                                    let captured = displayVideos
-                                    await CurrentQueueStore.shared.replaceAll(with: captured)
-                                    let startIdx = video.playlistIndex ?? captured.firstIndex(where: { $0.id == video.id }) ?? 0
-                                    selectedVideo = await CurrentQueueStore.shared.videoAt(index: startIdx) ?? video
-                                }
-                                #endif
-                            }
                             .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
                     }
                 }
@@ -216,6 +193,23 @@ public struct PlaylistView: View {
 
     private var displayVideos: [Video] {
         vm.videos.filter { !store.settings.hideShorts || !$0.isShort }
+    }
+
+    private func selectVideo(_ video: Video) {
+        iPocketTubeHaptics.shared.perform(.contentSelection)
+        #if os(iOS)
+        Task { @MainActor in
+            let captured = displayVideos
+            await CurrentQueueStore.shared.replaceAll(with: captured)
+            let startIndex = video.playlistIndex
+                ?? captured.firstIndex(where: { $0.id == video.id })
+                ?? 0
+            let item = await CurrentQueueStore.shared.videoAt(index: startIndex) ?? video
+            playerRouter.open(video: item, api: api)
+        }
+        #else
+        selectedVideo = video
+        #endif
     }
 
     private var usesCompactCards: Bool {

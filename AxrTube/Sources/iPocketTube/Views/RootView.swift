@@ -20,7 +20,10 @@ public struct RootView: View {
     /// Shared download service — observed here so the completion alert is shown
     /// at a stable level unaffected by context menu dismiss animations on cards.
     @Environment(VideoDownloadService.self) private var cardDownloadService
-    @State private var cardDownloadAlertItem: DownloadAlertItem?
+    #if os(iOS)
+    @Environment(PlayerStateStore.self) private var playerState
+    #endif
+    @State private var downloadToast: String?
 
     public init() {}
 
@@ -45,48 +48,23 @@ public struct RootView: View {
         .onChange(of: cardDownloadService.state) { _, newState in
             switch newState {
             case .done:
-                if cardDownloadService.lastWasAutomatic {
-                    cardDownloadService.reset()
-                    return
-                }
-                cardDownloadAlertItem = DownloadAlertItem(
-                    title: String(localized: "Видео сохранено", bundle: .module),
-                    message: String(localized: "Ролик доступен в медиатеке AxrTube без интернета.", bundle: .module)
-                )
+                downloadToast = "Видео сохранено и доступно без интернета"
                 iPocketTubeHaptics.shared.perform(.operationSucceeded)
                 cardDownloadService.reset()
             case .failed(let reason):
-                if cardDownloadService.lastWasAutomatic {
-                    cardDownloadService.reset()
-                    return
-                }
-                cardDownloadAlertItem = DownloadAlertItem(
-                    title: String(localized: "Download Failed", bundle: .module),
-                    message: reason
-                )
+                downloadToast = "Не удалось сохранить видео. \(reason)"
                 iPocketTubeHaptics.shared.perform(.operationFailed)
                 cardDownloadService.reset()
             default:
                 break
             }
         }
-        .alert(
-            cardDownloadAlertItem?.title ?? "",
-            isPresented: Binding(
-                get: { cardDownloadAlertItem != nil },
-                set: { if !$0 { cardDownloadAlertItem = nil } }
-            ),
-            presenting: cardDownloadAlertItem
-        ) { _ in
-            Button("OK") {
-                iPocketTubeHaptics.shared.perform(.primaryAction)
-                cardDownloadAlertItem = nil
-            }
-        } message: { item in
-            Text(item.message)
-        }
+        .toast(message: $downloadToast, duration: 4, bottomPadding: 100)
         #endif
         #if os(iOS)
+        .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in
+            cardDownloadService.prioritizePlayback(playerState.vm.player, preparing: preparing)
+        }
         // Deep link is handled by MainTabView.onChange(of: browseVM.deepLinkedVideo)
         // which calls playerRouter.open(video:api:). No landscapePlayerCover needed here.
         #endif

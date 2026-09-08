@@ -1,6 +1,22 @@
 import Foundation
 import Observation
 
+/// Shared by single-item deletion and collection clearing. Order matters: the
+/// player must release removed media before its files leave the collection.
+public enum OfflineRemovalTransaction {
+    @MainActor
+    public static func perform(
+        removingVideoIDs: Set<String>, currentVideoID: String?,
+        stopPlayback: () -> Void, cancelDownloads: () -> Void, removeFiles: () -> Void
+    ) {
+        if let currentVideoID, removingVideoIDs.contains(currentVideoID) {
+            stopPlayback()
+        }
+        cancelDownloads()
+        removeFiles()
+    }
+}
+
 public enum OfflineMediaKind: String, Codable, CaseIterable, Sendable {
     case video
     case audio
@@ -136,7 +152,7 @@ public enum OfflineFailurePresentationPolicy {
         case .regionRestricted:
             return "Ролик недоступен в вашем регионе."
         case .unavailable:
-            return "Ролик недоступен у источника."
+            return "Не удалось получить офлайн-поток. Повторите попытку."
         case .transientNetwork:
             return "Сеть временно недоступна. Повторите попытку."
         case .resolverFailure:
@@ -146,9 +162,9 @@ public enum OfflineFailurePresentationPolicy {
 
     public static func allowsManualRetry(for reason: OfflineFailureReason?) -> Bool {
         switch reason {
-        case .ageRestricted, .loginRequired, .regionRestricted, .unavailable:
+        case .ageRestricted, .loginRequired, .regionRestricted:
             return false
-        case .signInRequired, .botChallenge, .transientNetwork, .resolverFailure, nil:
+        case .signInRequired, .botChallenge, .transientNetwork, .resolverFailure, .unavailable, nil:
             return true
         }
     }
@@ -286,14 +302,84 @@ public final class DownloadStore {
             // Legacy on-disk directory retained so existing offline manifests remain addressable.
             .appendingPathComponent("SmartTubeDownloads")
         loadManifest()
+        reconcileLocalFiles()
+    }
+
+    /// Repair metadata only. Never remove media, start a transfer, or change an
+    /// active download. Container UUIDs can change after an install-over.
+    @discardableResult
+    public func reconcileLocalFiles() -> Int {
+        let files = (try? FileManager.default.contentsOfDirectory(
+            at: downloadsDirectory, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey]
+        )) ?? []
+        var repaired = 0
+        for index in entries.indices {
+            let entry = entries[index]
+            guard !entry.status.isActive, entry.status != .paused, entry.status != .cancelled else { continue }
+            guard entry.status == .completed || entry.errorMessage == "Offline file is missing. Tap Retry." else { continue }
+            guard let file = recoveredLocalURL(for: entry, files: files),
+                  let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                  size > 0 else { continue }
+            guard entry.fileURL.resolvingSymlinksInPath() != file.resolvingSymlinksInPath()
+                    || entry.status != .completed else { continue }
+            entries[index] = DownloadedVideo(
+                videoId: entry.videoId, title: entry.title, channelTitle: entry.channelTitle,
+                thumbnailURL: entry.thumbnailURL, duration: entry.duration,
+                fileURL: file, downloadedAt: entry.downloadedAt, lastPlayedAt: entry.lastPlayedAt,
+                kind: entry.kind, status: entry.status, progress: entry.progress,
+                fileSizeBytes: entry.fileSizeBytes, errorMessage: entry.errorMessage,
+                failureReason: entry.failureReason, retryCount: entry.retryCount,
+                resumePolicy: entry.resumePolicy
+            )
+            entries[index].status = .completed
+            entries[index].progress = 1
+            entries[index].fileSizeBytes = Int64(size)
+            entries[index].failureReason = nil
+            entries[index].errorMessage = nil
+            entries[index].downloadedAt = entry.downloadedAt ?? inferredFinalizationDate(
+                for: file, status: .completed, fileExists: true
+            )
+            repaired += 1
+        }
+        if repaired > 0 { saveManifest() }
+        return repaired
+    }
+
+    private func recoveredLocalURL(for entry: DownloadedVideo, files: [URL]) -> URL? {
+        // Rebase a known filename into the current container before any search.
+        let rebased = downloadsDirectory.appendingPathComponent(entry.fileURL.lastPathComponent)
+        if FileManager.default.fileExists(atPath: rebased.path) { return rebased }
+        let expected = destinationURL(for: entry.videoId, kind: entry.kind)
+        if FileManager.default.fileExists(atPath: expected.path) { return expected }
+        guard entry.kind == .video else { return nil }
+        let candidates = files.filter { url in
+            guard url.pathExtension == "mp4",
+                  let name = url.deletingPathExtension().lastPathComponent.removingPercentEncoding,
+                  name.hasPrefix(entry.videoId + "-"),
+                  UUID(uuidString: String(name.dropFirst(entry.videoId.count + 1))) != nil,
+                  let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true, (values.fileSize ?? 0) > 12,
+                  let handle = try? FileHandle(forReadingFrom: url) else { return false }
+            defer { try? handle.close() }
+            // Finalized ISO media only. Partial files and unrelated names are
+            // not recovery candidates; ambiguity never chooses the newest file.
+            guard let header = try? handle.read(upToCount: 12), header.count >= 8 else { return false }
+            return String(data: header[4..<8], encoding: .ascii) == "ftyp"
+        }
+        return candidates.count == 1 ? candidates[0] : nil
     }
 
     public func destinationURL(
         for videoId: String,
-        kind: OfflineMediaKind = .video
+        kind: OfflineMediaKind = .video,
+        fileExtension: String? = nil
     ) -> URL {
         let encoded = videoId.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? videoId
-        return downloadsDirectory.appendingPathComponent("\(encoded).\(kind.fileExtension)")
+        let resolvedExtension = fileExtension?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: ".", with: "")
+        let safeExtension = resolvedExtension.flatMap { $0.isEmpty ? nil : $0 } ?? kind.fileExtension
+        return downloadsDirectory.appendingPathComponent("\(encoded).\(safeExtension)")
     }
 
     public var completedSizeBytes: Int64 {
@@ -311,7 +397,24 @@ public final class DownloadStore {
     /// atomically persisted verified range maps, never from a volatile UI value
     /// or the sparse file's logical length.
     public var partialSizeBytes: Int64 {
-        partialSnapshots().reduce(0) { $0 + $1.allocatedBytes }
+        partialSnapshots().reduce(0) { $0 + $1.allocatedBytes } + rangePieceSizeBytes
+    }
+
+    private var rangePiecesDirectory: URL { downloadsDirectory.appendingPathComponent(".range-pieces", isDirectory: true) }
+    private var rangePieceSizeBytes: Int64 {
+        guard let files = FileManager.default.enumerator(at: rangePiecesDirectory,
+            includingPropertiesForKeys: [.fileAllocatedSizeKey, .isRegularFileKey]) else { return 0 }
+        return files.reduce(Int64(0)) { sum, item in
+            guard let url = item as? URL,
+                  let values = try? url.resourceValues(forKeys: [.fileAllocatedSizeKey, .isRegularFileKey]),
+                  values.isRegularFile == true else { return sum }
+            return sum + Int64(values.fileAllocatedSize ?? 0)
+        }
+    }
+    private func removeRangePieces(videoId: String) {
+        let name = videoId.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? videoId
+        try? FileManager.default.removeItem(at: rangePiecesDirectory.appendingPathComponent(name, isDirectory: true))
+        UserDefaults.standard.removeObject(forKey: "offline.resume.\(videoId)")
     }
 
     /// Storage UI and the storage cap must include both final assets and durable
@@ -495,6 +598,7 @@ public final class DownloadStore {
     }
 
     public func remove(videoId: String, kind: OfflineMediaKind) {
+        if kind == .video { removeRangePieces(videoId: videoId) }
         if let entry = entry(videoId: videoId, kind: kind) {
             try? FileManager.default.removeItem(at: entry.fileURL)
         }
@@ -505,6 +609,7 @@ public final class DownloadStore {
 
     /// Historical API removes every representation of the video.
     public func remove(videoId: String) {
+        removeRangePieces(videoId: videoId)
         for entry in entries where entry.videoId == videoId {
             try? FileManager.default.removeItem(at: entry.fileURL)
         }
@@ -516,6 +621,7 @@ public final class DownloadStore {
     }
 
     public func clearAll() {
+        for entry in entries { removeRangePieces(videoId: entry.videoId) }
         for entry in entries { try? FileManager.default.removeItem(at: entry.fileURL) }
         try? FileManager.default.removeItem(at: partialDownloadsDirectory)
         entries.removeAll()
@@ -529,11 +635,12 @@ public final class DownloadStore {
             return
         }
         let fileManager = FileManager.default
+        let localFiles = (try? fileManager.contentsOfDirectory(
+            at: downloadsDirectory, includingPropertiesForKeys: nil
+        )) ?? []
         entries = decoded.compactMap { stored in
             let expectedURL = destinationURL(for: stored.videoId, kind: stored.kind)
-            let actualURL = fileManager.fileExists(atPath: stored.fileURL.path)
-                ? stored.fileURL
-                : expectedURL
+            let actualURL = recoveredLocalURL(for: stored, files: localFiles) ?? expectedURL
             let exists = fileManager.fileExists(atPath: actualURL.path)
             let migratedDownloadedAt = stored.downloadedAt
                 ?? inferredFinalizationDate(
@@ -580,7 +687,8 @@ public final class DownloadStore {
                 restored.errorMessage = "Offline file is missing. Tap Retry."
             } else if restored.status != .completed,
                       exists,
-                      actualURL.standardizedFileURL == expectedURL.standardizedFileURL,
+                      (actualURL.standardizedFileURL == expectedURL.standardizedFileURL
+                        || restored.errorMessage == "Offline file is missing. Tap Retry."),
                       let size = try? actualURL.resourceValues(forKeys: [.fileSizeKey]).fileSize,
                       size > 0 {
                 // Atomic media installation may finish immediately before a

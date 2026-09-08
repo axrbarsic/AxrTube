@@ -118,6 +118,53 @@ public enum VideoCardLayoutPolicy {
     }
 }
 
+public enum VideoCardIntent: Sendable, Equatable {
+    case surfaceTap
+    case playback
+    case download
+}
+
+public enum VideoCardPresentation: Sendable, Equatable {
+    case none
+    case inlinePlayer
+    case player
+}
+
+public enum VideoCardCapability: Sendable, Equatable, Hashable {
+    case transcript
+    case menuActions
+}
+
+/// Keeps an explicit download action separate from a card's primary playback
+/// action. Download progress is never allowed to become a presentation trigger.
+public enum VideoCardInteractionPolicy {
+    public static func presentation(for intent: VideoCardIntent) -> VideoCardPresentation {
+        switch intent {
+        case .surfaceTap: .none
+        case .playback: .inlinePlayer
+        case .download: .none
+        }
+    }
+
+    public static func capabilities(whileDownloading: Bool) -> Set<VideoCardCapability> {
+        [.transcript, .menuActions]
+    }
+}
+
+/// Inline playback always requests durable offline storage, independent of the
+/// optional full-screen auto-save setting. Completed and active entries remain
+/// idempotent, so transport taps cannot create duplicate download jobs.
+public enum VideoCardOfflineSavePolicy {
+    public static func shouldRequestDownload(
+        existingStatus: OfflineDownloadStatus?,
+        downloadServiceIsActive: Bool
+    ) -> Bool {
+        _ = downloadServiceIsActive
+        guard let existingStatus else { return true }
+        return existingStatus != .completed && !existingStatus.isActive
+    }
+}
+
 public enum DownloadCardStatusPresentation: Sendable, Equatable {
     case none
     case paused(showsContinue: Bool)

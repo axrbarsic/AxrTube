@@ -23,7 +23,7 @@ jobs:
         run: >-
           swift test
           --package-path AxrTube
-          --filter 'PlaybackLiveActivityTests|TranscriptSummaryTests|AppIconStyleTests|OfflineAudioFallbackTests|InstantAudioSparseCacheTests|AppSettingsMigrationTests|AudioFirstFlowTests'
+          --filter 'AdFreePlaybackPolicyTests|AppIconStyleTests|AppSettingsMigrationTests|BackgroundPlaybackPolicyTests|BravePlaylistMimeTypeDetectorTests|DownloadCoordinatorTests|DownloadStoreTests|FeedLanguageGateTests|OfflineRangeJournalTests|OfflineSelfRepairTests|OscilloscopeSettingsTests|PhoneCallInterruptionFlagTests|PinnedChannelStoreTests|PlaybackAuthorityTests|PlaybackLiveActivityTests|PlaylistDownloadPolicyTests|TranscriptBookTests|VideoCardInteractionPolicyTests'
 
       - name: iOS Simulator build
         run: >-

@@ -187,7 +187,7 @@ struct TranscriptBookTests {
         #expect(extracted.contains("Исходное видео"))
     }
 
-    @Test("Cache hit, identity invalidation, and atomic failed replacement")
+    @Test("Markdown cache works without PDF and rejects corrupt files")
     func cacheLifecycle() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TranscriptBookCache-\(UUID().uuidString)", isDirectory: true)
@@ -200,8 +200,10 @@ struct TranscriptBookTests {
         #expect(cached.wasCached)
         #expect(first.document.cacheKey == cached.document.cacheKey)
         #expect(FileManager.default.fileExists(atPath: cached.artifacts.markdownURL.path))
-        #expect(FileManager.default.fileExists(atPath: cached.artifacts.htmlURL.path))
-        #expect(FileManager.default.fileExists(atPath: cached.artifacts.pdfURL.path))
+        #expect(!FileManager.default.fileExists(atPath: cached.artifacts.htmlURL.path))
+        #expect(!FileManager.default.fileExists(atPath: cached.artifacts.pdfURL.path))
+        #expect(await service.cachedTranscript(videoID: "spoken-video") != nil)
+        #expect(await service.cachedTranscript(videoID: "another-video") == nil)
 
         let changedTrack = try await service.prepare(request(trackID: "ru-revised"))
         #expect(!changedTrack.wasCached)
@@ -211,15 +213,18 @@ struct TranscriptBookTests {
             baseDirectory: directory,
             pdfRenderer: { _, _ in throw TranscriptBookFailure.exportFailed }
         )
-        await #expect(throws: TranscriptBookFailure.self) {
-            _ = try await failing.prepare(request(force: true))
-        }
+        let rebuilt = try await failing.prepare(request(force: true))
+        #expect(!rebuilt.wasCached)
         let preserved = try await service.prepare(request())
         #expect(preserved.wasCached)
-        #expect(preserved.document == first.document)
+        #expect(preserved.document == rebuilt.document)
+        try Data("broken".utf8).write(to: preserved.artifacts.markdownURL)
+        let repaired = try await service.prepare(request())
+        #expect(!repaired.wasCached)
+        #expect(try String(contentsOf: repaired.artifacts.markdownURL, encoding: .utf8) == repaired.document.markdown)
     }
 
-    @Test("Every portable format produces a durable non-empty file payload")
+    @Test("Markdown produces a durable complete UTF-8 file payload")
     func portableFilePayloads() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("TranscriptBookPortable-\(UUID().uuidString)", isDirectory: true)
@@ -229,7 +234,7 @@ struct TranscriptBookTests {
         let result = try await service.prepare(request())
         try FileManager.default.createDirectory(at: savedDirectory, withIntermediateDirectories: true)
 
-        for format in TranscriptBookFileFormat.allCases {
+        for format in [TranscriptBookFileFormat.markdown] {
             let payload = try TranscriptBookFileExportPolicy.payload(
                 from: result.artifacts,
                 format: format
@@ -243,12 +248,32 @@ struct TranscriptBookTests {
 
         let cached = try await service.prepare(request())
         #expect(cached.wasCached)
-        for format in TranscriptBookFileFormat.allCases {
+        for format in [TranscriptBookFileFormat.markdown] {
             #expect(try !TranscriptBookFileExportPolicy.payload(
                 from: cached.artifacts,
                 format: format
             ).data.isEmpty)
         }
+    }
+
+    @Test("Offline transcript restore is isolated from other items")
+    @MainActor func offlineTranscriptRestore() async throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("TranscriptRestore-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let result = try await TranscriptBookService(baseDirectory: directory).prepare(request())
+        let manager = CaptionsManager(cueLoader: { _ in
+            Issue.record("Cached transcript must not fetch captions")
+            return []
+        })
+        let identity = manager.beginPlaybackItem("spoken-video")
+        #expect(manager.restoreTranscript(result, for: identity))
+        #expect(manager.transcriptBookState == .ready)
+        #expect(manager.transcriptBookResult?.document == result.document)
+        let next = manager.beginPlaybackItem("different-video")
+        #expect(!manager.restoreTranscript(result, for: identity))
+        #expect(!manager.restoreTranscript(result, for: next))
+        #expect(manager.transcriptBookResult == nil)
     }
 
     @Test("No captions is honest and does not create a document")
@@ -309,9 +334,7 @@ struct TranscriptBookTests {
         #expect(!result.document.searchableText.contains("Today we discuss"))
         #expect(result.document.markdown.contains("Сегодня мы подробно обсуждаем"))
         #expect(result.document.html.contains("Сегодня мы подробно обсуждаем"))
-        let pdf = try #require(PDFDocument(url: result.artifacts.pdfURL))
-        #expect(pdf.string?.contains("Сегодня мы подробно обсуждаем") == true)
-        #expect(pdf.string?.contains("Today we discuss") == false)
+        #expect(!FileManager.default.fileExists(atPath: result.artifacts.pdfURL.path))
     }
 
     @Test("Russian YouTube captions bypass Translation and build the same Russian formats")

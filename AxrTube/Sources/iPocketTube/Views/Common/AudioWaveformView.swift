@@ -6,10 +6,11 @@ import iPocketTubeCore
 
 @MainActor
 @Observable
-private final class WaveformFrameDriver {
+final class WaveformFrameDriver {
     private(set) var displayedTime: TimeInterval = 0
     private(set) var scopeState = ProgressiveAudioScopeState()
     private(set) var displayedSamples: [Float] = []
+    private(set) var waveform: [Float] = []
     private var displayLink: CADisplayLink?
     private var videoID = ""
     private var anchorTime: TimeInterval = 0
@@ -35,6 +36,7 @@ private final class WaveformFrameDriver {
             self.videoID = videoID
             scopeState = ProgressiveAudioScopeState()
             displayedSamples = []
+            waveform = []
             previousSamples = []
             targetSamples = []
             lastSnapshotSequence = 0
@@ -76,6 +78,7 @@ private final class WaveformFrameDriver {
            snapshot.sequence != lastSnapshotSequence,
            force || timestamp - lastTargetUpdateAt >= transitionDuration {
             let identityChanged = scopeState.identity != snapshot.identity
+            waveform = snapshot.waveform
             scopeState.accept(identity: snapshot.identity, samples: snapshot.samples)
             let incoming = AudioScopeCadencePolicy.resample(scopeState.samples)
             if identityChanged || displayedSamples.isEmpty {
@@ -112,7 +115,77 @@ private final class WaveformFrameDriver {
     }
 }
 
+struct InlineAudioPulseView: View {
+    @Environment(SettingsStore.self) private var settingsStore
+    let videoID: String
+    let playbackTime: TimeInterval
+    let duration: TimeInterval
+    let isPlaying: Bool
+
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var frameDriver = WaveformFrameDriver()
+
+    var body: some View {
+        Group {
+            if frameDriver.scopeState.phase == .realEnvelope,
+               !frameDriver.displayedSamples.isEmpty {
+                if settingsStore.settings.oscilloscopeEnabled {
+                    OscilloscopeCurve(samples: frameDriver.waveform)
+                } else {
+                Canvas { context, size in
+                    let bars = frameDriver.displayedSamples
+                    let spacing: CGFloat = 1.5
+                    let width = max(2, (size.width - CGFloat(bars.count - 1) * spacing) / CGFloat(max(1, bars.count)))
+                    for (index, sample) in bars.enumerated() where sample > 0 {
+                        let height = max(3, CGFloat(sample) * size.height)
+                        let rect = CGRect(
+                            x: CGFloat(index) * (width + spacing),
+                            y: (size.height - height) / 2,
+                            width: width,
+                            height: height
+                        )
+                        context.fill(
+                            Path(roundedRect: rect, cornerRadius: width / 2),
+                            with: .color(iPocketTubeVisualTokens.mint)
+                        )
+                    }
+                }
+                }
+            } else {
+                Image(systemName: "waveform")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(iPocketTubeVisualTokens.mint)
+                    .symbolEffect(.variableColor.iterative, options: .repeating, isActive: isPlaying)
+            }
+        }
+        .frame(width: 54, height: 22)
+        .padding(.horizontal, 7)
+        .padding(.vertical, 4)
+        .background(.black.opacity(0.62), in: Capsule())
+        .onAppear { synchronizeDriver() }
+        .onDisappear { frameDriver.stop() }
+        .onChange(of: playbackTime) { _, _ in synchronizeDriver() }
+        .onChange(of: isPlaying) { _, _ in synchronizeDriver() }
+        .onChange(of: scenePhase) { _, _ in synchronizeDriver() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Живой индикатор звука")
+        .accessibilityValue(isPlaying ? "Работает" : "Пауза")
+    }
+
+    private func synchronizeDriver() {
+        frameDriver.synchronize(
+            videoID: videoID,
+            time: playbackTime,
+            duration: duration,
+            running: isPlaying && scenePhase == .active,
+            reduceMotion: reduceMotion
+        )
+    }
+}
+
 struct AudioWaveformView: View {
+    @Environment(SettingsStore.self) private var settingsStore
     let videoID: String
     let playbackTime: TimeInterval
     let duration: TimeInterval
@@ -158,6 +231,9 @@ struct AudioWaveformView: View {
         ZStack {
             if frameDriver.scopeState.phase == .realEnvelope,
                !frameDriver.displayedSamples.isEmpty {
+                if settingsStore.settings.oscilloscopeEnabled {
+                    OscilloscopeCurve(samples: frameDriver.waveform)
+                } else {
                 Canvas { context, size in
                     let bars = frameDriver.displayedSamples
                     let spacing: CGFloat = 2
@@ -182,11 +258,11 @@ struct AudioWaveformView: View {
                 }
                 .padding(.horizontal, 8)
                 .transition(.opacity)
+                }
             } else {
                 HStack(spacing: 7) {
-                    ProgressView().controlSize(.mini)
                     Image(systemName: "waveform")
-                    Text(isPlaying ? "Подготовка сигнала" : "Сигнал появится при воспроизведении")
+                    Text(isPlaying ? "Визуализация звука пока недоступна" : "Визуализация на паузе")
                 }
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
@@ -211,6 +287,25 @@ struct AudioWaveformView: View {
             running: isPlaying && !isScrubbing && scenePhase == .active,
             reduceMotion: reduceMotion
         )
+    }
+}
+
+private struct OscilloscopeCurve: View {
+    let samples: [Float]
+    var body: some View {
+        Canvas { context, size in
+            guard samples.count > 1 else { return }
+            var path = Path()
+            for (index, sample) in samples.enumerated() {
+                let point = CGPoint(
+                    x: CGFloat(index) / CGFloat(samples.count - 1) * size.width,
+                    y: size.height * (0.5 - CGFloat(sample) * 0.44)
+                )
+                if index == 0 { path.move(to: point) } else { path.addLine(to: point) }
+            }
+            context.stroke(path, with: .color(iPocketTubeVisualTokens.mint), style: StrokeStyle(lineWidth: 2, lineCap: .round, lineJoin: .round))
+        }
+        .accessibilityLabel("Осциллограф реального звука")
     }
 }
 

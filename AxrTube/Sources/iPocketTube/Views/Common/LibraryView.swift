@@ -13,6 +13,7 @@ public struct LibraryView: View {
     @Environment(\.innerTubeAPI) private var api
     @Environment(SettingsStore.self) private var store
     @State private var selectedSection: LibrarySection = .subscriptions
+    @State private var pinnedChannels = PinnedChannelStore.shared
     @State private var selectedVideo: Video?
     @State private var selectedPlaylist: Video?
     @State private var channelDestination: ChannelDestination?
@@ -276,7 +277,13 @@ public struct LibraryView: View {
     }
 
     @ViewBuilder private var channelsContent: some View {
-        if !auth.isSignedIn {
+        if !pinnedChannels.channels.isEmpty {
+            ChannelListView(channels: browseVM.subscribedChannels) { channel in
+                channelDestination = ChannelDestination(channelId: channel.id)
+            }
+            .refreshable { reloadChannels() }
+            .accessibilityIdentifier("library.channels.list")
+        } else if !auth.isSignedIn {
             VStack(spacing: 16) {
                 Image(systemName: AppSymbol.personCircleQuestion)
                     .font(.system(size: 60))

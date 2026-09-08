@@ -40,6 +40,20 @@ public struct AudioInterruptionStateMachine: Sendable {
 
     public init() {}
 
+    /// Every deferred source, quality swap and recovery shares this authority.
+    public var allowsAutomaticPlayback: Bool {
+        userWantsPlayback && !isHandling && !mediaServicesAreLost
+    }
+
+    /// Item selection changes intent, not the system's ownership of audio.
+    /// A new item selected during a spoken notification waits for its end.
+    public mutating func selectedItem() {
+        generation &+= 1
+        pendingSystemResume = false
+        userWantsPlayback = true
+        wasPlaying = isHandling
+    }
+
     public var diagnosticSummary: String {
         "handling=\(isHandling) intent=\(userWantsPlayback) "
             + "wasPlaying=\(wasPlaying) pendingResume=\(pendingSystemResume) "
@@ -119,6 +133,7 @@ public struct AudioInterruptionStateMachine: Sendable {
     /// Initial audio-first playback reaches this point only after a user selected
     /// an item and its first buffer became playable.
     public mutating func playbackBecameActive() {
+        guard !isHandling, !mediaServicesAreLost else { return }
         userWantsPlayback = true
     }
 

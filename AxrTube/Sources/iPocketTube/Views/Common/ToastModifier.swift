@@ -14,6 +14,8 @@ import SwiftUI
 
 private struct ToastModifier: ViewModifier {
     @Binding var message: String?
+    var duration: Double
+    var bottomPadding: CGFloat
     @State private var dismissTask: Task<Void, Never>?
 
     func body(content: Content) -> some View {
@@ -25,7 +27,7 @@ private struct ToastModifier: ViewModifier {
                 dismissTask?.cancel()
                 guard newValue != nil else { return }
                 dismissTask = Task {
-                    try? await Task.sleep(for: .seconds(2))
+                    try? await Task.sleep(for: .seconds(duration))
                     guard !Task.isCancelled else { return }
                     message = nil
                 }
@@ -38,10 +40,14 @@ private struct ToastModifier: ViewModifier {
             Text(text)
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 10)
                 .background(.black.opacity(0.72), in: Capsule())
-                .padding(.bottom, 32)
+                .padding(.horizontal, 20)
+                .padding(.bottom, bottomPadding)
+                .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .bottom)))
                 .accessibilityIdentifier("player.toast")
         }
@@ -51,7 +57,7 @@ private struct ToastModifier: ViewModifier {
 extension View {
     /// Displays a self-dismissing toast pill when `message` is non-nil.
     /// The binding is automatically cleared after 2 seconds.
-    func toast(message: Binding<String?>) -> some View {
-        modifier(ToastModifier(message: message))
+    func toast(message: Binding<String?>, duration: Double = 2, bottomPadding: CGFloat = 32) -> some View {
+        modifier(ToastModifier(message: message, duration: duration, bottomPadding: bottomPadding))
     }
 }

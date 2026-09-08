@@ -82,6 +82,10 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
     @Environment(SettingsStore.self) private var store
     @Environment(AuthService.self) private var authService
     @Environment(PlayerStateStore.self) private var playerState
+    // PlayerTranscriptPanel reads the shared AI/transcript router. The player is
+    // hosted in a fresh UIHostingController, so this observable must be forwarded
+    // explicitly along with the other app-level environment values.
+    @Environment(PlayerRouter.self) private var playerRouter
     // PlayerView reads the shared download coordinator when its body is built.
     // This presenter creates a fresh UIHostingController, so the coordinator must
     // be forwarded explicitly just like the other observable environment values.
@@ -111,6 +115,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
         let capturedStore = store
         let capturedAuth = authService
         let capturedPlayerState = playerState
+        let capturedPlayerRouter = playerRouter
         let capturedTosState = tosState
         let capturedDownloadService = downloadService
         coordinator.contentBuilder = { [content] item in
@@ -119,6 +124,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
                     .environment(capturedStore)
                     .environment(capturedAuth)
                     .environment(capturedPlayerState)
+                    .environment(capturedPlayerRouter)
                     .environment(capturedTosState)
                     .environment(capturedDownloadService)
             )

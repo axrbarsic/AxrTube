@@ -363,19 +363,11 @@ actor TranscriptBookService {
         do {
             let markdownURL = staging.appendingPathComponent(candidate.safeBaseFilename)
                 .appendingPathExtension("md")
-            let htmlURL = staging.appendingPathComponent(candidate.safeBaseFilename)
-                .appendingPathExtension("html")
-            let pdfURL = staging.appendingPathComponent(candidate.safeBaseFilename)
-                .appendingPathExtension("pdf")
             let manifestURL = staging.appendingPathComponent("manifest.json")
             try Data(candidate.markdown.utf8).write(to: markdownURL, options: .atomic)
-            try Data(candidate.html.utf8).write(to: htmlURL, options: .atomic)
-            let pageCount = try pdfRenderer(candidate, pdfURL)
-            let pdfValues = try? pdfURL.resourceValues(forKeys: [.fileSizeKey])
-            let pdfSize = pdfValues?.fileSize ?? 0
-            guard pageCount > 0, pdfSize > 0 else {
-                throw TranscriptBookFailure.exportFailed
-            }
+            // Markdown is the only newly generated export. Keep legacy paths in
+            // the manifest model so previously saved documents remain readable.
+            let pageCount = 0
             let manifest = Manifest(
                 formatterVersion: TranscriptBookPolicy.formatterVersion,
                 cacheKey: candidate.cacheKey,
@@ -410,6 +402,18 @@ actor TranscriptBookService {
         }
     }
 
+    func cachedTranscript(videoID: String) -> TranscriptBookResult? {
+        let directories = (try? fileManager.contentsOfDirectory(
+            at: baseDirectory, includingPropertiesForKeys: nil
+        )) ?? []
+        return directories.compactMap { directory -> TranscriptBookResult? in
+            guard !directory.lastPathComponent.hasPrefix("."),
+                  let result = try? cachedResult(at: directory, key: directory.lastPathComponent),
+                  result.document.metadata.videoID == videoID else { return nil }
+            return result
+        }.max { $0.document.generatedAt < $1.document.generatedAt }
+    }
+
     private func cachedResult(at directory: URL, key: String) throws -> TranscriptBookResult? {
         let manifestURL = directory.appendingPathComponent("manifest.json")
         guard let data = try? Data(contentsOf: manifestURL),
@@ -422,14 +426,10 @@ actor TranscriptBookService {
             .appendingPathExtension("html")
         let pdfURL = directory.appendingPathComponent(manifest.document.safeBaseFilename)
             .appendingPathExtension("pdf")
-        let pdfValues = try? pdfURL.resourceValues(forKeys: [.fileSizeKey])
         guard let markdownData = try? Data(contentsOf: markdownURL),
               !markdownData.isEmpty,
-              String(data: markdownData, encoding: .utf8) != nil,
-              let htmlData = try? Data(contentsOf: htmlURL),
-              !htmlData.isEmpty,
-              String(data: htmlData, encoding: .utf8) != nil,
-              (pdfValues?.fileSize ?? 0) > 0 else { return nil }
+              String(data: markdownData, encoding: .utf8) == manifest.document.markdown
+        else { return nil }
         return TranscriptBookResult(
             document: manifest.document,
             artifacts: TranscriptBookArtifacts(

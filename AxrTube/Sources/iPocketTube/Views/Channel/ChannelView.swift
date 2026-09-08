@@ -207,18 +207,12 @@ public struct ChannelView: View {
             if compact {
                 LazyVStack(spacing: 0) {
                     ForEach(videos) { video in
-                        VideoCardView(video: video, compact: true)
+                        VideoCardView(video: video, compact: true, onSelect: {
+                            selectVideo(video)
+                        })
                             .padding(.horizontal)
                             .padding(.vertical, 6)
                             .accessibilityIdentifier("video.card.\(video.id)")
-                            .onTapGesture {
-                                iPocketTubeHaptics.shared.perform(.contentSelection)
-                                #if os(iOS)
-                                playerRouter.open(video: video, api: api)
-                                #else
-                                selectedVideo = video
-                                #endif
-                            }
                             .onAppear {
                                 if video.id == vm.videos.last?.id { vm.loadMore() }
                             }
@@ -253,16 +247,10 @@ public struct ChannelView: View {
                 #else
                 LazyVGrid(columns: videoGridColumns, spacing: videoGridRowSpacing) {
                     ForEach(videos) { video in
-                        VideoCardView(video: video, compact: false)
+                        VideoCardView(video: video, compact: false, onSelect: {
+                            selectVideo(video)
+                        })
                             .accessibilityIdentifier("video.card.\(video.id)")
-                            .onTapGesture {
-                                iPocketTubeHaptics.shared.perform(.contentSelection)
-                                #if os(iOS)
-                                playerRouter.open(video: video, api: api)
-                                #else
-                                selectedVideo = video
-                                #endif
-                            }
                             .onAppear {
                                 if video.id == vm.videos.last?.id { vm.loadMore() }
                             }
@@ -289,12 +277,10 @@ public struct ChannelView: View {
         let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {
             ForEach(videos) { video in
-                VideoCardView(video: video)
+                VideoCardView(video: video, onSelect: {
+                    selectShort(video, from: videos)
+                })
                     .aspectRatio(9/16, contentMode: .fit)
-                    .onTapGesture {
-                        iPocketTubeHaptics.shared.perform(.contentSelection)
-                        selectShort(video, from: videos)
-                    }
                     .onAppear {
                         if video.id == vm.videos.last?.id { vm.loadMore() }
                     }
@@ -310,6 +296,15 @@ public struct ChannelView: View {
         #else
         let idx = videos.firstIndex(where: { $0.id == video.id }) ?? 0
         shortsPresentation = ShortsPresentation(videos: videos, startIndex: idx)
+        #endif
+    }
+
+    private func selectVideo(_ video: Video) {
+        iPocketTubeHaptics.shared.perform(.contentSelection)
+        #if os(iOS)
+        playerRouter.open(video: video, api: api)
+        #else
+        selectedVideo = video
         #endif
     }
 

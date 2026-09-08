@@ -12,6 +12,13 @@ import iPocketTubeCore
 
 public struct HomeView: View {
     @State private var homeVM: HomeViewModel
+    @State private var languageGate = FeedLanguageGate()
+    private var languageCandidateIDs: [String] {
+        (homeVM.mergedVideos + homeVM.homeShortsVideos + sectionVM.videoGroups.flatMap(\.videos) + sectionVM.recommendedShortsVideos).map(\.id)
+    }
+    private func languageAllows(_ video: Video) -> Bool {
+        !store.settings.russianOnlySearchEnabled || languageGate.approvedIDs.contains(video.id)
+    }
     @State private var sectionVM: BrowseViewModel
     @Environment(AuthService.self) private var auth
     @Environment(SettingsStore.self) private var store
@@ -71,10 +78,22 @@ public struct HomeView: View {
     public var body: some View {
         VStack(spacing: 0) {
             chipBar
+            if store.settings.russianOnlySearchEnabled {
+                HStack(spacing: 6) {
+                    if languageGate.isChecking { ProgressView().controlSize(.mini) }
+                    Text(languageGate.isChecking ? "Проверяем язык видео" : "Только русский · неизвестный язык скрыт")
+                        .font(.caption)
+                }
+                .foregroundStyle(.secondary)
+            }
             #if !os(tvOS)
             Divider()
             #endif
             contentArea
+                .task(id: String(store.settings.russianOnlySearchEnabled) + languageCandidateIDs.joined(separator: ",")) {
+                    guard store.settings.russianOnlySearchEnabled else { return }
+                    await languageGate.check(languageCandidateIDs, api: api)
+                }
                 #if !os(iOS)
                 .navigationDestination(item: $selectedVideo) { video in
                     #if os(macOS)
@@ -313,7 +332,7 @@ public struct HomeView: View {
                     : homeVM.mergedVideos
                 var seen = Set<String>()
                 let videos = FeedCatalogPolicy.visibleVideos(
-                    sourceVideos.filter { seen.insert($0.id).inserted },
+                    sourceVideos.filter { seen.insert($0.id).inserted && languageAllows($0) },
                     showShorts: store.settings.showShorts
                 )
                 let feedSentinelID = videos.last?.id
@@ -367,7 +386,7 @@ public struct HomeView: View {
             + (selectedSection.type == .recommended ? sectionVM.recommendedShortsVideos : [])
         var seen = Set<String>()
         let videos = FeedCatalogPolicy.visibleVideos(
-            rawVideos.filter { seen.insert($0.id).inserted },
+            rawVideos.filter { seen.insert($0.id).inserted && languageAllows($0) },
             showShorts: store.settings.showShorts
         )
             .filter { !store.settings.hideLiveShorts || !($0.isLive && $0.isShort) }

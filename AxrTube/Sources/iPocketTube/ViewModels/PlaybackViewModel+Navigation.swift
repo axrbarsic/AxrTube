@@ -114,7 +114,7 @@ extension PlaybackViewModel {
     public func handlePlaybackEnd() {
         if settings.loopEnabled {
             player.seek(to: .zero)
-            player.rate = Float(settings.playbackSpeed)
+            requestPlaybackStart(reason: "loop")
             return
         }
         if let idx = currentVideo?.playlistIndex,

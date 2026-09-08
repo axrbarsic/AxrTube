@@ -215,6 +215,7 @@ public final class BotGuardWebViewRunner: NSObject {
         contentController.add(self, name: "botguardRunner")
 
         let config = WKWebViewConfiguration()
+        ResolverWebViewPolicy.configure(config)
         config.userContentController = contentController
         config.websiteDataStore = .default()
 
@@ -230,6 +231,7 @@ public final class BotGuardWebViewRunner: NSObject {
         }
 
         let wv = WKWebView(frame: CGRect(x: -1, y: -1, width: 1, height: 1), configuration: config)
+        ResolverWebViewPolicy.isolate(wv)
         wv.navigationDelegate = self
         // Use a desktop Safari UA so jnn-pa.googleapis.com treats this as a browser.
         wv.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +

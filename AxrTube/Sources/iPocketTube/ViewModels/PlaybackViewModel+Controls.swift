@@ -18,8 +18,8 @@ extension PlaybackViewModel {
             #if canImport(UIKit)
             performUserPlay(reason: "Player Controls Replay")
             #else
-            player.rate = Float(settings.playbackSpeed)
-            isPlaying = true
+            _ = audioInterruptionState.userRequestedPlay()
+            requestPlaybackStart(reason: "replay")
             #endif
             showControls()
             #if canImport(UIKit)
@@ -34,8 +34,14 @@ extension PlaybackViewModel {
             performUserPlay(reason: "Player Controls Play")
         }
         #else
-        if isPlaying { player.pause() } else { player.rate = Float(settings.playbackSpeed) }
-        isPlaying.toggle()
+        if isPlaying {
+            audioInterruptionState.userPaused()
+            player.pause()
+            isPlaying = false
+        } else {
+            _ = audioInterruptionState.userRequestedPlay()
+            requestPlaybackStart(reason: "play control")
+        }
         #endif
         showControls()
         #if canImport(UIKit)
@@ -108,7 +114,7 @@ extension PlaybackViewModel {
         // Setting player.rate to a non-zero value on a paused AVPlayer restarts
         // playback — only apply the rate while actively playing.
         if isPlaying {
-            player.rate = Float(speed)
+            requestPlaybackStart(rate: Float(speed), reason: "playback speed")
         }
     }
 
@@ -117,7 +123,7 @@ extension PlaybackViewModel {
     public func beginHoldSpeed() {
         guard isPlaying, !isHoldingToSpeed else { return }
         isHoldingToSpeed = true
-        player.rate = 2.0
+        requestPlaybackStart(rate: 2.0, reason: "hold speed")
         playerLog.notice("[hold-speed] began — boosting to 2×")
     }
 
@@ -127,7 +133,7 @@ extension PlaybackViewModel {
         guard isHoldingToSpeed else { return }
         isHoldingToSpeed = false
         if isPlaying {
-            player.rate = Float(settings.playbackSpeed)
+            requestPlaybackStart(reason: "restore speed")
         }
         playerLog.notice("[hold-speed] ended — restored to \(self.settings.playbackSpeed)×")
     }

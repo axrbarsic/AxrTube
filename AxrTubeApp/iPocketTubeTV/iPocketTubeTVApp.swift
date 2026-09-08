@@ -30,7 +30,7 @@ struct iPocketTubeTVApp: App {
         _authService         = State(initialValue: AuthService())
         _browseViewModel     = State(initialValue: BrowseViewModel(api: api))
         _settingsStore       = State(initialValue: settingsStore)
-        _cardDownloadService = State(initialValue: VideoDownloadService(api: api))
+        _cardDownloadService = State(initialValue: VideoDownloadService(api: api, settingsStore: settingsStore))
     }
 
     var body: some Scene {
