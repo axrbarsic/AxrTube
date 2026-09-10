@@ -108,7 +108,9 @@ public struct ChannelView: View {
 
     private var content: some View {
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            // Only the rows/grid own lazy layout. An outer lazy stack estimates
+            // the inner grid's height and can leave empty bands after reordering.
+            VStack(alignment: .leading, spacing: 0) {
                 // Channel header
                 if let channel = vm.channel {
                     channelHeader(channel)

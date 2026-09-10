@@ -80,7 +80,9 @@ public struct BrowseView: View {
         )
 
         return ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
+            // VideoGridSection already virtualizes its rows. Do not wrap its
+            // measured content in a second lazy height estimator.
+            VStack(alignment: .leading, spacing: 0) {
                 if vm.isAuthRequired && !auth.isSignedIn { guestBanner }
                 VideoGridSection(
                     videos: allVideos,

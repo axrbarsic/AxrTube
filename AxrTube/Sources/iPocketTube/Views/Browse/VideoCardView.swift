@@ -382,7 +382,12 @@ public struct VideoCardView: View {
         if store.settings.themeName.usesTimelineLayout {
             timelineLayout
         } else if store.settings.themeName.usesPosterLayout {
-            posterLayout
+            if compact {
+                // A fixed-height poster overlay cannot fit an unrestricted title.
+                compactLayout
+            } else {
+                posterLayout
+            }
         } else if store.settings.themeName.usesSpatialDeckLayout {
             spatialDeckLayout
         } else if store.settings.themeName.usesSignalMapLayout {
@@ -448,12 +453,15 @@ public struct VideoCardView: View {
             }
             .padding(.horizontal, 2)
         }
+        // Keep each grid cell at its content height, including while a lazy grid
+        // reuses a row after publication metadata changes its order or title.
+        .fixedSize(horizontal: false, vertical: true)
     }
 
     // MARK: Compact (list) layout
 
     private var compactLayout: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .top, spacing: 12) {
             playbackThumbnail
                 .frame(width: 144, height: 81)
                 .overlay(alignment: .bottom) {
@@ -469,7 +477,8 @@ public struct VideoCardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayTitle)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(2)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("video.card.title")
                 HStack(spacing: 4) {
                     Text(video.channelTitle)
@@ -521,7 +530,8 @@ public struct VideoCardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 Text(displayTitle)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(3)
+                    .lineLimit(compact ? nil : 3)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("video.card.title")
 
                 HStack(spacing: 4) {
@@ -679,7 +689,8 @@ public struct VideoCardView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(displayTitle)
                 .font(.subheadline.weight(.bold))
-                .lineLimit(3)
+                .lineLimit(compact ? nil : 3)
+                .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("video.card.title")
             HStack(spacing: 4) {
                 Text(video.channelTitle).lineLimit(1)

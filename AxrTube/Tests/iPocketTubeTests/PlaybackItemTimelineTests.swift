@@ -6,6 +6,57 @@ import Testing
 
 @Suite("Installed item timeline") @MainActor
 struct PlaybackItemTimelineTests {
+    @Test func localSwitchClearsQualityWaitAndSupportsScrubbing() async throws {
+        let fixture = try #require(Bundle.module.url(forResource: "progressive-audio", withExtension: "m4a"))
+        let directory = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("SmartTubeDownloads")
+            .appendingPathComponent("switch-test-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let local = directory.appendingPathComponent("fixture.m4a")
+        try FileManager.default.copyItem(at: fixture, to: local)
+        let vm = PlaybackViewModel()
+        vm.settings.historyState = .disabled
+        vm.player.isMuted = true
+        defer {
+            vm.loadTask?.cancel()
+            vm.player.pause()
+            vm.player.replaceCurrentItem(with: nil)
+            try? FileManager.default.removeItem(at: directory)
+        }
+        var first = Video(id: "local-switch-a", title: "A", channelTitle: "Fixture")
+        first.localFileURL = local
+        first.localMediaKind = .audio
+        var second = Video(id: "local-switch-b", title: "B", channelTitle: "Fixture")
+        second.localFileURL = local
+        second.localMediaKind = .audio
+
+        vm.load(video: first)
+        try await waitUntil { vm.duration > 0 && vm.currentTime > 0.1 }
+        vm.isQualityChangePending = true
+        vm.load(video: second)
+        #expect(!vm.isQualityChangePending)
+        try await waitUntil { vm.duration > 0 && vm.currentTime > 0.1 }
+        let current = try #require(vm.player.currentItem)
+        await vm.loadAsync(video: first)
+        #expect(vm.player.currentItem === current)
+        #expect(vm.currentVideoId == second.id)
+
+        vm.beginScrubbing()
+        vm.updateScrub(to: 20)
+        vm.commitScrub()
+        try await waitUntil { vm.player.currentTime().seconds >= 19.9 && vm.currentTime >= 19.9 }
+        #expect(!vm.isScrubbing)
+        #expect(vm.duration > 50)
+    }
+
+    private func waitUntil(_ predicate: () -> Bool) async throws {
+        let deadline = ContinuousClock.now.advanced(by: .seconds(5))
+        while !predicate() && ContinuousClock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        try #require(predicate())
+    }
+
     @Test func localMediaPublishesDurationWithoutNetworkMetadataOrPlayerView() async throws {
         let fixture = try #require(Bundle.module.url(forResource: "progressive-audio", withExtension: "m4a"))
         let vm = PlaybackViewModel()

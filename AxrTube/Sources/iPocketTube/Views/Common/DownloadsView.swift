@@ -476,7 +476,8 @@ private struct DownloadedMediaRow: View {
             VStack(alignment: .leading, spacing: compact ? 3 : 5) {
                 Text(entry.title)
                     .font(.subheadline.weight(.semibold))
-                    .lineLimit(compact ? 1 : 2)
+                    .lineLimit(compact ? nil : 2)
+                    .fixedSize(horizontal: false, vertical: true)
                     .contentShape(Rectangle())
                     .onTapGesture { if entry.status == .completed { onPlay() } }
                 Text(entry.channelTitle)

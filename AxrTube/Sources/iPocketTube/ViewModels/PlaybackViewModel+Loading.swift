@@ -34,6 +34,8 @@ extension PlaybackViewModel {
             return
         }
         audioInterruptionState.selectedItem()
+        // A cancelled quality swap belongs to the old video, not the new clock.
+        isQualityChangePending = false
         #if canImport(WebKit)
         wkHLSEarlyWaitTimedOut = false
         #endif
@@ -412,6 +414,8 @@ extension PlaybackViewModel {
     }
 
     func loadAsync(video: Video) async {
+        // Cancellation alone cannot prevent a delayed task from reaching here.
+        guard !Task.isCancelled, currentVideo?.id == video.id else { return }
         // Defensive re-establish: guarantees rateObserver is live for every load,
         // even if this view model instance went through suspend() (which
         // invalidates it) and is now loading a different video directly via
@@ -442,6 +446,128 @@ extension PlaybackViewModel {
         updateNowPlayingInfo()
         #endif
 
+        // Local-file fast path — bypass all network fetches for downloaded videos.
+        // The legacy directory name is retained for install-over data compatibility.
+        // The path must be inside Documents/SmartTubeDownloads/ to prevent path-traversal
+        // from a crafted Video object.
+        if let localURL = video.localFileURL {
+            let downloadsDir = FileManager.default
+                .urls(for: .documentDirectory, in: .userDomainMask)[0]
+                .appendingPathComponent("SmartTubeDownloads").path
+            let isManagedHLSAsset = localURL.pathExtension == "movpkg"
+                && DownloadStore.shared.entry(videoId: video.id, kind: .video)?.fileURL.standardizedFileURL == localURL.standardizedFileURL
+            if (localURL.path.hasPrefix(downloadsDir) || isManagedHLSAsset),
+               FileManager.default.fileExists(atPath: localURL.path) {
+                // A local M4A uses the exact same AVPlayer/audio-session/remote-command
+                // path as video, but keeps the thumbnail visible as player chrome.
+                isAudioOnlyMode = video.localMediaKind == .audio || settings.audioOnlyMode
+                let item = AVPlayerItem(url: localURL)
+                item.audioTimePitchAlgorithm = .spectral
+                // Wire up observers BEFORE replaceCurrentItem (task-80 rule).
+                itemObserverTask?.cancel()
+                itemObserverTask = Task { [weak self] in
+                    for await status in item.statusStream {
+                        guard let self, !Task.isCancelled,
+                              self.player.currentItem === item,
+                              self.currentVideo?.id == video.id else { return }
+                        switch status {
+                        case .readyToPlay:
+                            playerLog.notice("[benchmark] readyToPlay — local-file — videoId=\(video.id) title=\(video.title)")
+                            self.loadAudioTracks(from: item)
+                            self.isLoading = false
+                        case .failed:
+                            playerLog.error("❌ local-file AVPlayerItem failed: \(String(describing: item.error))")
+                            self.error = item.error
+                        case .unknown:
+                            break
+                        @unknown default:
+                            break
+                        }
+                    }
+                }
+                player.replaceCurrentItem(with: item)
+                endObserverTask?.cancel()
+                endObserverTask = Task { [weak self] in
+                    let notifications = NotificationCenter.default.notifications(
+                        named: AVPlayerItem.didPlayToEndTimeNotification,
+                        object: item
+                    )
+                    for await _ in notifications {
+                        guard let self, !Task.isCancelled, self.player.currentItem === item else { return }
+                        self.handlePlaybackEnd()
+                    }
+                }
+                stallObserverTask?.cancel()
+                stallObserverTask = Task { @MainActor [weak self] in
+                    let notifications = NotificationCenter.default.notifications(
+                        named: AVPlayerItem.playbackStalledNotification,
+                        object: item
+                    )
+                    for await _ in notifications {
+                        guard let self, !Task.isCancelled else { return }
+                        self.stallCount += 1
+                        let t = Int(self.currentTime)
+                        playerLog.notice("[stall] AVPlayerItemPlaybackStalled at t=\(t)s stall#\(self.stallCount) video=\(self.currentVideo?.id ?? "unknown")")
+                        let stallError = NSError(
+                            domain: "iPocketTube.PlaybackStall",
+                            code: 0,
+                            userInfo: [NSLocalizedDescriptionKey: "AVPlayerItemPlaybackStalled at t=\(t)s (stall #\(self.stallCount))"]
+                        )
+                        playerLog.recordNonFatal(stallError, userInfo: [
+                            "video_id":       self.currentVideo?.id ?? "unknown",
+                            "stall_at_time":  String(t),
+                            "stall_count":    String(self.stallCount),
+                            "video_duration": String(Int(self.duration)),
+                            "stall_trigger":  "AVPlayerItemPlaybackStalled"
+                        ])
+                        // Stall recovery (#193): wait 2 s for AVPlayer to self-heal;
+                        // if still stalled, nudge the pipeline with a near-zero seek
+                        // + explicit rate restore. Capped at 3 attempts per item.
+                        let recoveryCount = self.stallCount
+                        if recoveryCount <= 3 {
+                            Task { @MainActor [weak self] in
+                                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                                guard let self, self.isPlaying, self.player.rate == 0,
+                                      self.player.currentItem === item,
+                                      !self.isQualityChangePending else { return }
+                                let seekT = self.currentTime
+                                playerLog.notice("[stall] recovery#\(recoveryCount): seeking to \(seekT)s to flush pipeline")
+                                self.player.seek(
+                                    to: CMTime(seconds: seekT, preferredTimescale: 600),
+                                    toleranceBefore: .zero,
+                                    toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600)
+                                ) { [weak self] _ in
+                                    Task { @MainActor [weak self] in
+                                        guard let self, self.isPlaying, self.player.currentItem === item else { return }
+                                        self.requestPlaybackStart(expectedItem: item, reason: "buffer recovery")
+                                        playerLog.notice("[stall] recovery#\(recoveryCount): rate restored")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                #if canImport(UIKit)
+                setupRemoteCommandCenter()
+                #endif
+                requestPlaybackStart(expectedItem: item, reason: "local-file playback")
+                // Downloaded videos have no related videos — clear any stale state from a
+                // previous YouTube session so autoplay does not fire a YouTube video when
+                // the download ends. (Bug #224: wrong video played after local file ends.)
+                relatedVideos = []
+                hasNext = false
+                #if canImport(UIKit)
+                UIApplication.shared.isIdleTimerDisabled = true
+                updateNowPlayingInfo()
+                #endif
+                playerLog.notice("[loadAsync] local-file fast path: playing \(localURL.lastPathComponent)")
+                return
+            }
+            // File missing or path invalid — fall through to network re-stream.
+            playerLog.notice("[loadAsync] localFileURL set but file not accessible, falling through: \(localURL.path)")
+        }
+
+
         // Fetch the BotGuard PO token before the primary stream attempt.
         // Awaited (with a 2 s safety timeout) so api.hasPoToken(for:) returns true during
         // the rqh=1 adaptive stream check in tryAllStreams — preventing an unnecessary
@@ -458,6 +584,7 @@ extension PlaybackViewModel {
                 group.cancelAll()
             }
         }
+        guard !Task.isCancelled, currentVideo?.id == video.id else { return }
         #if canImport(WebKit)
         // Fire-and-forget: start WKWebView BotGuard pipeline in the background.
         // Takes 3–8 s; by the time the primary attempt fails and exhaustiveRetry runs,
@@ -495,124 +622,6 @@ extension PlaybackViewModel {
             }
         }
         #endif
-
-        // Local-file fast path — bypass all network fetches for downloaded videos.
-        // The legacy directory name is retained for install-over data compatibility.
-        // The path must be inside Documents/SmartTubeDownloads/ to prevent path-traversal
-        // from a crafted Video object.
-        if let localURL = video.localFileURL {
-            let downloadsDir = FileManager.default
-                .urls(for: .documentDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("SmartTubeDownloads").path
-            let isManagedHLSAsset = localURL.pathExtension == "movpkg"
-                && DownloadStore.shared.entry(videoId: video.id, kind: .video)?.fileURL.standardizedFileURL == localURL.standardizedFileURL
-            if (localURL.path.hasPrefix(downloadsDir) || isManagedHLSAsset),
-               FileManager.default.fileExists(atPath: localURL.path) {
-                // A local M4A uses the exact same AVPlayer/audio-session/remote-command
-                // path as video, but keeps the thumbnail visible as player chrome.
-                isAudioOnlyMode = video.localMediaKind == .audio || settings.audioOnlyMode
-                let item = AVPlayerItem(url: localURL)
-                item.audioTimePitchAlgorithm = .spectral
-                // Wire up observers BEFORE replaceCurrentItem (task-80 rule).
-                itemObserverTask?.cancel()
-                itemObserverTask = Task { [weak self] in
-                    for await status in item.statusStream {
-                        guard let self, !Task.isCancelled else { return }
-                        switch status {
-                        case .readyToPlay:
-                            playerLog.notice("[benchmark] readyToPlay — local-file — videoId=\(video.id) title=\(video.title)")
-                            self.loadAudioTracks(from: item)
-                            self.isLoading = false
-                        case .failed:
-                            playerLog.error("❌ local-file AVPlayerItem failed: \(String(describing: item.error))")
-                            self.error = item.error
-                        case .unknown:
-                            break
-                        @unknown default:
-                            break
-                        }
-                    }
-                }
-                player.replaceCurrentItem(with: item)
-                endObserverTask?.cancel()
-                endObserverTask = Task { [weak self] in
-                    let notifications = NotificationCenter.default.notifications(
-                        named: AVPlayerItem.didPlayToEndTimeNotification,
-                        object: item
-                    )
-                    for await _ in notifications {
-                        guard let self, !Task.isCancelled else { return }
-                        self.handlePlaybackEnd()
-                    }
-                }
-                stallObserverTask?.cancel()
-                stallObserverTask = Task { @MainActor [weak self] in
-                    let notifications = NotificationCenter.default.notifications(
-                        named: AVPlayerItem.playbackStalledNotification,
-                        object: item
-                    )
-                    for await _ in notifications {
-                        guard let self, !Task.isCancelled else { return }
-                        self.stallCount += 1
-                        let t = Int(self.currentTime)
-                        playerLog.notice("[stall] AVPlayerItemPlaybackStalled at t=\(t)s stall#\(self.stallCount) video=\(self.currentVideo?.id ?? "unknown")")
-                        let stallError = NSError(
-                            domain: "iPocketTube.PlaybackStall",
-                            code: 0,
-                            userInfo: [NSLocalizedDescriptionKey: "AVPlayerItemPlaybackStalled at t=\(t)s (stall #\(self.stallCount))"]
-                        )
-                        playerLog.recordNonFatal(stallError, userInfo: [
-                            "video_id":       self.currentVideo?.id ?? "unknown",
-                            "stall_at_time":  String(t),
-                            "stall_count":    String(self.stallCount),
-                            "video_duration": String(Int(self.duration)),
-                            "stall_trigger":  "AVPlayerItemPlaybackStalled"
-                        ])
-                        // Stall recovery (#193): wait 2 s for AVPlayer to self-heal;
-                        // if still stalled, nudge the pipeline with a near-zero seek
-                        // + explicit rate restore. Capped at 3 attempts per item.
-                        let recoveryCount = self.stallCount
-                        if recoveryCount <= 3 {
-                            Task { @MainActor [weak self] in
-                                try? await Task.sleep(nanoseconds: 2_000_000_000)
-                                guard let self, self.isPlaying, self.player.rate == 0,
-                                      !self.isQualityChangePending else { return }
-                                let seekT = self.currentTime
-                                playerLog.notice("[stall] recovery#\(recoveryCount): seeking to \(seekT)s to flush pipeline")
-                                self.player.seek(
-                                    to: CMTime(seconds: seekT, preferredTimescale: 600),
-                                    toleranceBefore: .zero,
-                                    toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600)
-                                ) { [weak self] _ in
-                                    Task { @MainActor [weak self] in
-                                        guard let self, self.isPlaying else { return }
-                                        self.requestPlaybackStart(reason: "buffer recovery")
-                                        playerLog.notice("[stall] recovery#\(recoveryCount): rate restored")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-                #if canImport(UIKit)
-                setupRemoteCommandCenter()
-                #endif
-                requestPlaybackStart(reason: "local-file playback")
-                // Downloaded videos have no related videos — clear any stale state from a
-                // previous YouTube session so autoplay does not fire a YouTube video when
-                // the download ends. (Bug #224: wrong video played after local file ends.)
-                relatedVideos = []
-                hasNext = false
-                #if canImport(UIKit)
-                UIApplication.shared.isIdleTimerDisabled = true
-                updateNowPlayingInfo()
-                #endif
-                playerLog.notice("[loadAsync] local-file fast path: playing \(localURL.lastPathComponent)")
-                return
-            }
-            // File missing or path invalid — fall through to network re-stream.
-            playerLog.notice("[loadAsync] localFileURL set but file not accessible, falling through: \(localURL.path)")
-        }
 
         do {
             // --- Cache-first load ---

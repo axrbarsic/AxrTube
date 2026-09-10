@@ -644,7 +644,8 @@ public final class PlaybackViewModel {
         audioScopeItemObservation = player.observe(\.currentItem, options: [.new]) { [weak self] player, _ in
             let item = player.currentItem
             Task { @MainActor [weak self, weak item] in
-                guard let self else { return }
+                guard let self, self.player.currentItem === item else { return }
+                // Reject stale nil/item events before cancelling the new capture.
                 self.audioScopeInstallationTask?.cancel()
                 guard let item, self.player.currentItem === item,
                       let videoID = self.currentVideo?.id else { return }

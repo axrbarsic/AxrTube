@@ -96,12 +96,16 @@ extension PlaybackViewModel {
     /// want the overlay to appear (user-initiated gestures) must call
     /// `showControls()` themselves after this.
     public func seek(to time: TimeInterval) {
+        guard time.isFinite, let item = player.currentItem else { return }
         player.seek(
             to: CMTime(seconds: time, preferredTimescale: 600),
             toleranceBefore: .zero,
             toleranceAfter: .zero
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in self?.currentTime = time }
+        ) { [weak self, weak item] finished in
+            Task { @MainActor [weak self, weak item] in
+                guard finished, let self, let item, self.player.currentItem === item else { return }
+                self.synchronizePlaybackTimeFromPlayer(reason: "seek completed")
+            }
         }
     }
 
