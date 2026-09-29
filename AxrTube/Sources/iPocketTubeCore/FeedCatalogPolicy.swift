@@ -151,15 +151,15 @@ public enum VideoCardInteractionPolicy {
     }
 }
 
-/// Inline playback always requests durable offline storage, independent of the
-/// optional full-screen auto-save setting. Completed and active entries remain
-/// idempotent, so transport taps cannot create duplicate download jobs.
+/// Inline playback requests durable offline storage only after playback starts,
+/// independent of the optional full-screen auto-save setting. Completed and
+/// active entries remain idempotent, so transport taps cannot duplicate jobs.
 public enum VideoCardOfflineSavePolicy {
     public static func shouldRequestDownload(
         existingStatus: OfflineDownloadStatus?,
-        downloadServiceIsActive: Bool
+        playbackIsRunning: Bool
     ) -> Bool {
-        _ = downloadServiceIsActive
+        guard playbackIsRunning else { return false }
         guard let existingStatus else { return true }
         return existingStatus != .completed && !existingStatus.isActive
     }

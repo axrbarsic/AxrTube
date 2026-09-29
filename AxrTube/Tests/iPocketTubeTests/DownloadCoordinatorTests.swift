@@ -243,7 +243,7 @@ struct DownloadCoordinatorTests {
         await resolver.succeed("new")
     }
 
-    @Test func stalledPlaybackOnlyGetsBoundedBandwidthGrace() async throws {
+    @Test func startupBufferingKeepsOfflineTransfersPausedUntilPlaybackStarts() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let store = DownloadStore(baseDirectory: directory)
@@ -251,14 +251,16 @@ struct DownloadCoordinatorTests {
         let service = VideoDownloadService(store: store, backend: transport,
             resolver: { _, _ in throw CancellationError() }, playbackGracePeriod: .milliseconds(10))
         transport.finishRestoration()
-        service.setPlaybackDemand(preparing: true, waiting: true)
+        service.setPlaybackDemand(preparing: true, waiting: true, hasPlaybackStarted: false)
+        #expect(transport.isPressured)
+        try await Task.sleep(for: .milliseconds(40))
+        #expect(transport.isPressured)
+        service.setPlaybackDemand(preparing: true, waiting: true, hasPlaybackStarted: false)
+        #expect(transport.isPressured)
+        service.setPlaybackDemand(preparing: false, waiting: true, hasPlaybackStarted: true)
         #expect(transport.isPressured)
         try await eventually { !transport.isPressured }
-        service.setPlaybackDemand(preparing: true, waiting: true)
+        service.setPlaybackDemand(preparing: false, waiting: false, hasPlaybackStarted: true)
         #expect(!transport.isPressured)
-        service.setPlaybackDemand(preparing: false, waiting: false)
-        service.setPlaybackDemand(preparing: false, waiting: true)
-        #expect(transport.isPressured)
-        service.setPlaybackDemand(preparing: false, waiting: false)
     }
 }

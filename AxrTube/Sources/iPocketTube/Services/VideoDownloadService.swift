@@ -44,6 +44,7 @@ public final class VideoDownloadService {
     public private(set) var lastCompletedKind: OfflineMediaKind?
     public private(set) var lastSavedToPhotos = false
     public private(set) var lastWasAutomatic = false
+    public private(set) var playbackIsRunning = false
     public var activeVideoID: String? { currentRequest?.video.id }
     public var activeProgress: Double? {
         if case let .downloading(progress) = state { return progress }
@@ -68,6 +69,7 @@ public final class VideoDownloadService {
     private var playbackObservation: NSKeyValueObservation?
     private weak var observedPlayer: AVPlayer?
     private var playbackPreparing = false
+    private var playbackHasStarted = false
     private var pressureEpisodeActive = false
     private var pressureReleaseTask: Task<Void, Never>?
     private let playbackGracePeriod: Duration
@@ -88,8 +90,8 @@ public final class VideoDownloadService {
         self.store = store
         self.backend = backend
         self.resolveSource = resolver
-        self.restoredStorageLimitMB = restoredStorageLimitMB
         self.playbackGracePeriod = playbackGracePeriod
+        self.restoredStorageLimitMB = restoredStorageLimitMB
         backend.onEvent = { [weak self] event, generation in
             Task { @MainActor [weak self] in
                 guard let self, backend.isCurrent(event.videoID, generation: generation) else { return }
@@ -425,6 +427,7 @@ public final class VideoDownloadService {
     }
 
     public func prioritizePlayback(_ player: AVPlayer, preparing: Bool) {
+        if preparing && !playbackPreparing { playbackHasStarted = false }
         playbackPreparing = preparing
         if observedPlayer !== player {
             observedPlayer = player
@@ -436,24 +439,40 @@ public final class VideoDownloadService {
     }
 
     private func updatePlaybackPriority() {
+        let status = observedPlayer?.timeControlStatus
+        playbackIsRunning = status == .playing
+        if playbackIsRunning { playbackHasStarted = true }
         setPlaybackDemand(preparing: playbackPreparing,
-                          waiting: observedPlayer?.timeControlStatus == .waitingToPlayAtSpecifiedRate)
+                          waiting: status == .waitingToPlayAtSpecifiedRate,
+                          hasPlaybackStarted: playbackHasStarted)
     }
 
-    func setPlaybackDemand(preparing: Bool, waiting: Bool) {
+    func setPlaybackDemand(preparing: Bool, waiting: Bool, hasPlaybackStarted: Bool) {
+        playbackHasStarted = hasPlaybackStarted
         let pressured = PlaylistDownloadPolicy.shouldYieldToPlayback(preparing: preparing, waitingForBuffer: waiting)
         if !pressured {
             pressureEpisodeActive = false
             pressureReleaseTask?.cancel()
+            pressureReleaseTask = nil
             backend.setPlaybackPressure(false)
         } else if !pressureEpisodeActive {
             pressureEpisodeActive = true
             backend.setPlaybackPressure(true)
-            pressureReleaseTask = Task { [weak self, playbackGracePeriod] in
-                do { try await Task.sleep(for: playbackGracePeriod) } catch { return }
-                // A loading/buffering spinner must not hold the offline queue forever.
-                self?.backend.setPlaybackPressure(false)
-            }
+            if hasPlaybackStarted { schedulePlaybackPressureRelease() }
+        } else if hasPlaybackStarted, pressureReleaseTask == nil {
+            schedulePlaybackPressureRelease()
+        } else if !hasPlaybackStarted {
+            pressureReleaseTask?.cancel()
+            pressureReleaseTask = nil
+        }
+    }
+
+    private func schedulePlaybackPressureRelease() {
+        pressureReleaseTask = Task { [weak self, playbackGracePeriod] in
+            do { try await Task.sleep(for: playbackGracePeriod) } catch { return }
+            guard let self, self.pressureEpisodeActive, self.playbackHasStarted else { return }
+            // A later rebuffer gets a short grace period, but initial playback never does.
+            self.backend.setPlaybackPressure(false)
         }
     }
 }

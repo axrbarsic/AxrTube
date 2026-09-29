@@ -922,7 +922,7 @@ public struct VideoCardView: View {
                 if isInlinePlayback {
                     playerState.vm.togglePlayPause()
                 } else {
-                    startInlinePlaybackAndOfflineSave()
+                    startInlinePlayback()
                 }
                 #else
                 perform(intent: .playback)
@@ -947,23 +947,8 @@ public struct VideoCardView: View {
     }
 
     #if os(iOS)
-    private func startInlinePlaybackAndOfflineSave() {
+    private func startInlinePlayback() {
         perform(intent: .playback)
-
-        let status = DownloadStore.shared.entry(videoId: video.id, kind: .video)?.status
-        guard VideoCardOfflineSavePolicy.shouldRequestDownload(
-            existingStatus: status,
-            downloadServiceIsActive: downloadService.state.isActive
-        ) else { return }
-
-        downloadService.download(
-            video: video,
-            kind: .video,
-            saveVideoToPhotos: false,
-            storageLimitMB: store.settings.offlineStorageLimitMB,
-            isAutomatic: true,
-            preferLowBandwidthAudio: false
-        )
     }
     #endif
 

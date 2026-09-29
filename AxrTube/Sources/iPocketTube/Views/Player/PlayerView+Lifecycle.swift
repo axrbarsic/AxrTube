@@ -769,25 +769,15 @@ extension PlayerView {
             ChannelView(channelId: dest.channelId, catalogContext: .standard)
         }
         #if !os(tvOS)
-        .onChange(of: vm.isPlaying) { _, playing in
-            guard playing,
-                  !video.isDownloaded,
-                  !downloadService.state.isActive else { return }
-            let kind: OfflineMediaKind
-            switch store.settings.offlineAutoSaveMode {
-            case .off: return
-            case .audio: kind = .video
-            case .video: kind = .video
-            }
-            downloadService.download(
-                video: vm.playerInfo?.video ?? video,
-                kind: kind,
-                saveVideoToPhotos: false,
-                storageLimitMB: store.settings.offlineStorageLimitMB,
-                isAutomatic: true,
-                preferLowBandwidthAudio: false
-            )
+        #if os(iOS)
+        .onChange(of: downloadService.playbackIsRunning) { _, playbackRunning in
+            requestConfiguredOfflineSaveIfNeeded(playbackRunning: playbackRunning)
         }
+        #else
+        .onChange(of: vm.isPlaying) { _, playing in
+            requestConfiguredOfflineSaveIfNeeded(playbackRunning: playing)
+        }
+        #endif
         .confirmationDialog(
             "Save Offline",
             isPresented: $showDownloadFormatPicker,
@@ -817,6 +807,26 @@ extension PlayerView {
             return .systemAction
         })
     }
+
+    #if !os(tvOS)
+    private func requestConfiguredOfflineSaveIfNeeded(playbackRunning: Bool) {
+        guard playbackRunning,
+              !video.isDownloaded,
+              !downloadService.state.isActive else { return }
+        let kind: OfflineMediaKind
+        switch store.settings.offlineAutoSaveMode {
+        case .off: return
+        case .audio: kind = .video
+        case .video: kind = .video
+        }
+        downloadService.download(
+            video: vm.playerInfo?.video ?? video,
+            kind: kind,
+            storageLimitMB: store.settings.offlineStorageLimitMB,
+            isAutomatic: true
+        )
+    }
+    #endif
 
     // MARK: - Controls overlay
 

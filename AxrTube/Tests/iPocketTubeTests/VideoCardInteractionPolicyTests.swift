@@ -29,15 +29,15 @@ struct VideoCardInteractionPolicyTests {
         }
     }
 
-    @Test("First inline play requests offline storage")
-    func inlinePlayRequestsOfflineStorage() {
-        #expect(VideoCardOfflineSavePolicy.shouldRequestDownload(
+    @Test("Inline playback requests offline storage only after playback starts")
+    func inlinePlayRequestsOfflineStorageAfterPlaybackStarts() {
+        #expect(!VideoCardOfflineSavePolicy.shouldRequestDownload(
             existingStatus: nil,
-            downloadServiceIsActive: false
+            playbackIsRunning: false
         ))
         #expect(VideoCardOfflineSavePolicy.shouldRequestDownload(
             existingStatus: nil,
-            downloadServiceIsActive: true
+            playbackIsRunning: true
         ))
     }
 
@@ -45,11 +45,11 @@ struct VideoCardInteractionPolicyTests {
     func inlineTransportDoesNotDuplicateDownload() {
         #expect(!VideoCardOfflineSavePolicy.shouldRequestDownload(
             existingStatus: .downloading,
-            downloadServiceIsActive: true
+            playbackIsRunning: true
         ))
         #expect(!VideoCardOfflineSavePolicy.shouldRequestDownload(
             existingStatus: .completed,
-            downloadServiceIsActive: false
+            playbackIsRunning: true
         ))
     }
 }
