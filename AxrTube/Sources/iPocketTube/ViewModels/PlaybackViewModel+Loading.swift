@@ -568,21 +568,14 @@ extension PlaybackViewModel {
         }
 
 
-        // Fetch the BotGuard PO token before the primary stream attempt.
-        // Awaited (with a 2 s safety timeout) so api.hasPoToken(for:) returns true during
-        // the rqh=1 adaptive stream check in tryAllStreams — preventing an unnecessary
-        // WKWebView fallback on every cold start.
-        // BotGuardClient completes in <500 ms on first run; cached result returns in <1 ms
-        // thereafter (TTL ~12 h). The 2 s timeout is a safety net for slow networks only.
+        // Start the BotGuard PO token prefetch off the playback critical path.
+        // The initial HLS stream does not need to wait for it, and awaiting a
+        // structured-task timeout here could still block until an uncooperative
+        // provider finishes. The result remains available to later fallback attempts.
         let capturedAPI = api
         let capturedVideoId = video.id
-        if !(await api.hasPoToken(for: video.id)) {
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await capturedAPI.prefetchPoToken(for: capturedVideoId) }
-                group.addTask { try? await Task.sleep(nanoseconds: 2_000_000_000) }
-                _ = await group.next()
-                group.cancelAll()
-            }
+        Task {
+            await capturedAPI.prefetchPoToken(for: capturedVideoId)
         }
         guard !Task.isCancelled, currentVideo?.id == video.id else { return }
         #if canImport(WebKit)

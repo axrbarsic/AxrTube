@@ -2,6 +2,21 @@ import Foundation
 import Testing
 @testable import iPocketTubeCore
 
+private actor ConcurrencyTrackingPoTokenProvider: PoTokenProvider {
+    private var activeRequests = 0
+    private var maxConcurrentRequests = 0
+
+    func token(for videoId: String) async throws -> String {
+        activeRequests += 1
+        maxConcurrentRequests = max(maxConcurrentRequests, activeRequests)
+        try? await Task.sleep(for: .milliseconds(40))
+        activeRequests -= 1
+        return "token-\(videoId)"
+    }
+
+    func maximumConcurrentRequests() -> Int { maxConcurrentRequests }
+}
+
 // MARK: - PoTokenInjectionTests
 //
 // Verifies that PlayerInfo.applyingPoToken(_:) correctly appends &pot= to all stream URLs,
@@ -82,5 +97,17 @@ struct PoTokenInjectionTests {
         #expect(patched.captionTracks.count == info.captionTracks.count)
         #expect(patched.trackingURLs == nil)
         #expect(patched.endCards.isEmpty)
+    }
+
+    @Test("BotGuard token prefetches stay serialized across video changes")
+    func serializesProviderRequests() async {
+        let provider = ConcurrencyTrackingPoTokenProvider()
+        let api = InnerTubeAPI(poTokenProvider: provider)
+
+        async let first: Void = api.prefetchPoToken(for: "first-video")
+        async let second: Void = api.prefetchPoToken(for: "second-video")
+        _ = await (first, second)
+
+        #expect(await provider.maximumConcurrentRequests() == 1)
     }
 }

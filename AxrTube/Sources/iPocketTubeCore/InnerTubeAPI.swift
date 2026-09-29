@@ -47,6 +47,14 @@ public actor InnerTubeAPI {
     var poToken: String?
     var poTokenVideoId: String?
     var poTokenExpiry: Date?
+    private var poTokenStateGeneration: UInt64 = 0
+    private var poTokenPrefetchGeneration: UInt64 = 0
+    private var poTokenPrefetchInFlight: (
+        videoId: String,
+        generation: UInt64,
+        stateGeneration: UInt64,
+        task: Task<String?, Never>
+    )?
 
     // MARK: - External PoToken API (Option B)
 
@@ -59,6 +67,7 @@ public actor InnerTubeAPI {
     /// The token is applied to all subsequent `fetchPlayerInfo` calls for `videoId`
     /// via `applyingPoToken`, allowing rqh=1 adaptive streams to be retried with CDN auth.
     public func storeExternalPoToken(_ token: String, for videoId: String) {
+        poTokenStateGeneration &+= 1
         poToken = token
         poTokenVideoId = videoId
     }
@@ -69,29 +78,71 @@ public actor InnerTubeAPI {
         return poToken != nil && poTokenVideoId == videoId
     }
 
-    /// Returns the cached PO token for `videoId`, or nil if none is available.
-    /// Phase -1a uses this to recover the BotGuard-minted token when
-    /// `VideoPreloadCache.wkHLSPoTokenCache` is empty (e.g. for videos that have no
-    /// `serviceIntegrityDimensions.poToken` in their player API response — the WKWebView
-    /// extractor stores nil in the cache, but BotGuard may have minted a token separately
-    /// during the 2 s prefetchPoToken window in loadAsync).
+    /// Returns the BotGuard PO token cached for `videoId`, or nil if none is available.
     public func currentPoToken(for videoId: String) -> String? {
         guard poTokenVideoId == videoId else { return nil }
         return poToken
     }
 
-    /// Fetches a PO token from the configured provider in the background and caches it
-    /// in `poToken`/`poTokenVideoId`. Call this fire-and-forget when starting a video load
-    /// so the token is available for subsequent retry attempts without blocking the
-    /// primary fetch path. BotGuardClient caches within its TTL (~1h), so this is fast
-    /// after the first successful pipeline run.
+    /// Fetches a PO token from the configured provider and caches it in
+    /// `poToken`/`poTokenVideoId`. Playback startup calls this fire-and-forget so the
+    /// provider cannot block the primary stream request. Provider calls are serialized
+    /// because BotGuardClient keeps mutable cached state while generating a token.
     public func prefetchPoToken(for videoId: String) async {
-        guard let provider = poTokenProvider, poToken == nil || poTokenVideoId != videoId else { return }
-        if let pot = try? await provider.token(for: videoId) {
-            poToken = pot
-            poTokenVideoId = videoId
-            tubeLog.notice("[InnerTube] prefetchPoToken ✅ (len=\(pot.count)) for \(videoId, privacy: .public)")
+        guard let provider = poTokenProvider else { return }
+
+        while true {
+            if poToken != nil, poTokenVideoId == videoId { return }
+
+            if let inFlight = poTokenPrefetchInFlight {
+                let token = await inFlight.task.value
+                finishPoTokenPrefetch(
+                    token,
+                    videoId: inFlight.videoId,
+                    generation: inFlight.generation,
+                    stateGeneration: inFlight.stateGeneration
+                )
+                if inFlight.videoId == videoId { return }
+                continue
+            }
+
+            poTokenPrefetchGeneration &+= 1
+            let generation = poTokenPrefetchGeneration
+            let stateGeneration = poTokenStateGeneration
+            let task = Task<String?, Never> {
+                try? await provider.token(for: videoId)
+            }
+            poTokenPrefetchInFlight = (
+                videoId: videoId,
+                generation: generation,
+                stateGeneration: stateGeneration,
+                task: task
+            )
+
+            let token = await task.value
+            finishPoTokenPrefetch(
+                token,
+                videoId: videoId,
+                generation: generation,
+                stateGeneration: stateGeneration
+            )
+            return
         }
+    }
+
+    private func finishPoTokenPrefetch(
+        _ token: String?,
+        videoId: String,
+        generation: UInt64,
+        stateGeneration: UInt64
+    ) {
+        guard poTokenPrefetchInFlight?.generation == generation else { return }
+        if poTokenStateGeneration == stateGeneration, let token {
+            poToken = token
+            poTokenVideoId = videoId
+            tubeLog.notice("[InnerTube] prefetchPoToken ✅ (len=\(token.count)) for \(videoId, privacy: .public)")
+        }
+        poTokenPrefetchInFlight = nil
     }
 
     // MARK: - PoTokenProvider

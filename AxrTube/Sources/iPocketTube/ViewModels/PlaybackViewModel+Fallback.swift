@@ -61,12 +61,6 @@ extension PlaybackViewModel {
             // before this point, so extractedPoToken is always nil here. The cache entry is
             // written by preWarm() AFTER extraction completes and is only evicted together
             // with the HLS URL itself — so it reliably holds the preWarm-extracted token.
-            // fix24: Fall back to InnerTubeAPI's BotGuard-minted token when VideoPreloadCache
-            // has no pot=. For videos with no serviceIntegrityDimensions.poToken (e.g.
-            // uN7uKLsGRWw), preWarm stores nil in wkHLSPoTokenCache but BotGuard may have
-            // minted a valid CDN token during loadAsync's 2 s prefetchPoToken window. Using
-            // this token allows the proxy's Step 4 to inject pot= into segment URLs so the
-            // CDN accepts them without iOS UA rejection.
             var capturedPoToken = await VideoPreloadCache.shared.cachedPoToken(for: video.id)
             // NOTE: Do NOT fall back to InnerTubeAPI.currentPoToken (BotGuard token, ~107 chars).
             // The BotGuard pot= is for youtubei/v1/player API auth; it is NOT a valid CDN
