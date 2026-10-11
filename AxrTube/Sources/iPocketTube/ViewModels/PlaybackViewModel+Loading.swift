@@ -661,16 +661,19 @@ extension PlaybackViewModel {
             // If YouTube returns UNPLAYABLE/LOGIN_REQUIRED and the user is signed in,
             // automatically retry with the authenticated TV client before showing an error.
             let info: PlayerInfo
-            if let cachedInfo = cached.playerInfo {
-                playerLog.notice("PREFETCH_HIT: playerInfo for \(video.id) — skipping network (hls=\(cachedInfo.hlsURL != nil) dash=\(cachedInfo.dashURL != nil) formats=\(cachedInfo.formats.count))")
+            // A cached response without HLS cannot start AVPlayer directly; refetch through
+            // the startup race instead of entering the slow sequential fallback chain.
+            if let cachedInfo = cached.playerInfo, cachedInfo.hlsURL != nil {
+                playerLog.notice("PREFETCH_HIT: playerInfo for \(video.id) — skipping network (hls=true dash=\(cachedInfo.dashURL != nil) formats=\(cachedInfo.formats.count))")
                 info = cachedInfo
             } else if let inFlight = await VideoPreloadCache.shared.inFlightPlayerFetch(videoId: video.id),
-                      let coalescedInfo = await inFlight.value {
+                      let coalescedInfo = await inFlight.value,
+                      coalescedInfo.hlsURL != nil {
                 playerLog.notice("PREFETCH_COALESCE: playerInfo for \(video.id) — joined in-flight prefetch task")
                 info = coalescedInfo
             } else {
                 do {
-                    info = try await api.fetchPlayerInfo(videoId: video.id)
+                    info = try await api.fetchStartupPlayerInfo(videoId: video.id)
                 } catch {
                     if case APIError.ipBlocked(let reason) = error {
                         // NW-6-FIX: IP-block short-circuit. Every extra /player call from a

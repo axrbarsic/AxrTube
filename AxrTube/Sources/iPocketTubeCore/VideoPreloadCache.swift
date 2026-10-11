@@ -331,7 +331,7 @@ public actor VideoPreloadCache {
         }
         cacheLog.notice("[coalesce] creating new in-flight task for \(videoId, privacy: .public)")
         let task = Task<PlayerInfo?, Never>(priority: .userInitiated) {
-            let result = try? await self.api.fetchPlayerInfo(videoId: videoId)
+            let result = try? await self.api.fetchStartupPlayerInfo(videoId: videoId)
             self.inFlightPlayerFetches.removeValue(forKey: videoId)
             return result
         }
