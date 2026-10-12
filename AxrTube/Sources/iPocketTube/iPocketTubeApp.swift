@@ -9,6 +9,7 @@ struct iPocketTubeApp: App {
     @State private var settingsStore: SettingsStore
     /// App-scoped download coordinator shared by cards, player, and collection.
     @State private var cardDownloadService: VideoDownloadService
+    @State private var audioDownloadService: AudioDownloadService
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
@@ -22,6 +23,7 @@ struct iPocketTubeApp: App {
         let settings = SettingsStore()
         _settingsStore = State(initialValue: settings)
         _cardDownloadService = State(initialValue: VideoDownloadService(api: api, settingsStore: settings))
+        _audioDownloadService = State(initialValue: AudioDownloadService(api: api))
     }
 
     var body: some Scene {
@@ -32,6 +34,7 @@ struct iPocketTubeApp: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
+                .environment(audioDownloadService)
                 .environment(DownloadStore.shared)
                 .task(id: authService.authSnapshot) {
                     let snapshot = authService.authSnapshot

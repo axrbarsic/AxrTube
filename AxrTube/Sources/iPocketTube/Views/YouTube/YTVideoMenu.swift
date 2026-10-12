@@ -11,6 +11,7 @@ struct YTVideoMenu: View {
     @Environment(AuthService.self) private var authService
     @Environment(SettingsStore.self) private var store
     @Environment(VideoDownloadService.self) private var downloadService
+    @Environment(AudioDownloadService.self) private var audioDownloadService
     @Environment(\.innerTubeAPI) private var api
 
     var body: some View {
@@ -43,6 +44,11 @@ struct YTVideoMenu: View {
                 )
             } label: {
                 Label("Скачать видео", systemImage: "arrow.down.circle")
+            }
+            Button {
+                audioDownloadService.download(video: video)
+            } label: {
+                Label("Сохранить аудио", systemImage: "music.note")
             }
             if let url = URL(string: "https://www.youtube.com/watch?v=\(video.id)") {
                 ShareLink(item: url) { Label("Поделиться", systemImage: "square.and.arrow.up") }

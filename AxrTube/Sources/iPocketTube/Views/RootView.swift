@@ -22,6 +22,7 @@ public struct RootView: View {
     @Environment(VideoDownloadService.self) private var cardDownloadService
     #if os(iOS)
     @Environment(PlayerStateStore.self) private var playerState
+    @Environment(AudioDownloadService.self) private var audioDownloadService
     #endif
     @State private var downloadToast: String?
 
@@ -64,6 +65,12 @@ public struct RootView: View {
         #if os(iOS)
         .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in
             cardDownloadService.prioritizePlayback(playerState.vm.player, preparing: preparing)
+        }
+        .onChange(of: audioDownloadService.lastMessage) { _, message in
+            // The watch page shows its own toast while it is on screen.
+            guard let message, playerState.presentation != .fullScreen else { return }
+            downloadToast = message
+            audioDownloadService.lastMessage = nil
         }
         // Deep link is handled by MainTabView.onChange(of: browseVM.deepLinkedVideo)
         // which calls playerRouter.open(video:api:). No landscapePlayerCover needed here.

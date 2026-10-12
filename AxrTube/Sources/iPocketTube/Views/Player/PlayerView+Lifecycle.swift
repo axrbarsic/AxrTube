@@ -76,7 +76,7 @@ extension PlayerView {
     // Extracted from bodyWithLifecycleModifiers so the Swift type-checker handles each
     // property in a separate inference scope (compiler error: "unable to type-check
     // this expression in reasonable time").
-    private var playerContentView: some View {
+    func playerContentView(showsOverlays: Bool) -> some View {
         GeometryReader { geo in
             ZStack {
                 Color.black.ignoresSafeArea()
@@ -117,27 +117,12 @@ extension PlayerView {
                 #endif
 
                 #if os(iOS)
-                // Horizontal swipe layer: left → next video, right → previous video.
-                // Uses UIKit-level UIPanGestureRecognizer so it fires above AVPlayerLayer.
+                // UIKit gesture layer above AVPlayerLayer: tap, double-tap seek,
+                // hold for 2×, swipe down to the mini player (YouTube gestures).
                 PlayerSwipeGestureOverlay(
-                    onSwipeLeft: {
-                        swipeLog.debug("[swipe-overlay] onSwipeLeft — isTransitioning=\(isTransitioning) isScrubbing=\(vm.isScrubbing) controlsVisible=\(vm.controlsVisible) hasNext=\(vm.hasNext)")
-                        guard !isTransitioning else { return }
-                        if vm.hasNext {
-                            iPocketTubeHaptics.shared.perform(.playbackTransport)
-                            performHorizontalTransition(direction: -1, screenWidth: geo.size.width) { vm.playNext() }
-                        }
-                        else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 } }
-                    },
-                    onSwipeRight: {
-                        swipeLog.debug("[swipe-overlay] onSwipeRight — isTransitioning=\(isTransitioning) isScrubbing=\(vm.isScrubbing) controlsVisible=\(vm.controlsVisible) hasPrevious=\(vm.hasPrevious)")
-                        guard !isTransitioning else { return }
-                        if vm.hasPrevious {
-                            iPocketTubeHaptics.shared.perform(.playbackTransport)
-                            performHorizontalTransition(direction: 1, screenWidth: geo.size.width) { vm.playPrevious() }
-                        }
-                        else { withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 } }
-                    },
+                    // YouTube has no horizontal next/previous swipe on the player.
+                    onSwipeLeft: {},
+                    onSwipeRight: {},
                     onTap: {
                         // Suppress toggle-controls when end cards are active — taps belong to the cards.
                         if !vm.hasVisibleEndCards {
@@ -154,24 +139,10 @@ extension PlayerView {
                             iPocketTubeHaptics.shared.perform(.seekCommit)
                             vm.seekRelative(seconds: Double(store.settings.seekForwardSeconds))
                             seekToastMessage = "\(store.settings.seekForwardSeconds)s →"
-                        } else {
-                            iPocketTubeHaptics.shared.perform(.settingsToggle)
-                            let newMode: AppSettings.VideoGravityMode =
-                                store.settings.videoGravityMode == .fit ? .fill : .fit
-                            store.settings.videoGravityMode = newMode
-                            scaleToast = newMode == .fill ? "Fill" : "Fit"
-                            seekToastMessage = newMode == .fill ? "Fill" : "Fit"  // diagnostic: also set seekToast
                         }
                     },
-                    onTwoFingerTap: { vm.toggleStatsForNerds() },
-                    onPanChanged: { dx in
-                        guard !isTransitioning else { return }
-                        if (dx < 0 && vm.hasNext) || (dx > 0 && vm.hasPrevious) {
-                            slideOffset = dx
-                        } else {
-                            slideOffset = dx * 0.15
-                        }
-                    },
+                    onTwoFingerTap: {},
+                    onPanChanged: { _ in },
                     onSwipeCancelled: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 }
                     },
@@ -246,12 +217,6 @@ extension PlayerView {
                                         store.settings.miniPlayerEnabled ? playerState.minimize() : playerState.stop()
                                         return
                                     }
-                                    guard abs(dx) > abs(dy) else { return }
-                                    if dx < 0, vm.hasNext {
-                                        performHorizontalTransition(direction: -1, screenWidth: geo.size.width) { vm.playNext() }
-                                    } else if dx > 0, vm.hasPrevious {
-                                        performHorizontalTransition(direction: 1, screenWidth: geo.size.width) { vm.playPrevious() }
-                                    }
                                 }
                         )
                         #endif
@@ -313,8 +278,9 @@ extension PlayerView {
                         .animation(.easeInOut(duration: 0.2), value: vm.statsForNerdsVisible)
                 }
 
-                // Picker / sheet overlays — see PlayerView+Overlays.swift
-                overlayStack
+                // Picker / sheet overlays — see PlayerView+Overlays.swift.
+                // The portrait watch page hosts them over the whole screen instead.
+                if showsOverlays { overlayStack }
             }
             .offset(x: slideOffset)
         }
@@ -338,7 +304,7 @@ extension PlayerView {
     // Each property is a separate type-inference scope so the cumulative generic depth
     // of the modifier chain stays within the compiler threshold.
     private var tvosPlayerGestureModifiers: some View {
-        playerContentView
+        playerContentView(showsOverlays: true)
         // When no overlay is open, the outer view is the exclusive focus target and
         // handles all remote input via onMoveCommand / onTapGesture.
         // When an overlay (more menu, quality, speed, sleep timer) is visible, focus is
@@ -529,12 +495,12 @@ extension PlayerView {
             tvosPlayerChangeModifiers
                 .toolbar(.hidden, for: .tabBar)
             #elseif os(iOS)
-            playerContentView
+            watchLayout
                 .navigationBarHidden(true)
-                .statusBarHidden(true)
+                .statusBarHidden(vm.isLandscape)
                 .toolbar(.hidden, for: .tabBar)
             #else
-            playerContentView
+            playerContentView(showsOverlays: true)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             #endif
         }

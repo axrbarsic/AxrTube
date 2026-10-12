@@ -25,6 +25,7 @@ struct AppEntry: App {
     @State private var queueInjectConsumed = false
     /// Shared download service for video cards. See iPocketTube/RootView.swift.
     @State private var cardDownloadService: VideoDownloadService
+    @State private var audioDownloadService: AudioDownloadService
     @Environment(\.scenePhase) private var scenePhase
     #if os(iOS)
     @State private var watchLaterAlert: WatchLaterAlert?
@@ -73,6 +74,7 @@ struct AppEntry: App {
         ))
         #endif
         _cardDownloadService = State(initialValue: VideoDownloadService(api: api, settingsStore: settingsStore))
+        _audioDownloadService = State(initialValue: AudioDownloadService(api: api))
 
         // --uitesting-force-stream-method=<method>: restricts exhaustiveRetry to a
         // single named stream-fetching client.  Written here (main thread, before any
@@ -137,6 +139,7 @@ struct AppEntry: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
+                .environment(audioDownloadService)
                 .environment(DownloadStore.shared)
                 .task(id: authService.authSnapshot) {
                     let snapshot = authService.authSnapshot
@@ -189,6 +192,7 @@ struct AppEntry: App {
                 .environment(settingsStore)
                 .environment(\.innerTubeAPI, api)
                 .environment(cardDownloadService)
+                .environment(audioDownloadService)
                 .environment(DownloadStore.shared)
                 .task(id: authService.authSnapshot) {
                     let snapshot = authService.authSnapshot
@@ -223,6 +227,7 @@ struct AppEntry: App {
                     .environment(\.innerTubeAPI, api)
                     .environment(playerStateStore)
                     .environment(cardDownloadService)
+                    .environment(audioDownloadService)
             } else {
                 mainRootView
             }
@@ -234,6 +239,7 @@ struct AppEntry: App {
                     .environment(\.innerTubeAPI, api)
                     .environment(playerStateStore)
                     .environment(cardDownloadService)
+                    .environment(audioDownloadService)
             } else {
                 mainRootView
             }
@@ -250,6 +256,7 @@ struct AppEntry: App {
                     .environment(settingsStore)
                     .environment(\.innerTubeAPI, api)
                     .environment(cardDownloadService)
+                    .environment(audioDownloadService)
                     .environment(DownloadStore.shared)
                     #if os(iOS)
                     .environment(playerStateStore)

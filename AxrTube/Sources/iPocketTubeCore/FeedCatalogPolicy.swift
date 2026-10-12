@@ -141,7 +141,8 @@ public enum VideoCardInteractionPolicy {
     public static func presentation(for intent: VideoCardIntent) -> VideoCardPresentation {
         switch intent {
         case .surfaceTap: .none
-        case .playback: .inlinePlayer
+        // YouTube opens the watch page; there is no inline feed playback.
+        case .playback: .player
         case .download: .none
         }
     }

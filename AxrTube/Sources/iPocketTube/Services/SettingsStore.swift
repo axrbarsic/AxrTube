@@ -58,7 +58,18 @@ public final class SettingsStore {
             migrated.compactMediaLibraryCards = true
             changed = true
         }
-        if changed { migrated.settingsVersion = 5 }
+        if migrated.settingsVersion < 6 {
+            // YouTube iOS parity: full-width cards, Shorts visible, rotation-driven
+            // full screen and no automatic offline saving while watching.
+            migrated.compactSearchCards = false
+            migrated.compactMediaLibraryCards = false
+            migrated.hideShorts = false
+            migrated.landscapeAlwaysPlay = false
+            migrated.offlineAutoSaveMode = .off
+            migrated.miniPlayerEnabled = true
+            changed = true
+        }
+        if changed { migrated.settingsVersion = 6 }
         return (migrated, changed)
     }
 

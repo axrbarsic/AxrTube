@@ -13,9 +13,9 @@ struct VideoCardInteractionPolicyTests {
         #expect(VideoCardInteractionPolicy.presentation(for: .download) == .none)
     }
 
-    @Test("Playback intent stays inside the card")
-    func playbackUsesInlinePlayer() {
-        #expect(VideoCardInteractionPolicy.presentation(for: .playback) == .inlinePlayer)
+    @Test("Playback intent opens the watch page, like YouTube")
+    func playbackOpensWatchPage() {
+        #expect(VideoCardInteractionPolicy.presentation(for: .playback) == .player)
     }
 
     @Test("Download state preserves transcript and menu capabilities")

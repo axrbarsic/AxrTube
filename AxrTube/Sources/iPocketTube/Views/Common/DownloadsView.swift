@@ -11,6 +11,7 @@ struct DownloadsView: View {
     #if os(iOS)
     @Environment(PlayerRouter.self) private var playerRouter
     @Environment(PlayerStateStore.self) private var playerState
+    @Environment(AudioDownloadService.self) private var audioDownloadService
     #endif
 
     @State private var deleteConfirmationEntry: DownloadedVideo?
@@ -260,6 +261,12 @@ struct DownloadsView: View {
 
     private func retry(_ entry: DownloadedVideo) {
         iPocketTubeHaptics.shared.perform(.downloadRetry)
+        if entry.kind == .audio {
+            var video = entry.video
+            video.localFileURL = nil
+            audioDownloadService.download(video: video)
+            return
+        }
         downloadService.retry(
             entry: entry,
             storageLimitMB: settingsStore.settings.offlineStorageLimitMB
@@ -288,7 +295,8 @@ struct DownloadsView: View {
     }
 
     private var videoEntries: [DownloadedVideo] {
-        downloadStore.entries.filter { $0.kind == .video }
+        // Video and audio-only saves share one list, like YouTube's Downloads.
+        downloadStore.entries
     }
 
     private var currentItemID: String? {

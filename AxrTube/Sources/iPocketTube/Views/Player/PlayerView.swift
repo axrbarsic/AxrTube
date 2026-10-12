@@ -44,6 +44,9 @@ public struct PlayerView: View {
     @State var channelDestination: ChannelDestination?
     #if !os(tvOS)
     @Environment(VideoDownloadService.self) var downloadService
+    #if os(iOS)
+    @Environment(AudioDownloadService.self) var audioDownloadService
+    #endif
     @State var showDownloadFormatPicker = false
     #endif
     #if os(iOS)

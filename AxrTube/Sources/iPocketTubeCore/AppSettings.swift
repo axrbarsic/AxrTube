@@ -351,11 +351,11 @@ public struct AppSettings: Codable {
         queueShuffleEnabled  = false
         defaultSection       = BrowseSection.SectionType.home.rawValue
         compactThumbnails    = false
-        compactSearchCards   = true
-        compactMediaLibraryCards = true
+        compactSearchCards   = false
+        compactMediaLibraryCards = false
         russianOnlySearchEnabled = true
         oscilloscopeEnabled = false
-        hideShorts           = true
+        hideShorts           = false
         hideLiveShorts       = false
         hideVideoPremieres   = false
         perDeviceRecommendationsEnabled = true
@@ -398,7 +398,7 @@ public struct AppSettings: Codable {
         #endif
         experimentalEDRPressGlowEnabled = true
         dynamicIslandMode     = .off
-        settingsVersion      = 5
+        settingsVersion      = 6
     }
 }
 

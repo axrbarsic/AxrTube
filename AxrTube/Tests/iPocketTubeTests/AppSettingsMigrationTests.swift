@@ -20,14 +20,16 @@ import Testing
 @Suite("AppSettings forward-compatible decoding (#181)")
 struct AppSettingsMigrationTests {
 
-    @Test("Current defaults enable background playback")
-    func currentDefaultsEnableBackgroundPlayback() {
+    @Test("Current defaults follow the YouTube iOS layout")
+    func currentDefaultsFollowYouTube() {
         let settings = AppSettings()
         #expect(settings.backgroundPlaybackEnabled)
-        #expect(settings.settingsVersion == 5)
-        #expect(!settings.showShorts)
-        #expect(settings.compactSearchCards)
-        #expect(settings.compactMediaLibraryCards)
+        #expect(settings.settingsVersion == 6)
+        #expect(settings.showShorts)
+        #expect(!settings.compactSearchCards)
+        #expect(!settings.compactMediaLibraryCards)
+        #expect(!settings.landscapeAlwaysPlay)
+        #expect(settings.offlineAutoSaveMode == .off)
         #expect(!settings.lowBandwidthAudioMode)
     }
 
@@ -41,34 +43,38 @@ struct AppSettingsMigrationTests {
         let first = SettingsStore.migrateToCurrentSchema(stored)
         #expect(first.changed)
         #expect(first.settings.backgroundPlaybackEnabled)
-        #expect(first.settings.settingsVersion == 5)
-        #expect(!first.settings.showShorts)
+        #expect(first.settings.settingsVersion == 6)
 
         let second = SettingsStore.migrateToCurrentSchema(first.settings)
         #expect(!second.changed)
         #expect(second.settings.backgroundPlaybackEnabled)
     }
 
-    @Test("Version 4 update enables both compact card defaults exactly once")
+    @Test("Version 5 update switches to YouTube layout exactly once")
     @MainActor
-    func versionFourEnablesCompactCards() {
+    func versionFiveSwitchesToYouTubeLayout() {
         var stored = AppSettings()
-        stored.settingsVersion = 4
-        stored.compactSearchCards = false
-        stored.compactMediaLibraryCards = false
+        stored.settingsVersion = 5
+        stored.compactSearchCards = true
+        stored.compactMediaLibraryCards = true
+        stored.hideShorts = true
+        stored.landscapeAlwaysPlay = true
+        stored.offlineAutoSaveMode = .video
 
         let first = SettingsStore.migrateToCurrentSchema(stored)
         #expect(first.changed)
-        #expect(first.settings.settingsVersion == 5)
-        #expect(first.settings.compactSearchCards)
-        #expect(first.settings.compactMediaLibraryCards)
+        #expect(first.settings.settingsVersion == 6)
+        #expect(!first.settings.compactSearchCards)
+        #expect(!first.settings.compactMediaLibraryCards)
+        #expect(first.settings.showShorts)
+        #expect(!first.settings.landscapeAlwaysPlay)
+        #expect(first.settings.offlineAutoSaveMode == .off)
 
         var userChoice = first.settings
-        userChoice.compactSearchCards = false
+        userChoice.compactSearchCards = true
         let second = SettingsStore.migrateToCurrentSchema(userChoice)
         #expect(!second.changed)
-        #expect(!second.settings.compactSearchCards)
-        #expect(second.settings.compactMediaLibraryCards)
+        #expect(second.settings.compactSearchCards)
     }
 
     // MARK: - Missing new field → default, other fields preserved
