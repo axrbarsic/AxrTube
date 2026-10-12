@@ -115,6 +115,10 @@ public struct PlaylistView: View {
                             .padding(.vertical, 6)
                             .accessibilityIdentifier("video.card.\(video.id)")
                             .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
+                        #elseif os(iOS)
+                        YTVideoCard(video: video, style: .row, currentPlaylistId: playlistId,
+                                    onSelect: { selectVideo(video) })
+                            .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
                         #else
                         VideoCardView(
                             video: video,
@@ -166,6 +170,14 @@ public struct PlaylistView: View {
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 8)
+                #elseif os(iOS)
+                LazyVStack(spacing: 0) {
+                    ForEach(displayVideos) { video in
+                        YTVideoCard(video: video, style: .row, currentPlaylistId: playlistId,
+                                    onSelect: { selectVideo(video) })
+                            .onAppear { vm.loadMoreIfNeeded(lastVideo: video) }
+                    }
+                }
                 #else
                 LazyVGrid(columns: videoGridColumns, spacing: videoGridRowSpacing) {
                     ForEach(displayVideos) { video in

@@ -65,36 +65,11 @@ public struct RootView: View {
         .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in
             cardDownloadService.prioritizePlayback(playerState.vm.player, preparing: preparing)
         }
-        .onChange(of: cardDownloadService.playbackIsRunning) { _, _ in
-            requestInlineOfflineSaveIfNeeded()
-        }
-        .onChange(of: playerState.presentation) { _, _ in
-            requestInlineOfflineSaveIfNeeded()
-        }
         // Deep link is handled by MainTabView.onChange(of: browseVM.deepLinkedVideo)
         // which calls playerRouter.open(video:api:). No landscapePlayerCover needed here.
         #endif
     }
 
-    #if os(iOS)
-    private func requestInlineOfflineSaveIfNeeded() {
-        guard playerState.presentation == .inline,
-              cardDownloadService.playbackIsRunning,
-              playerState.vm.player.timeControlStatus == .playing,
-              let video = playerState.currentVideo,
-              VideoCardOfflineSavePolicy.shouldRequestDownload(
-                  existingStatus: DownloadStore.shared.entry(videoId: video.id, kind: .video)?.status,
-                  playbackIsRunning: true
-              ) else { return }
-
-        cardDownloadService.download(
-            video: video,
-            kind: .video,
-            storageLimitMB: store.settings.offlineStorageLimitMB,
-            isAutomatic: true
-        )
-    }
-    #endif
 }
 
 // MARK: - AppSection

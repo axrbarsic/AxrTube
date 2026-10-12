@@ -96,10 +96,14 @@ struct RelatedVideosView: View {
         ScrollView {
             LazyVStack(spacing: 8) {
                 ForEach(videos) { video in
+                    #if os(iOS)
+                    YTVideoCard(video: video, onSelect: { onSelect(video) })
+                    #else
                     VideoCardView(video: video, compact: true, onSelect: {
                         onSelect(video)
                     })
                         .padding(.horizontal)
+                    #endif
                 }
             }
         }

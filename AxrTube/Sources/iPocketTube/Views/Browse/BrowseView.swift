@@ -206,6 +206,19 @@ struct VideoGridSection: View {
         #else
         let compact = store.settings.compactThumbnails
         #endif
+        #if os(iOS)
+        // YouTube iOS layout: full-width cards (or thumbnail rows when compact
+        // search cards are enabled); tapping opens the watch page directly.
+        LazyVStack(spacing: 0) {
+            ForEach(videos) { video in
+                YTVideoCard(video: video, style: compact ? .row : .large, onSelect: { onSelect(video) })
+                    .accessibilityValue(video.isShort ? "short" : "")
+                    .onAppear {
+                        if video.id == videos.last?.id { loadMore?() }
+                    }
+            }
+        }
+        #else
         if compact {
             LazyVStack(spacing: 8) {
                 ForEach(videos) { video in
@@ -285,6 +298,7 @@ struct VideoGridSection: View {
             .padding(.vertical, 8)
             #endif
         }
+        #endif
     }
 
     private func select(_ video: Video) {
@@ -308,6 +322,9 @@ struct VideoRowSection: View {
                     VideoCardView(video: video, compact: false, onSelect: { select(video) })
                         .frame(width: 360)
                         .accessibilityIdentifier("video.card.\(video.id)")
+                    #elseif os(iOS)
+                    YTVideoCard(video: video, onSelect: { onSelect(video) })
+                        .frame(width: 280)
                     #else
                     VideoCardView(video: video, compact: false, onSelect: { select(video) })
                         .frame(width: 220)

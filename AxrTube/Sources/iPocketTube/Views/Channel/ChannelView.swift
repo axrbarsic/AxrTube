@@ -206,6 +206,16 @@ public struct ChannelView: View {
     private func videosGrid(_ videos: [Video]) -> some View {
         let compact = usesCompactCards
         return Group {
+            #if os(iOS)
+            LazyVStack(spacing: 0) {
+                ForEach(videos) { video in
+                    YTVideoCard(video: video, style: compact ? .row : .large, onSelect: { selectVideo(video) })
+                        .onAppear {
+                            if video.id == vm.videos.last?.id { vm.loadMore() }
+                        }
+                }
+            }
+            #else
             if compact {
                 LazyVStack(spacing: 0) {
                     ForEach(videos) { video in
@@ -261,6 +271,7 @@ public struct ChannelView: View {
                 .padding()
                 #endif
             }
+            #endif
         }
     }
 

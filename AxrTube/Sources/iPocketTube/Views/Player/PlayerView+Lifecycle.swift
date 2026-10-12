@@ -769,11 +769,9 @@ extension PlayerView {
             ChannelView(channelId: dest.channelId, catalogContext: .standard)
         }
         #if !os(tvOS)
-        #if os(iOS)
-        .onChange(of: downloadService.playbackIsRunning) { _, playbackRunning in
-            requestConfiguredOfflineSaveIfNeeded(playbackRunning: playbackRunning)
-        }
-        #else
+        // iOS follows YouTube: videos are saved only by an explicit "Download" action,
+        // never automatically while watching (that competed with playback bandwidth).
+        #if os(macOS)
         .onChange(of: vm.isPlaying) { _, playing in
             requestConfiguredOfflineSaveIfNeeded(playbackRunning: playing)
         }
@@ -808,7 +806,7 @@ extension PlayerView {
         })
     }
 
-    #if !os(tvOS)
+    #if os(macOS)
     private func requestConfiguredOfflineSaveIfNeeded(playbackRunning: Bool) {
         guard playbackRunning,
               !video.isDownloaded,
