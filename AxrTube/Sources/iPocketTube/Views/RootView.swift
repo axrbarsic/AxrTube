@@ -139,7 +139,13 @@ enum AppSection: String, CaseIterable, Identifiable {
 
 struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
+    #if os(iOS)
+    @State private var selectedTab: YTTab = .home
+    /// Bumped to open search on the selected tab (e.g. from an empty-state CTA).
+    @State private var searchRequest = 0
+    #else
     @State private var selectedTab: AppSection = .search
+    #endif
     @Environment(\.innerTubeAPI) private var api
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
@@ -191,21 +197,30 @@ struct MainTabView: View {
                 selectedTab = newValue
             }
         )) {
+            #if os(iOS)
+            ForEach(YTTab.allCases) { tab in
+                NavigationStack {
+                    YTTabRoot(tab: tab, isSelected: tab == selectedTab, searchRequest: tab == selectedTab ? $searchRequest : .constant(0))
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if #unavailable(iOS 26.0),
+                       tab == selectedTab,
+                       showsCompactNowPlayingAccessory {
+                        globalMiniPlayer
+                    }
+                }
+                .tabItem { Label(tab.title, systemImage: tab.icon) }
+                .tag(tab)
+                .accessibilityIdentifier("tab.\(tab.rawValue)")
+            }
+            #else
             ForEach(AppSection.allCases) { section in
                 NavigationStack { section.destination(api: api) }
-                    #if os(iOS)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if #unavailable(iOS 26.0),
-                           section == selectedTab,
-                           showsCompactNowPlayingAccessory {
-                            globalMiniPlayer
-                        }
-                    }
-                    #endif
                     .tabItem { Label(section.localizedTitle, systemImage: section.icon) }
                     .tag(section)
                     .accessibilityIdentifier("tab.\(section.rawValue.lowercased())")
             }
+            #endif
         }
         #if os(iOS)
         .iPocketTubeLiquidTabChrome(isAccessoryPresented: showsCompactNowPlayingAccessory) {
@@ -214,10 +229,14 @@ struct MainTabView: View {
         #endif
         .environment(searchVM)
         .onReceive(NotificationCenter.default.publisher(for: .navigateToSearch)) { _ in
+            #if os(iOS)
+            searchRequest += 1
+            #else
             if selectedTab != .search {
                 iPocketTubeHaptics.shared.perform(.tabSelection)
             }
             selectedTab = .search
+            #endif
         }
         #if os(iOS)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: showsCompactNowPlayingAccessory)
@@ -278,20 +297,16 @@ struct MainTabView: View {
     }
 
     #if os(iOS)
+    /// YouTube keeps the mini player above the tab bar on every tab.
     private var showsCompactNowPlayingAccessory: Bool {
-        guard let route = selectedTab.primaryRoute else { return false }
-        let hasRecoverableItem = playerState.presentation == .miniPlayer || tosState.presentation == .miniPlayer
-        return iPocketTubeInformationArchitecture.showsGlobalMiniPlayer(
-            on: route,
-            hasRecoverableItem: hasRecoverableItem
-        )
+        playerState.presentation == .miniPlayer || tosState.presentation == .miniPlayer
     }
 
     @ViewBuilder private var globalMiniPlayer: some View {
         if showsCompactNowPlayingAccessory, playerState.presentation == .miniPlayer {
             MiniPlayerView {
                 iPocketTubeHaptics.shared.perform(.contentSelection)
-                selectedTab = .downloads
+                playerState.expand()
             }
                 .transition(.opacity)
         } else if showsCompactNowPlayingAccessory, tosState.presentation == .miniPlayer {

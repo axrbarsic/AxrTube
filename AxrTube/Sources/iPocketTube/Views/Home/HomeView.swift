@@ -130,10 +130,13 @@ public struct HomeView: View {
         }
         #endif
         .sheet(isPresented: $showSignIn) { SignInView() }
+        #if !os(iOS)
+        // iOS: the selected tab root (YTTabRoot) owns channel navigation.
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
             channelDestination = ChannelDestination(channelId: channelId)
         }
+        #endif
         .onChange(of: visibleSections) { _, newSections in
             if !newSections.contains(selectedSection), let first = newSections.first {
                 selectedSection = first

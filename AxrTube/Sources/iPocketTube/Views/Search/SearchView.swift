@@ -18,11 +18,20 @@ public struct SearchView: View {
     @Environment(PlayerRouter.self) private var playerRouter
     #endif
 
+    /// Set when search is presented over a tab (YouTube style): shows a back button.
+    var onClose: (() -> Void)? = nil
+
     public init() {}
+
+    init(onClose: @escaping () -> Void) {
+        self.onClose = onClose
+    }
 
     public var body: some View {
         VStack(spacing: 0) {
+            #if !os(iOS)
             compactSearchTitle
+            #endif
             searchBar
             if !vm.query.isEmpty {
                 filterChipsRow
@@ -44,7 +53,12 @@ public struct SearchView: View {
                 } else if vm.hasActiveSearch {
                     noResultsView
                 } else {
+                    #if os(iOS)
+                    // YouTube shows recent searches and suggestions, not a feed.
+                    suggestionsListView
+                    #else
                     discoveryView
+                    #endif
                 }
                 #endif
             }
@@ -61,10 +75,13 @@ public struct SearchView: View {
         .navigationDestination(item: $channelDestination) { dest in
             ChannelView(channelId: dest.channelId, catalogContext: .search)
         }
+        #if !os(iOS)
+        // iOS: the selected tab root (YTTabRoot) owns channel navigation.
         .onReceive(NotificationCenter.default.publisher(for: .openChannel)) { note in
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
             channelDestination = ChannelDestination(channelId: channelId)
         }
+        #endif
         .sheet(isPresented: $showFilterSheet) {
             SearchFilterSheet(current: vm.filter) { newFilter in
                 vm.applyFilter(newFilter)
@@ -88,6 +105,9 @@ public struct SearchView: View {
                vm.hasActiveSearch {
                 vm.resetToDiscovery()
             }
+            #if os(iOS)
+            if onClose != nil, !vm.hasActiveSearch { isSearchFocused = true }
+            #endif
         }
     }
 
@@ -106,6 +126,17 @@ public struct SearchView: View {
     private var searchBar: some View {
         @Bindable var vm = vm
         return HStack(spacing: 8) {
+            #if os(iOS)
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 19, weight: .medium))
+                        .frame(width: 36, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Назад")
+            }
+            #endif
             Image(systemName: AppSymbol.search)
                 .foregroundStyle(.secondary)
             TextField("Search YouTube", text: $vm.query)

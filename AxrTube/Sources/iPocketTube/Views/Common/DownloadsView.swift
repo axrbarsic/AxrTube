@@ -137,7 +137,9 @@ struct DownloadsView: View {
             }
         }
         .iPocketTubeScreenSurface()
-        .toolbar(.hidden, for: .navigationBar)
+        // Opened from the "You" tab: standard navigation bar with a back button.
+        .navigationTitle("Загрузки")
+        .toolbarTitleDisplayMode(.inline)
         .alert(
             "Delete Offline Item",
             isPresented: Binding(
@@ -188,9 +190,6 @@ struct DownloadsView: View {
     private var collectionHeader: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline) {
-                iPocketTubeMatrixHeader(title: "Downloads")
-                    .padding(.horizontal, -iPocketTubeVisualTokens.horizontalPadding)
-                    .padding(.vertical, -6)
                 Spacer(minLength: 8)
                 Menu {
                     Picker("Storage Limit", selection: Binding(

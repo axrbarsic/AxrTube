@@ -79,9 +79,6 @@ public struct SettingsView: View {
     private var matrixBody: some View {
         ScrollView {
             LazyVStack(spacing: 14) {
-                iPocketTubeMatrixHeader(title: "Settings")
-                    .padding(.horizontal, -iPocketTubeVisualTokens.horizontalPadding)
-
                 iPocketTubeMatrixSection("Account", systemImage: "person.crop.circle") {
                     matrixAccountContent
                 }
@@ -119,7 +116,8 @@ public struct SettingsView: View {
         .scrollDismissesKeyboard(.interactively)
         .scrollContentBackground(.hidden)
         .iPocketTubeScreenSurface()
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationTitle("Настройки")
+        .toolbarTitleDisplayMode(.inline)
         .sheet(isPresented: $showAppIconPicker) {
             AppIconPickerView(
                 selectedStyle: appIconStyle,
