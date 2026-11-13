@@ -1,0 +1,14 @@
+В комплект включён LICENSE из родительского репозитория AxrTube (GNU GPL v3).
+Исходный PWA-код сохранён с исходными комментариями. Этот файл не меняет
+права на сторонние проекты и не утверждает аффилированность с YouTube/Google.
+
+Внешние runtime зависимости не включены в ZIP как vendored-библиотеки:
+- hls.js 1.7.4: https://github.com/video-dev/hls.js
+- bgutils-js 4.0.3: https://github.com/LuanRT/BgUtils
+- SponsorBlock API: https://sponsor.ajay.app/
+- SoundHelix control audio: https://www.soundhelix.com/audio-examples
+- YouTube/Google APIs, video CDN и thumbnails.
+
+При vendoring или распространении их копий сохранить соответствующие
+upstream licenses/notices. Право воспроизводить или скачивать конкретный
+медиаконтент не предоставляется самим исходным кодом приложения.

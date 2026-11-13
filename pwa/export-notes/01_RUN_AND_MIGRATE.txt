@@ -1,0 +1,138 @@
+ЗАПУСК И ПЕРЕНОС AXRTUBE PWA 38
+
+0. Что проверено
+
+Экспорт подготовлен из заново полученного remote source commit
+ca7760136c856012e07b4b080ba0bd30f3e9187d, соответствующего версии 38.
+Основной сайт не изменён. ZIP не содержит новых Swift/iOS исходников.
+Runtime сборка и локальный Node adapter проверяются при экспорте отдельно.
+Физическая проверка iPhone на НОВОМ сервере пока не выполнена.
+
+1. Быстрый локальный просмотр
+
+Использован Node.js 24.18.0. Сторонних npm-зависимостей для исходной сборки
+нет, npm install для этой копии не требуется. Открой терминал в корне архива:
+
+  cd source
+  npm run build
+  npm run validate
+  cd ..
+  node portable/node-server.mjs
+
+Открыть http://127.0.0.1:8789/ . Остановить Ctrl+C.
+Это локальный просмотр, не проверка установленного iPhone PWA.
+Адаптер передаёт Worker виртуальный HTTPS request origin: исходный router
+генерирует HTTPS-only manifest Check даже при запросе другой HTML-страницы.
+Поэтому старый scripts/serve.mjs с буквальным HTTP origin в этой версии может
+давать 400 для HTML. В export adapter учтено это требование без изменения
+оригинального source/. Для настоящего PWA нужен реальный HTTPS снаружи.
+При исходном accountOrigin /api/account на localhost отвечает Origin rejected;
+это ожидаемая серверная защита старого домена, не повод её удалять.
+Гостевые catalog/интерфейс могут проверяться отдельно. Для реального OAuth/PWA
+использовать новый HTTPS origin по инструкции ниже.
+
+Можно запускать исходный scripts/serve.mjs из source/, но он предназначен
+только для разработки, использует порт 8789 и не подставляет env для входа;
+для этого снимка предпочесть приложенный adapter по указанной выше причине.
+
+2. Что запускать на другом хостинге
+
+Cloudflare-compatible Worker runtime:
+  entrypoint source/dist/server/index.js
+  ESM default export { fetch(request, env) }
+  .openai/hosting.json относится только к исходному Sites проекту.
+  Создать собственную конфигурацию нового хостинга, не публиковать поверх
+  старого project_id и не использовать старую source credential.
+
+Обычный VPS с Node:
+  portable/node-server.mjs является тонким HTTP -> Fetch API адаптером.
+  Он слушает только 127.0.0.1. Нужны свой process supervisor и reverse proxy
+  с HTTPS к порту 8789, лимитами запросов и таймаутами для streaming/HLS.
+  Не публиковать только статический frontend: /api/*, /media, /audio-master,
+  /oauth/* и доставка engine/app assets должны идти в Worker/адаптер.
+  Не включать полное буферизование/предзагрузку всего видео на proxy.
+  На новом origin не наследуются browser localStorage, SW и сессии старого.
+
+Адаптер сохраняет несколько Set-Cookie заголовков и стримит Response.body.
+Это дополнительный export helper, не исходный серверный рантайм Sites и
+не автоматически готовая production эксплуатационная конфигурация VPS.
+
+3. Обязательно заменить доверенный origin
+
+В source/worker/youtube-account.js строка accountOrigin сейчас указывает на:
+https://axrtube-pwa-playback-lab.axrbarsic.chatgpt.site
+
+До работы аккаунта на новом сайте заменить её на полный НОВЫЙ HTTPS origin
+без пути и завершающего слеша, затем npm run build из source/.
+Тот же origin указать в PUBLIC_ORIGIN при запуске Node adapter.
+Для нового Worker runtime PUBLIC_ORIGIN адаптера не нужен: request.url должен
+содержать публичный HTTPS origin напрямую.
+
+Не заменять Origin checks на '*' и не принимать origin из случайного запроса.
+В архиве сохранён неизменный оригинал source/, чтобы baseline и hash проверялись.
+Сначала проверить SHA256SUMS.json, затем вносить целевые migration-изменения.
+Архивные account tests используют старый origin как fixture: после осознанной
+смены домена их fixtures тоже нужно обновить, не ослабляя проверки.
+
+4. Google OAuth и secrets
+
+Нужен OAuth client типа Web application в своём Google Cloud проекте.
+Разрешённый redirect URI: https://<NEW_HOST>/oauth/google/callback
+Разрешённый JavaScript origin: https://<NEW_HOST>, если настройка применяется.
+Настроить consent screen, необходимые YouTube scopes, test users или
+публикацию/верификацию согласно своей конфигурации Google.
+Перенос приложения НЕ переводит OAuth consent screen в Production.
+
+GOOGLE_OAUTH_ENABLED=true
+GOOGLE_OAUTH_PERSONAL_HOME_ENABLED=true (только при разрешённом расширенном scope)
+GOOGLE_OAUTH_CLIENT_ID=<публичный ID своего Web OAuth клиента>
+GOOGLE_OAUTH_CLIENT_SECRET=<только secret хранилище сервера>
+GOOGLE_OAUTH_COOKIE_KEY=<новый случайный ключ, 64 lowercase hex символа>
+
+Ключ можно создать ЛОКАЛЬНО командой openssl rand -hex 32 и сразу сохранить
+в secret manager сервера. Не вставлять реальный ключ или secret в prompt/чат.
+Для Node можно скопировать portable/.env.example в приватный portable/.env
+и запускать node --env-file=portable/.env portable/node-server.mjs .
+Старые cookies не переносятся. HTTPS обязателен для Secure/__Host- cookies.
+При отключённом OAuth после смены accountOrigin приложение остаётся гостевым.
+
+5. Тесты baseline, без настоящего Google аккаунта
+
+Из source/:
+  node scripts/test-media-diagnostics.mjs
+  node scripts/test-background.mjs
+  node scripts/test-updates.mjs
+  node scripts/test-account.mjs
+  node scripts/test-account-refresh.mjs
+  node scripts/test-account-upgrade.mjs
+  node scripts/test-account-feed.mjs
+  node scripts/test-personal-home.mjs
+  node scripts/test-personal-home-ui.mjs
+  node scripts/test-catalog.mjs
+  node scripts/test-preferences.mjs
+  node scripts/test-refresh.mjs
+  node scripts/test-i18n.mjs
+  node scripts/test-transcript.mjs
+  node scripts/test.mjs
+
+Эти проверки не доказывают реальный доступ к YouTube с нового server IP и
+не заменяют iPhone acceptance. probe-* скрипты могут обращаться к старому
+origin/внешним сервисам: проверить их адреса ДО запуска на новом хостинге.
+
+6. Внешние сетевые зависимости
+
+YouTube/Google APIs и googlevideo CDN, i.ytimg.com thumbnails, SponsorBlock,
+контрольный MP3 с soundhelix.com. HLS.js 1.7.4 и bgutils-js 4.0.3 загружаются
+из CDN (jsdelivr/unpkg согласно исходникам). Их код не vendored в ZIP.
+Архив не включает всю медиатеку YouTube и внешние сервисы. Без интернета
+полноценная работа не гарантируется. Новый сервер может получать другие
+LOGIN_REQUIRED/403 из-за своего IP или политики провайдера.
+
+7. Рекомендуемый первый acceptance на новом origin
+
+Не начинать со сложного YouTube ролика. Сначала установить отдельный Check
+из /pwa-identity-test/, запустить контрольный MP3, проверить Lock Screen
+возврат к правильному ярлыку. Зафиксировать exact origin, build, standalone,
+тип элемента и включён ли session binding. Существующие иконки не удалять.
+Затем проверить guest catalog, YouTube playback, аудио/видео, фон, вход,
+возврат после перезапуска, подписки и стенограмму.
