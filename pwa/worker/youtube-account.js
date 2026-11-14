@@ -65,6 +65,15 @@ async function subscriptionFeed(token,page,hideShorts,catalog){
 // Only encrypted, purpose-bound HttpOnly cookies carry credentials. Never
 // expose refresh/access tokens to UI code, storage, JSON or diagnostics.
 const accountRefreshes=new Map();
+// Read-only: the current short-lived access token of a valid signed-in session, or null.
+export async function accountStreamToken(request,env={}){
+  try{
+    if(!accountConfigured(env)||new URL(request.url).origin!==accountOrigin)return null;
+    const values=cookieValues(request),epoch=values[accountCookies.epoch];
+    const session=await openAccount(env,'session',values[accountCookies.session]);
+    return session&&epoch&&session.epoch===epoch&&session.expires>Date.now()+30000&&session.recommendationsAuthorized===true?session.token:null;
+  }catch{return null}
+}
 export async function youtubeAccountResponse(request,env={},catalog=null,personalHome=null){
   const u=new URL(request.url);
   if(!u.pathname.startsWith('/api/account')||!accountConfigured(env)||u.origin!==accountOrigin||!['GET','HEAD'].includes(request.method))return youtubeAccountRoutes(request,env,catalog,personalHome);

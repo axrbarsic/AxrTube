@@ -14,7 +14,8 @@ cat > "$meta" <<JSON
   {"type":"plain_text","name":"GOOGLE_OAUTH_ENABLED","text":"true"},
   {"type":"plain_text","name":"GOOGLE_OAUTH_PERSONAL_HOME_ENABLED","text":"true"},
   {"type":"plain_text","name":"GOOGLE_OAUTH_CLIENT_ID","text":"${GOOGLE_OAUTH_CLIENT_ID}"},
-  {"type":"plain_text","name":"LEGACY_STREAM_BRIDGE","text":"${LEGACY_STREAM_BRIDGE:-true}"}]}
+  {"type":"plain_text","name":"LEGACY_STREAM_BRIDGE","text":"${LEGACY_STREAM_BRIDGE:-true}"},
+  {"type":"plain_text","name":"STREAM_PROBE","text":"${STREAM_PROBE:-false}"}]}
 JSON
 curl -fsS -X PUT -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
   "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${script}" \

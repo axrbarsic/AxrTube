@@ -3,7 +3,7 @@ import {appPage,appStyle,preferenceStyle} from './app-shell.js';
 import {appClient} from './app-client.js';
 import {createBackgroundPlayback} from './background-playback.js';
 import {createUpdateClient,serviceWorkerSource} from './app-updates.js';
-import {youtubeAccountResponse} from './youtube-account.js';
+import {youtubeAccountResponse,accountStreamToken} from './youtube-account.js';
 import {i18nClient} from './i18n.js';
 import {transcriptResponse} from './transcript.js';
 import {transcriptClient,transcriptStyle} from './transcript-ui.js';
@@ -278,6 +278,30 @@ function resolverMessage(r,data){
   if(temporaryResolverFailure(r,data))return tr('YouTube временно отклонил запрос нашего сервера. Это не запрос входа в ваш аккаунт. Попробуйте позже или откройте другой ролик.');
   return tr('Не удалось получить поток этого ролика. Он может быть ограничен или временно недоступен.');
 }
+// Diagnostics only: runs when the server reports STREAM_PROBE. Never changes playback.
+const probed=new Set();
+async function streamProbe(id){
+  try{
+    if(probed.has(id))return;probed.add(id);
+    const send=body=>fetch('/api/probe',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({id,...body})}).catch(()=>{});
+    send({group:'anon'});send({group:'auth'});
+    phoneProof(id).then(poToken=>send({group:'pot',poToken})).catch(()=>send({group:'browser',results:[{c:'PROOF',fail:'PROOF_FAILED'}]}));
+    const ua=navigator.userAgent,shapes=[
+      ['IOS',{clientName:'IOS',clientVersion:'21.02.3',deviceMake:'Apple',deviceModel:'iPhone16,2',osName:'iPhone',osVersion:'18.3.2'}],
+      ['MWEB',{clientName:'MWEB',clientVersion:'2.20260311.01.00'}],['WEB',{clientName:'WEB',clientVersion:'2.20260311.01.00'}]];
+    const results=[];
+    for(const host of ['youtubei.googleapis.com','www.youtube.com'])for(const type of ['text/plain;charset=UTF-8','application/json'])for(const [name,client] of shapes){
+      const out={c:name+'@'+host.split('.')[0]+(type.startsWith('text')?'/plain':'/json')};
+      try{
+        const r=await fetch('https://'+host+'/youtubei/v1/player?prettyPrint=false',{method:'POST',credentials:'omit',referrerPolicy:'no-referrer',signal:AbortSignal.timeout(8000),headers:{'content-type':type},
+          body:JSON.stringify({context:{client:{...client,hl:'en',gl:'US',userAgent:ua}},videoId:id,contentCheckOk:true,racyCheckOk:true})});
+        out.http=r.status;const d=await r.json();out.st=d.playabilityStatus?.status||'';out.hls=!!d.streamingData?.hlsManifestUrl;
+      }catch(e){out.fail=String(e?.name||'')+':'+String(e?.message||'').slice(0,40)}
+      results.push(out);
+    }
+    send({group:'browser',results});
+  }catch{}
+}
 function phoneProof(id){return new Promise((resolve,reject)=>{
   const frame=document.createElement('iframe');frame.sandbox='allow-scripts';frame.hidden=true;
   const nonce=crypto.randomUUID();let timeout;
@@ -334,6 +358,7 @@ $('play').onclick=async()=>{
       context.videoId=id;
       status(tr('Получаем поток YouTube...'));
       let r=await fetch('/api/resolve?id='+encodeURIComponent(id)+'&mode='+context.mode);let data=await r.json();
+      if(data.probe===true)streamProbe(id);
       if(generation!==playGeneration)return;
       rememberResolver(r,data);
       if(temporaryResolverFailure(r,data)){
@@ -433,12 +458,64 @@ try{
  const token=await minter.mintAsWebsafeString(id);parent.postMessage({nonce,token},'*');
 }catch{parent.postMessage({nonce,error:'ATTESTATION_FAILED'},'*')}
 </script>`;
+// Diagnostics only (STREAM_PROBE=true): which request shapes YouTube accepts from this host.
+const probeUA={tv:'Mozilla/5.0 (ChromiumStylePlatform) Cobalt/Version',web:'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Safari/605.1.15',
+  mweb:'Mozilla/5.0 (iPhone; CPU iPhone OS 18_7 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.7 Mobile/15E148 Safari/604.1',ios:'com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)'};
+const probeClients={
+  IOS:['5',{...clients[0]},probeUA.ios],VISIONOS:['101',{...clients[1]},probeUA.web],
+  ANDROID_VR:['28',(({userAgent,headerName,...c})=>c)(fallbackClient),fallbackClient.userAgent],
+  ANDROID:['3',{clientName:'ANDROID',clientVersion:'20.10.38',androidSdkVersion:30,osName:'Android',osVersion:'11',hl:'en',gl:'US'},'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'],
+  TVHTML5:['7',{clientName:'TVHTML5',clientVersion:'7.20260311.12.00',hl:'en',gl:'US'},probeUA.tv],
+  TV_EMBED:['85',{clientName:'TVHTML5_SIMPLY_EMBEDDED_PLAYER',clientVersion:'2.0',hl:'en',gl:'US'},probeUA.tv],
+  WEB_EMBED:['56',{clientName:'WEB_EMBEDDED_PLAYER',clientVersion:'1.20260311.01.00',hl:'en',gl:'US'},probeUA.web],
+  MWEB:['2',{clientName:'MWEB',clientVersion:'2.20260311.01.00',hl:'en',gl:'US'},probeUA.mweb],
+  WEB:['1',{clientName:'WEB',clientVersion:'2.20260311.01.00',hl:'en',gl:'US'},probeUA.web]};
+async function probeOne(id,name,{token,poToken,host='www.youtube.com'}={}){
+  const [num,client,ua]=probeClients[name];const out={c:name+(token?'+AUTH':'')+(poToken?'+POT':'')+(host.startsWith('youtubei')?'@api':'')};
+  try{
+    const r=await fetch('https://'+host+'/youtubei/v1/player?prettyPrint=false',{method:'POST',redirect:'manual',signal:AbortSignal.timeout(9000),
+      headers:{'content-type':'application/json','user-agent':ua,'x-youtube-client-name':num,'x-youtube-client-version':client.clientVersion,...(token?{authorization:'Bearer '+token}:{origin:'https://www.youtube.com'})},
+      body:JSON.stringify({context:{client:{...client,userAgent:ua},...(name.includes('EMBED')?{thirdParty:{embedUrl:'https://www.youtube.com/'}}:{})},videoId:id,contentCheckOk:true,racyCheckOk:true,
+        ...(poToken?{serviceIntegrityDimensions:{poToken}}:{})})});
+    out.http=r.status;const text=await r.text();
+    out.st=(text.match(/"playabilityStatus":\{"status":"([A-Z_]+)"/)||[])[1]||null;
+    out.why=((text.match(/"reason":"([^"]{0,60})/)||[])[1]||'').replace(/[^\w .,']/g,'');
+    out.hls=text.includes('"hlsManifestUrl"');out.url=(text.match(/"url":"https:\/\/[a-z0-9-]+\.googlevideo\.com/g)||[]).length;
+    out.cipher=(text.match(/"signatureCipher"/g)||[]).length;out.sabr=text.includes('"serverAbrStreamingUrl"');
+    if(!r.ok)out.err=((text.match(/"status":\s*"([A-Z_]+)"/)||[])[1]||'');
+    const hls=(text.match(/"hlsManifestUrl":"([^"]+)"/)||[])[1];
+    if(hls){try{const m=await fetch(mediaURL(hls.replace(/\\u0026/g,'&')),{redirect:'manual',signal:AbortSignal.timeout(6000)});out.hlsHttp=m.status;await m.body?.cancel()}catch{out.hlsHttp='ERR'}}
+  }catch(e){out.fail=String(e?.name||e).slice(0,30)}
+  return out;
+}
+async function probeResponse(request,env){
+  if(env?.STREAM_PROBE!=='true')return json({enabled:false},404);
+  if(request.method==='GET')return json({enabled:true});
+  const u=new URL(request.url);if(request.headers.get('origin')!==u.origin)return json({error:'Origin rejected'},403);
+  const raw=await request.text();if(raw.length>20000)return json({error:'Request too large'},413);
+  const body=JSON.parse(raw),id=body.id,group=body.group;
+  if(!/^[a-zA-Z0-9_-]{11}$/.test(id||''))return json({error:'Invalid id'},400);
+  let results=[];
+  if(group==='anon')results=await Promise.all(['TVHTML5','TV_EMBED','WEB_EMBED','MWEB','WEB','ANDROID'].map(n=>probeOne(id,n)));
+  else if(group==='pot'){
+    if(!/^[a-zA-Z0-9_=-]{16,8192}$/.test(body.poToken||''))return json({error:'Invalid proof'},400);
+    results=await Promise.all(['WEB','MWEB','WEB_EMBED','IOS','TVHTML5'].map(n=>probeOne(id,n,{poToken:body.poToken})));
+  }else if(group==='auth'){
+    const token=await accountStreamToken(request,env);
+    results=token?await Promise.all([['IOS'],['VISIONOS'],['ANDROID_VR'],['TVHTML5'],['IOS','youtubei.googleapis.com'],['TVHTML5','youtubei.googleapis.com']].map(([n,host])=>probeOne(id,n,{token,host}))):[{c:'AUTH',fail:'NO_SESSION'}];
+  }else if(group==='browser'){
+    results=(Array.isArray(body.results)?body.results:[]).slice(0,12).map(x=>({c:String(x.c||'').slice(0,40),http:Number(x.http)||0,st:String(x.st||'').slice(0,30),hls:x.hls===true,fail:String(x.fail||'').slice(0,60)}));
+  }else return json({error:'Invalid group'},400);
+  console.log('PROBE '+JSON.stringify({id,group,...await egressTrace(),results}));
+  return json({ok:true});
+}
 // Diagnostics only: which Cloudflare egress address YouTube accepted or refused.
 async function egressTrace(){try{const t=await (await fetch('https://www.cloudflare.com/cdn-cgi/trace',{signal:AbortSignal.timeout(3000)})).text();const g=k=>(t.match(new RegExp('^'+k+'=(.*)$','m'))||[])[1]||'';return {egress:g('ip'),egressColo:g('colo')}}catch{return {}}}
 export default { async fetch(request,env={},ctx) {
   const u = new URL(request.url);
   try {
     const accountResponse=await youtubeAccountResponse(request,env,catalogResponse,(token,url)=>personalHomeResponse(token,url,parseCatalog));if(accountResponse)return accountResponse;
+    if(u.pathname==='/api/probe')return await probeResponse(request,env);
     let proofRequest;
     if(request.method==='POST'&&u.pathname==='/api/resolve'){
       if(request.headers.get('origin')!==u.origin)return json({error:'Origin rejected'},403);
@@ -489,11 +566,11 @@ export default { async fetch(request,env={},ctx) {
           item.audioTrack = {language:audio.language,name:audio.name,codec:audio.codec,group:audio.group};
         }
         ctx?.waitUntil?.(egressTrace().then(e=>console.log('RESOLVE_OK '+JSON.stringify({id,mode,client:item.client,kind:item.kind,...e}))));
-        return json({ id:item.id, title:item.title, source:item.source, kind:item.kind, audioTrack:item.audioTrack });
+        return json({ id:item.id, title:item.title, source:item.source, kind:item.kind, audioTrack:item.audioTrack, ...(env?.STREAM_PROBE==='true'?{probe:true}:{}) });
       } catch(error) {
         const attempts=diagnostics(error);
         ctx?.waitUntil?.(egressTrace().then(e=>console.log('RESOLVE_FAIL '+JSON.stringify({id,attempts,...e}))));
-        return json({error:'Поток недоступен. '+attempts.map(a=>a.client+': '+a.code).join('; '),diagnostics:attempts},502);
+        return json({error:'Поток недоступен. '+attempts.map(a=>a.client+': '+a.code).join('; '),diagnostics:attempts,...(env?.STREAM_PROBE==='true'?{probe:true}:{})},502);
       }
     }
     if ((u.pathname==='/legacy/media'||u.pathname==='/legacy/audio-master')&&env?.LEGACY_STREAM_BRIDGE==='true') return legacyMediaResponse(u,request);
