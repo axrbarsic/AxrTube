@@ -168,12 +168,10 @@ struct YTCardAvatar: View {
             guard let id = video.channelId, !id.isEmpty else { return }
             NotificationCenter.default.post(name: .openChannel, object: nil, userInfo: ["channelId": id])
         } label: {
-            AsyncImage(url: url ?? video.channelAvatarURL) { phase in
-                if case .success(let image) = phase {
-                    image.resizable().scaledToFill()
-                } else {
+            CachedRemoteImage(url: url ?? video.channelAvatarURL) { image in
+                Image(uiImage: image).resizable().scaledToFill()
+            } placeholder: {
                     YTChannelAvatar(title: video.channelTitle, size: size)
-                }
             }
             .frame(width: size, height: size)
             .clipShape(Circle())

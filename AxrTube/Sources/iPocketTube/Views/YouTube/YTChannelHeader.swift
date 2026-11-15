@@ -22,12 +22,10 @@ struct YTChannelHeader: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 14) {
-                AsyncImage(url: channel.thumbnailURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
+                CachedRemoteImage(url: channel.thumbnailURL) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
                         YTChannelAvatar(title: channel.title, size: 72)
-                    }
                 }
                 .frame(width: 72, height: 72)
                 .clipShape(Circle())
@@ -133,12 +131,10 @@ struct YTSearchChannelRow: View {
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: 16) {
-                AsyncImage(url: channel.thumbnailURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
+                CachedRemoteImage(url: channel.thumbnailURL) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
                         YTChannelAvatar(title: channel.title, size: 88)
-                    }
                 }
                 .frame(width: 88, height: 88)
                 .clipShape(Circle())

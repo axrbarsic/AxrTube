@@ -93,12 +93,10 @@ struct YTSubscriptionsView: View {
                         ForEach(channels) { item in
                             Button { channel = ChannelDestination(channelId: item.id) } label: {
                                 VStack(spacing: 6) {
-                                    AsyncImage(url: item.thumbnailURL) { phase in
-                                        if case .success(let image) = phase {
-                                            image.resizable().scaledToFill()
-                                        } else {
+                                    CachedRemoteImage(url: item.thumbnailURL) { image in
+                                        Image(uiImage: image).resizable().scaledToFill()
+                                    } placeholder: {
                                             YTChannelAvatar(title: item.title, size: 56)
-                                        }
                                     }
                                     .frame(width: 56, height: 56)
                                     .clipShape(Circle())

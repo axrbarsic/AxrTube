@@ -120,12 +120,10 @@ extension PlayerView {
             playerState.minimize()
         } label: {
             HStack(spacing: 12) {
-                AsyncImage(url: ownerModel.info.avatarURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
+                CachedRemoteImage(url: ownerModel.info.avatarURL) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
                         YTChannelAvatar(title: video.channelTitle, size: 44)
-                    }
                 }
                 .frame(width: 44, height: 44)
                 .clipShape(Circle())

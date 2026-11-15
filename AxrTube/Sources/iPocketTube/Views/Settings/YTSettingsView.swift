@@ -103,12 +103,10 @@ struct YTSettingsView: View {
         Section("Аккаунт") {
             if auth.isSignedIn {
                 HStack(spacing: 12) {
-                    AsyncImage(url: auth.accountAvatarURL) { phase in
-                        if case .success(let image) = phase {
-                            image.resizable().scaledToFill()
-                        } else {
+                    CachedRemoteImage(url: auth.accountAvatarURL) { image in
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } placeholder: {
                             YTChannelAvatar(title: auth.accountName ?? "?", size: 40)
-                        }
                     }
                     .frame(width: 40, height: 40)
                     .clipShape(Circle())

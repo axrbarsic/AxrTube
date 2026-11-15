@@ -109,12 +109,10 @@ struct YTWatchDetails: View {
     }
 
     @ViewBuilder private var avatar: some View {
-        AsyncImage(url: owner.avatarURL) { phase in
-            if case .success(let image) = phase {
-                image.resizable().scaledToFill()
-            } else {
+        CachedRemoteImage(url: owner.avatarURL) { image in
+            Image(uiImage: image).resizable().scaledToFill()
+        } placeholder: {
                 YTChannelAvatar(title: owner.channelTitle ?? video.channelTitle, size: 36)
-            }
         }
         .frame(width: 36, height: 36)
         .clipShape(Circle())

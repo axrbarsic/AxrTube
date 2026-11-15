@@ -70,12 +70,10 @@ struct YTYouView: View {
     @ViewBuilder private var accountHeader: some View {
         if auth.isSignedIn {
             HStack(spacing: 14) {
-                AsyncImage(url: auth.accountAvatarURL) { phase in
-                    if case .success(let image) = phase {
-                        image.resizable().scaledToFill()
-                    } else {
+                CachedRemoteImage(url: auth.accountAvatarURL) { image in
+                    Image(uiImage: image).resizable().scaledToFill()
+                } placeholder: {
                         YTChannelAvatar(title: auth.accountName ?? "?", size: 72)
-                    }
                 }
                 .frame(width: 72, height: 72)
                 .clipShape(Circle())
