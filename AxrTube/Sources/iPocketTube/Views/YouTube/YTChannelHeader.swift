@@ -125,4 +125,43 @@ struct YTChannelTabs: View {
         .accessibilityIdentifier("channel.filterPicker")
     }
 }
+/// A channel result at the top of YouTube search.
+struct YTSearchChannelRow: View {
+    let channel: Channel
+    let onOpen: () -> Void
+
+    var body: some View {
+        Button(action: onOpen) {
+            HStack(spacing: 16) {
+                AsyncImage(url: channel.thumbnailURL) { phase in
+                    if case .success(let image) = phase {
+                        image.resizable().scaledToFill()
+                    } else {
+                        YTChannelAvatar(title: channel.title, size: 88)
+                    }
+                }
+                .frame(width: 88, height: 88)
+                .clipShape(Circle())
+                .padding(.leading, 28)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(channel.title)
+                        .font(.system(size: 16, weight: .medium))
+                        .foregroundStyle(YTColor.primaryText)
+                        .lineLimit(2)
+                    if let meta = channel.subscriberCount {
+                        Text(meta)
+                            .font(.system(size: 12))
+                            .foregroundStyle(YTColor.secondaryText)
+                            .lineLimit(2)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(YTPressStyle())
+        .accessibilityIdentifier("search.channel.\(channel.id)")
+    }
+}
 #endif

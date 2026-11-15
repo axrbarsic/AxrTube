@@ -13,6 +13,18 @@ struct YTPlayerControls: View {
     let onMinimize: () -> Void
     let onSettings: () -> Void
     let onCaptions: () -> Void
+    var landscapeActions: LandscapeActions? = nil
+
+    /// Buttons YouTube shows along the bottom of the full-screen player.
+    struct LandscapeActions {
+        var likeStatus: LikeStatus
+        var likeCount: String?
+        var like: () -> Void
+        var dislike: () -> Void
+        var comments: () -> Void
+        var share: () -> Void
+        var upNext: () -> Void
+    }
 
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(SettingsStore.self) private var store
@@ -141,7 +153,38 @@ struct YTPlayerControls: View {
             YTScrubber(vm: vm)
                 .frame(height: 22)
                 .padding(.horizontal, isLandscape ? 6 : 0)
+            if isLandscape, let actions = landscapeActions {
+                landscapeRow(actions)
+            }
         }
+    }
+
+    private func landscapeRow(_ actions: LandscapeActions) -> some View {
+        HStack(spacing: 8) {
+            pill(actions.likeStatus == .like ? "hand.thumbsup.fill" : "hand.thumbsup", actions.likeCount ?? "Нравится", action: actions.like)
+            pill(actions.likeStatus == .dislike ? "hand.thumbsdown.fill" : "hand.thumbsdown", nil, action: actions.dislike)
+            pill("text.bubble", "Комментарии", action: actions.comments)
+            pill("arrowshape.turn.up.right", "Поделиться", action: actions.share)
+            Spacer()
+            pill("rectangle.stack", "Далее", action: actions.upNext)
+        }
+        .padding(.top, 6)
+    }
+
+    private func pill(_ icon: String, _ title: String?, action: @escaping () -> Void) -> some View {
+        Button {
+            iPocketTubeHaptics.shared.perform(.primaryAction)
+            action()
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: icon).font(.system(size: 14))
+                if let title { Text(title).font(.system(size: 13, weight: .medium)) }
+            }
+            .padding(.horizontal, 12)
+            .frame(height: 32)
+            .background(.white.opacity(0.18), in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private func iconButton(_ symbol: String, label: String, size: CGFloat, action: @escaping () -> Void) -> some View {

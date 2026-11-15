@@ -144,11 +144,31 @@ extension PlayerView {
                     onTwoFingerTap: {},
                     onPanChanged: { _ in },
                     onSwipeCancelled: {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { slideOffset = 0 }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            slideOffset = 0
+                            watchDragOffset = 0
+                        }
                     },
                     onLongPressStart: { vm.beginHoldSpeed() },
                     onLongPressEnd:   { vm.endHoldSpeed() },
-                    onSwipeDown: { store.settings.miniPlayerEnabled ? playerState.minimize() : playerState.stop() },
+                    onSwipeDown: {
+                        // In full screen a swipe down returns to the watch page, like YouTube.
+                        if geo.size.width > geo.size.height {
+                            toggleFullScreen(isLandscape: true)
+                        } else if store.settings.miniPlayerEnabled {
+                            playerState.minimize()
+                            Task { try? await Task.sleep(for: .milliseconds(450)); watchDragOffset = 0 }
+                        } else {
+                            playerState.stop()
+                        }
+                    },
+                    onSwipeUp: {
+                        if geo.size.width <= geo.size.height { toggleFullScreen(isLandscape: false) }
+                    },
+                    onVerticalPanChanged: { dy in
+                        guard geo.size.width <= geo.size.height else { return }
+                        watchDragOffset = max(dy, 0)
+                    },
                     // Disabled during scrubbing so the Slider can claim touches uncontested.
                     // Also disabled when controls are visible so SwiftUI buttons (Menu, etc.)
                     // receive touches directly without UIKit gesture interference.
@@ -827,7 +847,25 @@ extension PlayerView {
                 }
             },
             onSettings: { showMoreMenu = true },
-            onCaptions: { showCaptionPicker = true }
+            onCaptions: { showCaptionPicker = true },
+            landscapeActions: .init(
+                likeStatus: vm.likeStatus,
+                likeCount: ownerModel.info.likeCountText,
+                like: {
+                    guard authService.isSignedIn else { vm.toastMessage = "Войдите, чтобы оценить видео"; return }
+                    vm.like()
+                },
+                dislike: {
+                    guard authService.isSignedIn else { vm.toastMessage = "Войдите, чтобы оценить видео"; return }
+                    vm.dislike()
+                },
+                comments: { vm.cancelControlsHide(); vm.controlsVisible = false; showCommentsSheet = true },
+                share: {
+                    let id = (vm.playerInfo?.video ?? video).id
+                    if let url = URL(string: "https://www.youtube.com/watch?v=\(id)") { presentShareSheet(url: url) }
+                },
+                upNext: { vm.cancelControlsHide(); vm.controlsVisible = false; showUpNext = true }
+            )
         )
         #elseif os(tvOS)
         PlayerControlsOverlay(

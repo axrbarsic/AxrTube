@@ -85,7 +85,7 @@ extension PlayerView {
             .animation(.easeOut(duration: 0.2), value: showTranscript)
         }
         #endif
-        if showDescriptionSheet {
+        if showDescriptionSheet, descriptionUsesOverlay {
             descriptionOverlay
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showDescriptionSheet)
@@ -93,6 +93,17 @@ extension PlayerView {
         #if os(iOS)
         // Portrait shows comments in the details area under the player
         // (PlayerView+Watch); landscape uses the same YouTube panel over video.
+        if showUpNext, vm.isLandscape {
+            YTUpNextPanel(
+                currentID: (vm.playerInfo?.video ?? video).id,
+                related: vm.relatedVideos,
+                onSelect: { next in showUpNext = false; playerState.play(video: next) },
+                onClose: { showUpNext = false }
+            )
+            .frame(maxWidth: 460)
+            .frame(maxWidth: .infinity, alignment: .trailing)
+            .transition(.move(edge: .trailing))
+        }
         if showCommentsSheet, vm.isLandscape {
             YTCommentsSheet(videoID: (vm.playerInfo?.video ?? video).id, onClose: { showCommentsSheet = false })
                 .frame(maxWidth: 520)
@@ -105,6 +116,15 @@ extension PlayerView {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showCommentsSheet)
         }
+        #endif
+    }
+
+    /// The portrait iOS watch page shows the description under the player.
+    private var descriptionUsesOverlay: Bool {
+        #if os(iOS)
+        vm.isLandscape
+        #else
+        true
         #endif
     }
 

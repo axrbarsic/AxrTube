@@ -127,7 +127,7 @@ private struct YTShortPage: View {
                 NotificationCenter.default.post(name: .openChannel, object: nil, userInfo: ["channelId": id])
             } label: {
                 HStack(spacing: 8) {
-                    YTChannelAvatar(title: video.channelTitle, size: 32)
+                    YTCardAvatar(video: video, size: 32).allowsHitTesting(false)
                     Text(video.channelTitle).font(.system(size: 14, weight: .semibold))
                 }
             }

@@ -170,6 +170,9 @@ struct PlayerSwipeGestureOverlay: UIViewRepresentable {
     var onLongPressStart:   (() -> Void)?
     var onLongPressEnd:     (() -> Void)?
     var onSwipeDown:        (() -> Void)? = nil
+    var onSwipeUp:          (() -> Void)? = nil
+    /// Live vertical drag distance, for the interactive swipe-down to the mini player.
+    var onVerticalPanChanged: ((CGFloat) -> Void)? = nil
     var isEnabled:          Bool = true
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
@@ -239,12 +242,22 @@ struct PlayerSwipeGestureOverlay: UIViewRepresentable {
             switch gr.state {
             case .changed:
                 // Only forward horizontal pan for slide-offset animation.
-                if abs(t.x) >= abs(t.y) { parent.onPanChanged?(t.x) }
+                if abs(t.x) >= abs(t.y) {
+                    parent.onPanChanged?(t.x)
+                } else {
+                    parent.onVerticalPanChanged?(t.y)
+                }
             case .ended:
                 // Swipe-down: vertical-dominant, downward, meets threshold → minimize
                 if abs(t.y) > minDistance, t.y > 0, abs(t.y) > abs(t.x) {
                     parent.onSwipeCancelled?() // reset any horizontal offset
                     parent.onSwipeDown?()
+                    return
+                }
+                // Swipe-up: vertical-dominant, upward → full screen (YouTube).
+                if abs(t.y) > minDistance, t.y < 0, abs(t.y) > abs(t.x), let up = parent.onSwipeUp {
+                    parent.onSwipeCancelled?()
+                    up()
                     return
                 }
                 guard abs(t.x) > minDistance, abs(t.x) > abs(t.y) else {

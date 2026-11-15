@@ -55,6 +55,9 @@ public struct PlayerView: View {
     @State var isPiPActive: Bool = false
     @State var isLandscapeLocked = false
     @State var ownerModel = YTWatchOwnerModel()
+    @State var showUpNext = false
+    /// Interactive drag of the portrait watch page toward the mini player.
+    @State var watchDragOffset: CGFloat = 0
     var playerLayer: AVPlayerLayer { playerState.playerHostView.playerLayer }
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass

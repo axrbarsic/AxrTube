@@ -42,8 +42,10 @@
 	<string>AxrTube uses your local network to find AirPlay-compatible devices for casting videos to your TV.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>AxrTube needs access to save downloaded videos to your Photos library.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>AxrTube слушает микрофон только во время голосового поиска.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>AxrTube использует локальное распознавание речи, чтобы автоматически создать стенограмму, когда у ролика нет субтитров YouTube.</string>
+	<string>AxrTube распознаёт речь для голосового поиска и чтобы создать стенограмму, когда у ролика нет субтитров YouTube.</string>
 	<key>NSSupportsLiveActivities</key>
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>

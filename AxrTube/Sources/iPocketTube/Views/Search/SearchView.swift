@@ -16,6 +16,10 @@ public struct SearchView: View {
     @FocusState private var isSearchFocused: Bool
     #if os(iOS)
     @Environment(PlayerRouter.self) private var playerRouter
+    @State private var showVoiceSearch = false
+    @State private var resultChannels: [Channel] = []
+    @State private var selectedPlaylist: Video?
+    @State private var shortsLaunch: ShortsLaunch?
     #endif
 
     /// Set when search is presented over a tab (YouTube style): shows a back button.
@@ -87,6 +91,29 @@ public struct SearchView: View {
                 vm.applyFilter(newFilter)
             }
         }
+        #if os(iOS)
+        .sheet(isPresented: $showVoiceSearch) {
+            YTVoiceSearchSheet { text in
+                vm.query = text
+                vm.search()
+            }
+        }
+        .navigationDestination(item: $selectedPlaylist) { stub in
+            PlaylistView(playlistId: stub.id, playlistTitle: stub.title, api: api, catalogContext: .search)
+                .toolbar(.visible, for: .navigationBar)
+        }
+        .fullScreenCover(item: $shortsLaunch) { launch in
+            YTShortsPager(videos: launch.videos, startID: launch.startID, onClose: { shortsLaunch = nil })
+                .ignoresSafeArea()
+        }
+        .task(id: vm.activeQuery) {
+            resultChannels = []
+            guard let query = vm.activeQuery, !query.isEmpty, vm.filter.isDefault else { return }
+            let channels = (try? await api.searchChannels(query: query)) ?? []
+            guard !Task.isCancelled else { return }
+            resultChannels = channels
+        }
+        #endif
         .task(id: vm.query) { await vm.updateSuggestions(for: vm.query) }
         .task(id: store.settings.russianOnlySearchEnabled) {
             vm.setRussianOnlySearchEnabled(store.settings.russianOnlySearchEnabled)
@@ -139,7 +166,7 @@ public struct SearchView: View {
             #endif
             Image(systemName: AppSymbol.search)
                 .foregroundStyle(.secondary)
-            TextField("Search YouTube", text: $vm.query)
+            TextField("Введите запрос", text: $vm.query)
                 .focused($isSearchFocused)
                 .submitLabel(.search)
                 .autocorrectionDisabled()
@@ -164,6 +191,21 @@ public struct SearchView: View {
                 .frame(width: 44, height: 44)
                 .accessibilityIdentifier("search.clearButton")
             }
+            #if os(iOS)
+            // YouTube: microphone beside the field; history lives in suggestions.
+            Button {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+                isSearchFocused = false
+                showVoiceSearch = true
+            } label: {
+                Image(systemName: "mic.fill")
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Голосовой поиск")
+            .accessibilityIdentifier("search.voiceButton")
+            #else
             Menu {
                 if vm.history.isEmpty {
                     Text("Недавних запросов нет")
@@ -191,6 +233,7 @@ public struct SearchView: View {
             }
             .accessibilityLabel("Recent Searches")
             .accessibilityIdentifier("search.historyMenu")
+            #endif
             Button {
                 iPocketTubeHaptics.shared.perform(.filterPresentation)
                 showFilterSheet = true
@@ -274,6 +317,47 @@ public struct SearchView: View {
         .filter { !store.settings.hideVideoPremieres || !$0.isUpcoming }
     }
 
+    #if os(iOS)
+    /// YouTube results: matching channels first, then videos in service order.
+    /// A tap plays that video only; autoplay continues with recommendations.
+    private var resultsView: some View {
+        let displayResults = visibleSearchResults
+        return ScrollView {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if vm.isLoading && displayResults.isEmpty {
+                    ForEach(0..<3, id: \.self) { _ in YTVideoCardSkeleton() }
+                }
+                ForEach(resultChannels) { channel in
+                    YTSearchChannelRow(channel: channel) {
+                        NotificationCenter.default.post(name: .openChannel, object: nil, userInfo: ["channelId": channel.id])
+                    }
+                }
+                ForEach(displayResults) { video in
+                    YTVideoCard(video: video, onSelect: { selectResult(video, in: displayResults) })
+                        .onAppear { if video.id == displayResults.last?.id { vm.loadMore() } }
+                }
+                if vm.isLoading && !displayResults.isEmpty {
+                    ProgressView().frame(maxWidth: .infinity).padding()
+                }
+            }
+        }
+        .background(YTColor.background)
+        .refreshable { await vm.refreshSearch() }
+        .accessibilityIdentifier("search.results")
+        .scrollDismissesKeyboard(.immediately)
+    }
+
+    private func selectResult(_ video: Video, in results: [Video]) {
+        if video.playlistId == video.id {
+            selectedPlaylist = video
+        } else if video.isShort {
+            let shorts = results.filter(\.isShort)
+            shortsLaunch = ShortsLaunch(videos: shorts, startID: video.id)
+        } else {
+            playerRouter.open(video: video, api: api)
+        }
+    }
+    #else
     private var resultsView: some View {
         let displayResults = visibleSearchResults
         return ScrollView {
@@ -311,6 +395,8 @@ public struct SearchView: View {
         .onTapGesture { isSearchFocused = false }
         #endif
     }
+
+    #endif
 
     // MARK: - Suggestions list (history + recommended/live)
 

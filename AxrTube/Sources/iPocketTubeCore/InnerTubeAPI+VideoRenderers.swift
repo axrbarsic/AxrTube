@@ -902,7 +902,7 @@ extension InnerTubeAPI {
         let _ptv = publishedTimeText ?? "nil"
         tubeLog.notice("videoRenderer id=\(videoId, privacy: .public) publishedTimeText='\(_ptv, privacy: .public)'")
 
-        return Video(
+        var video = Video(
             id: videoId,
             title: title,
             channelTitle: channelTitle,
@@ -920,6 +920,8 @@ extension InnerTubeAPI {
             dontLikeToken: feedbackTokens["DISLIKE"],
             hideChannelToken: feedbackTokens["BLOCK_CHANNEL"]
         )
+        video.channelAvatarURL = ChannelAvatarExtractor.avatarURL(in: r)
+        return video
     }
 
     // MARK: – WEB playlistVideoRenderer parser (BUG-012 fix)

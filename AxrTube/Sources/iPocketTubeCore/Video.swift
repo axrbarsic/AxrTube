@@ -44,6 +44,8 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
     // MARK: DeArrow overrides (applied from VideoPreloadCache after cache consume)
     public var deArrowTitle: String?
     public var deArrowThumbnailTimestamp: Double?
+    /// Channel avatar when the feed renderer carries it; otherwise resolved lazily.
+    public var channelAvatarURL: URL? = nil
     // MARK: Local playback (in-app downloads — never persisted to cache JSON)
     /// Transient local file URL set when playing a downloaded video.
     /// Excluded from `CodingKeys` — never persisted to JSON cache.
@@ -59,7 +61,7 @@ public struct Video: Identifiable, Hashable, Codable, Sendable {
         case viewCount, publishedAt, publishedTimeText, publicationDateStatus, isLive, isUpcoming, isShort, hasPortraitThumbnail
         case watchProgress, playlistId, playlistIndex, badges
         case notInterestedToken, dontLikeToken, hideChannelToken
-        case deArrowTitle, deArrowThumbnailTimestamp
+        case deArrowTitle, deArrowThumbnailTimestamp, channelAvatarURL
         // localFileURL/localMediaKind intentionally omitted — runtime only
     }
 

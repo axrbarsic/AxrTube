@@ -46,7 +46,7 @@ struct YTVideoCard: View {
         VStack(alignment: .leading, spacing: 0) {
             thumbnail.aspectRatio(16 / 9, contentMode: .fit)
             HStack(alignment: .top, spacing: 12) {
-                YTChannelAvatar(title: video.channelTitle, size: 36)
+                YTCardAvatar(video: video, size: 36)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(displayTitle)
                         .font(.system(size: 15, weight: .medium))
@@ -154,7 +154,43 @@ struct YTPressStyle: ButtonStyle {
     }
 }
 
-/// Channel avatar placeholder until channel thumbnails are parsed into `Video`.
+/// Real channel avatar for a card: from the feed when present, otherwise
+/// resolved once per channel. Tapping it opens the channel, as in YouTube.
+struct YTCardAvatar: View {
+    let video: Video
+    let size: CGFloat
+
+    @Environment(\.innerTubeAPI) private var api
+    @State private var url: URL?
+
+    var body: some View {
+        Button {
+            guard let id = video.channelId, !id.isEmpty else { return }
+            NotificationCenter.default.post(name: .openChannel, object: nil, userInfo: ["channelId": id])
+        } label: {
+            AsyncImage(url: url ?? video.channelAvatarURL) { phase in
+                if case .success(let image) = phase {
+                    image.resizable().scaledToFill()
+                } else {
+                    YTChannelAvatar(title: video.channelTitle, size: size)
+                }
+            }
+            .frame(width: size, height: size)
+            .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(video.channelTitle)
+        .task(id: video.channelId) {
+            guard video.channelAvatarURL == nil, let id = video.channelId, !id.isEmpty, !id.hasPrefix("@") else { return }
+            let api = api
+            url = await ChannelAvatarCache.shared.avatar(for: id) {
+                try? await api.fetchChannelThumbnailURL(channelId: id)
+            }
+        }
+    }
+}
+
+/// Letter avatar used until (or when no) real channel image is available.
 struct YTChannelAvatar: View {
     let title: String
     let size: CGFloat

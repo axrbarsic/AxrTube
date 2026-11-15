@@ -24,14 +24,23 @@ extension PlayerView {
                         }
                     ZStack {
                         watchDetails
+                        if showDescriptionSheet {
+                            ytDescriptionPanel
+                                .transition(.move(edge: .bottom))
+                        }
                         if showCommentsSheet {
                             YTCommentsSheet(videoID: watchVideo.id, onClose: { showCommentsSheet = false })
                                 .transition(.move(edge: .bottom))
                         }
                     }
                     .animation(.easeOut(duration: 0.22), value: showCommentsSheet)
+                    .animation(.easeOut(duration: 0.22), value: showDescriptionSheet)
                 }
                 .background(YTColor.background)
+                // Follows the finger while the video is dragged down to the mini player.
+                .scaleEffect(1 - min(watchDragOffset / 1600, 0.15), anchor: .top)
+                .offset(y: watchDragOffset)
+                .opacity(1 - min(watchDragOffset / 900, 0.35))
                 // Pickers and sheets cover the whole watch page, not just the player.
                 .overlay { overlayStack }
                 .onChange(of: audioDownloadService.lastMessage) { _, message in
@@ -45,7 +54,11 @@ extension PlayerView {
         .task(id: watchVideo.id) {
             await ownerModel.load(video: watchVideo, api: vm.api, signedIn: authService.isSignedIn)
         }
-        .onChange(of: watchVideo.id) { _, _ in showCommentsSheet = false }
+        .onChange(of: watchVideo.id) { _, _ in
+            showCommentsSheet = false
+            showUpNext = false
+            showDescriptionSheet = false
+        }
     }
 
     /// Metadata of the item actually playing: the player response once it
