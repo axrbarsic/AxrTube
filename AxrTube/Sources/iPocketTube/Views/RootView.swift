@@ -44,7 +44,11 @@ public struct RootView: View {
             #endif
         }
         .iPocketTubeScreenSurface()
+        #if os(iOS)
+        .preferredColorScheme(store.settings.appearance.colorScheme)
+        #else
         .preferredColorScheme(store.settings.themeName.colorScheme)
+        #endif
         #if !os(tvOS)
         .onChange(of: cardDownloadService.state) { _, newState in
             switch newState {
@@ -147,6 +151,7 @@ enum AppSection: String, CaseIterable, Identifiable {
 struct MainTabView: View {
     @State private var searchVM = SearchViewModel()
     #if os(iOS)
+    @Environment(SettingsStore.self) private var store
     @State private var selectedTab: YTTab = .home
     /// Bumped to open search on the selected tab (e.g. from an empty-state CTA).
     @State private var searchRequest = 0
@@ -199,22 +204,18 @@ struct MainTabView: View {
         TabView(selection: Binding(
             get: { selectedTab },
             set: { newValue in
+                #if os(iOS)
+                let newValue = newValue.resolved(hideShorts: store.settings.hideShorts)
+                #endif
                 guard newValue != selectedTab else { return }
                 iPocketTubeHaptics.shared.perform(.tabSelection)
                 selectedTab = newValue
             }
         )) {
             #if os(iOS)
-            ForEach(YTTab.allCases) { tab in
+            ForEach(YTTab.visible(hideShorts: store.settings.hideShorts)) { tab in
                 NavigationStack {
                     YTTabRoot(tab: tab, isSelected: tab == selectedTab, searchRequest: tab == selectedTab ? $searchRequest : .constant(0))
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if #unavailable(iOS 26.0),
-                       tab == selectedTab,
-                       showsCompactNowPlayingAccessory {
-                        globalMiniPlayer
-                    }
                 }
                 .tabItem { Label(tab.title, systemImage: tab.icon) }
                 .tag(tab)
@@ -230,8 +231,16 @@ struct MainTabView: View {
             #endif
         }
         #if os(iOS)
-        .iPocketTubeLiquidTabChrome(isAccessoryPresented: showsCompactNowPlayingAccessory) {
-            globalMiniPlayer
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if showsCompactNowPlayingAccessory { globalMiniPlayer }
+                pwaTabBar
+            }
+            .background((selectedTab == .shorts ? Color.black : YTColor.background).ignoresSafeArea(edges: .bottom))
+        }
+        .onChange(of: store.settings.hideShorts) { _, hidden in
+            selectedTab = selectedTab.resolved(hideShorts: hidden)
         }
         #endif
         .environment(searchVM)
@@ -304,6 +313,43 @@ struct MainTabView: View {
     }
 
     #if os(iOS)
+    /// Flat, equally spaced YouTube tab bar (not system glass tabs).
+    private var pwaTabBar: some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(YTColor.divider).frame(height: 0.5)
+            HStack(spacing: 0) {
+                ForEach(YTTab.visible(hideShorts: store.settings.hideShorts)) { tab in
+                    Button {
+                        guard selectedTab != tab else {
+                            // YouTube: re-tapping the open tab scrolls to top, then refreshes.
+                            NotificationCenter.default.post(name: .ytTabReselected, object: tab.rawValue)
+                            return
+                        }
+                        iPocketTubeHaptics.shared.perform(.tabSelection)
+                        selectedTab = tab
+                    } label: {
+                        VStack(spacing: 3) {
+                            Image(systemName: tab.icon(selected: selectedTab == tab))
+                                .font(.system(size: 22))
+                                .frame(height: 26)
+                            Text(tab.title).font(.system(size: 10, weight: selectedTab == tab ? .medium : .regular))
+                        }
+                        .foregroundStyle(selectedTab == .shorts ? Color.white : YTColor.primaryText)
+                        .frame(maxWidth: .infinity, minHeight: 50)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(tab.title)
+                    .accessibilityAddTraits(selectedTab == tab ? [.isSelected] : [])
+                    .accessibilityIdentifier("tab.\(tab.rawValue)")
+                }
+            }
+        }
+        .background(selectedTab == .shorts ? Color.black : YTColor.background)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("navigation.pwaTabs")
+    }
+
     /// YouTube keeps the mini player above the tab bar on every tab.
     private var showsCompactNowPlayingAccessory: Bool {
         playerState.presentation == .miniPlayer || tosState.presentation == .miniPlayer

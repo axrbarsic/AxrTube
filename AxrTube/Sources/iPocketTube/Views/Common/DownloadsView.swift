@@ -95,7 +95,7 @@ struct DownloadsView: View {
                                         iPocketTubeHaptics.shared.perform(.primaryAction)
                                         deleteConfirmationEntry = entry
                                     } label: {
-                                        Label("Delete", systemImage: "trash")
+                                        Label("Удалить", systemImage: "trash")
                                     }
                                 }
                             }
@@ -119,14 +119,14 @@ struct DownloadsView: View {
                             }
                             if let shareURL = URL(string: "https://www.youtube.com/watch?v=\(entry.videoId)") {
                                 ShareLink(item: shareURL) {
-                                    Label("Share", systemImage: AppSymbol.share)
+                                    Label("Поделиться", systemImage: AppSymbol.share)
                                 }
                             }
                             Button(role: .destructive) {
                                 iPocketTubeHaptics.shared.perform(.primaryAction)
                                 deleteConfirmationEntry = entry
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                Label("Удалить", systemImage: "trash")
                             }
                         }
                         .accessibilityIdentifier("downloads.mediaRow.\(entry.id)")
@@ -148,26 +148,26 @@ struct DownloadsView: View {
                 set: { if !$0 { deleteConfirmationEntry = nil } }
             )
         ) {
-            Button("Delete", role: .destructive) {
+            Button("Удалить", role: .destructive) {
                 iPocketTubeHaptics.shared.perform(.downloadDelete)
                 if let entry = deleteConfirmationEntry {
                     removeDownloads([entry])
                 }
                 deleteConfirmationEntry = nil
             }
-            Button("Cancel", role: .cancel) {
+            Button("Отмена", role: .cancel) {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
                 deleteConfirmationEntry = nil
             }
         } message: {
-            Text("The local copy will be removed from this device.")
+            Text("Локальная копия будет удалена с этого устройства.")
         }
         .alert("Clear Offline Collection", isPresented: $showClearConfirmation) {
-            Button("Clear All", role: .destructive) {
+            Button("Удалить всё", role: .destructive) {
                 iPocketTubeHaptics.shared.perform(.downloadClear)
                 removeDownloads(downloadStore.entries, clearAll: true)
             }
-            Button("Cancel", role: .cancel) {
+            Button("Отмена", role: .cancel) {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
             }
         } message: {
@@ -179,7 +179,7 @@ struct DownloadsView: View {
                     translation: playerState.vm.russianTranscriptTranslation) {
                     showTranscript = false
                 }
-                .preferredColorScheme(settingsStore.settings.themeName.colorScheme)
+                .preferredColorScheme(settingsStore.settings.appearance.colorScheme)
             } else {
                 CurrentPlaybackTranscriptPanel {
                     showTranscript = false
@@ -193,7 +193,7 @@ struct DownloadsView: View {
             HStack(alignment: .firstTextBaseline) {
                 Spacer(minLength: 8)
                 Menu {
-                    Picker("Storage Limit", selection: Binding(
+                    Picker("Лимит хранилища", selection: Binding(
                         get: { settingsStore.settings.offlineStorageLimitMB },
                         set: {
                             guard $0 != settingsStore.settings.offlineStorageLimitMB else { return }
@@ -209,7 +209,7 @@ struct DownloadsView: View {
                     }
                     if !videoEntries.isEmpty {
                         Divider()
-                        Button("Clear Offline Collection", role: .destructive) {
+                        Button("Очистить офлайн-коллекцию", role: .destructive) {
                             iPocketTubeHaptics.shared.perform(.primaryAction)
                             showClearConfirmation = true
                         }
@@ -311,7 +311,7 @@ struct DownloadsView: View {
             Image(systemName: "arrow.down.to.line.compact")
                 .font(.system(size: 44, weight: .medium))
                 .foregroundStyle(iPocketTubeVisualTokens.mint)
-            Text("No Offline Media")
+            Text("Нет офлайн-медиа")
                 .font(.title3.bold())
             Text("Нажмите и удерживайте карточку ролика, затем выберите сохранение видео. Готовые ролики воспроизводятся без интернета.")
                 .font(.subheadline)
@@ -376,7 +376,7 @@ private struct DownloadedNowPlayingCard: View {
                     .accessibilityLabel(isPlaying ? "Pause" : "Play")
                     Menu {
                         Button(role: .destructive, action: onDelete) {
-                            Label("Delete", systemImage: "trash")
+                            Label("Удалить", systemImage: "trash")
                         }
                     } label: {
                         Image(systemName: "ellipsis")
@@ -393,7 +393,7 @@ private struct DownloadedNowPlayingCard: View {
                     .foregroundStyle(iPocketTubeVisualTokens.warning)
                     .fixedSize(horizontal: false, vertical: true)
                 if shouldOfferRetry(entry) {
-                    Button("Retry", action: onRetry)
+                    Button("Повторить", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .tint(iPocketTubeVisualTokens.mint)
                         .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
@@ -428,7 +428,7 @@ private struct DownloadedNowPlayingCard: View {
                     .tint(iPocketTubeVisualTokens.mint)
                     .scaleEffect(x: 1, y: 0.55, anchor: .center)
                 if entry.status == .finalizationPending {
-                    Button("Retry Offline Saving", action: onRetry)
+                    Button("Повторить сохранение", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .tint(iPocketTubeVisualTokens.mint)
                         .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
@@ -448,7 +448,7 @@ private struct DownloadedNowPlayingCard: View {
         }
         .iPocketTubeActivePlaybackSurface(cornerRadius: 18, contentPadding: 14)
         .overlay(alignment: .topLeading) {
-            Text("Now Playing")
+            Text("Сейчас играет")
                 .font(.caption2.weight(.black))
                 .textCase(.uppercase)
                 .foregroundStyle(iPocketTubeVisualTokens.accentForeground)
@@ -541,7 +541,7 @@ private struct DownloadedMediaRow: View {
                     .font(.caption2)
                     .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 if showsContinue {
-                    Button("Continue", action: onRetry)
+                    Button("Продолжить", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(iPocketTubeVisualTokens.mint)
@@ -551,10 +551,10 @@ private struct DownloadedMediaRow: View {
             }
         case .finalizationRetry:
             VStack(alignment: .leading, spacing: 6) {
-                Text("Playback is available. Offline saving needs retry.")
+                Text("Аудио доступно. Повторите сохранение офлайн.")
                     .font(.caption2)
                     .foregroundStyle(iPocketTubeVisualTokens.warning)
-                Button("Retry Offline Saving", action: onRetry)
+                Button("Повторить сохранение", action: onRetry)
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
                     .tint(iPocketTubeVisualTokens.mint)
@@ -562,11 +562,11 @@ private struct DownloadedMediaRow: View {
                     .accessibilityIdentifier("downloads.retryOfflineButton")
             }
         case .waitingForWiFi:
-            Label("Waiting for Wi-Fi", systemImage: "wifi")
+            Label("Ожидание Wi-Fi", systemImage: "wifi")
                 .font(.caption2)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
         case .reconnecting:
-            Label("Reconnecting…", systemImage: "arrow.triangle.2.circlepath")
+            Label("Переподключение…", systemImage: "arrow.triangle.2.circlepath")
                 .font(.caption2)
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
         case .failure(let showsRetry):
@@ -576,7 +576,7 @@ private struct DownloadedMediaRow: View {
                     .foregroundStyle(iPocketTubeVisualTokens.warning)
                     .fixedSize(horizontal: false, vertical: true)
                 if showsRetry {
-                    Button("Retry", action: onRetry)
+                    Button("Повторить", action: onRetry)
                         .buttonStyle(.borderedProminent)
                         .controlSize(.small)
                         .tint(iPocketTubeVisualTokens.mint)
@@ -590,7 +590,7 @@ private struct DownloadedMediaRow: View {
                 ProgressView(value: entry.progress)
                     .tint(iPocketTubeVisualTokens.mint)
                     .accessibilityIdentifier("downloads.progress")
-                Button("Cancel", role: .destructive, action: onCancel)
+                Button("Отмена", role: .destructive, action: onCancel)
                     .buttonStyle(.borderless)
                     .font(.caption)
                     .accessibilityIdentifier("downloads.cancelButton")

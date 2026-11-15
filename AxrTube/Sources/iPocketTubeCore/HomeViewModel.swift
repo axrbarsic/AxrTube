@@ -61,7 +61,7 @@ public final class HomeViewModel {
     public private(set) var loadedAt: Date? = nil
     /// Frozen snapshot of the interleaved home feed. Updated once both sections
     /// finish loading (avoiding mid-load rearrangement). Pagination appends one
-    /// stable batch; a completed exact-date enrichment may atomically re-sort it.
+    /// stable batch; exact-date enrichment updates metadata without changing rank.
     public private(set) var mergedVideos: [Video] = []
 
     // MARK: - Shelf definitions (in display order)

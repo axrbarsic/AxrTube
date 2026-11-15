@@ -24,6 +24,9 @@ struct VideoPublicationSortPolicyTests {
         #expect(!VideoListRoute.queue.usesNewestFirstPublicationOrder)
         #expect(!VideoListRoute.downloads.usesNewestFirstPublicationOrder)
         #expect(!VideoListRoute.history.usesNewestFirstPublicationOrder)
+        for route in [VideoListRoute.home, .recommended, .search] {
+            #expect(!route.usesNewestFirstPublicationOrder)
+        }
     }
 
     @Test("Exact UTC dates sort newest first and unknown dates stay last")
@@ -32,7 +35,7 @@ struct VideoPublicationSortPolicyTests {
         let new = Date(timeIntervalSince1970: 1_800_000_000)
         let input = [video("unknown", date: nil), video("old", date: old), video("new", date: new)]
 
-        #expect(VideoPublicationSortPolicy.sorted(input, for: .home).map(\.id) == ["new", "old", "unknown"])
+        #expect(VideoPublicationSortPolicy.sorted(input, for: .subscriptions).map(\.id) == ["new", "old", "unknown"])
     }
 
     @Test("Player microformat calendar day is normalized to UTC")
@@ -72,7 +75,25 @@ struct VideoPublicationSortPolicyTests {
             video("today", date: nil, label: "сегодня"),
         ]
 
-        #expect(VideoPublicationSortPolicy.sorted(input, for: .search, now: now).map(\.id) == ["today", "hours", "years", "unknown"])
+        #expect(VideoPublicationSortPolicy.sorted(input, for: .rss, now: now).map(\.id) == ["today", "hours", "years", "unknown"])
+    }
+
+    @Test("Discovery and search preserve server rank regardless of publication metadata")
+    func rankedRoutesPreserveServerOrder() {
+        let input = [
+            video("unknown-ranked-first", date: nil),
+            video("old-relevant", date: Date(timeIntervalSince1970: 100)),
+            video("new-less-relevant", date: Date(timeIntervalSince1970: 300)),
+        ]
+        for route in [VideoListRoute.home, .recommended, .search] {
+            #expect(VideoPublicationSortPolicy.sorted(input, for: route).map(\.id) == input.map(\.id))
+            let merged = VideoPublicationSortPolicy.merging(
+                existing: Array(input.prefix(2)),
+                page: [input[1], input[2]],
+                for: route
+            )
+            #expect(merged.map(\.id) == input.map(\.id))
+        }
     }
 
     @Test("Equal dates and unknown blocks retain stable source order")

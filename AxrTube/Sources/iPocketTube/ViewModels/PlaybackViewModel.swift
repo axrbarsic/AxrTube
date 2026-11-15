@@ -500,6 +500,8 @@ public final class PlaybackViewModel {
     let sponsorBlock: SponsorBlockService
     let deArrow: DeArrowService
     public var settings: AppSettings
+    /// Shorts loop the current item regardless of the regular loop setting.
+    public var loopsCurrentItem = false
     var hasAuthToken: Bool = false
     var currentAuthToken: String? = nil
     var authSnapshotGeneration: UInt64?

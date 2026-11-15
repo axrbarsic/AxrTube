@@ -15,12 +15,15 @@ struct YTWatchDetails: View {
         var description: () -> Void
         var comments: () -> Void
         var channel: () -> Void
+        var subscribe: () -> Void
         var selectRelated: (Video) -> Void
     }
 
     let video: Video
     let related: [Video]
     let likeStatus: LikeStatus
+    let owner: WatchOwnerInfo
+    let isSubscribed: Bool
     let isSignedIn: Bool
     let isDownloading: Bool
     let actions: Actions
@@ -32,7 +35,6 @@ struct YTWatchDetails: View {
                 channelRow
                 actionChips
                 commentsTeaser
-                Divider().overlay(YTColor.divider).padding(.top, 4)
                 ForEach(related) { item in
                     YTVideoCard(video: item, onSelect: { actions.selectRelated(item) })
                 }
@@ -51,13 +53,11 @@ struct YTWatchDetails: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(YTColor.primaryText)
                     .multilineTextAlignment(.leading)
-                    .lineLimit(3)
-                HStack(spacing: 4) {
-                    Text(metaLine)
-                    Text("...ещё").fontWeight(.semibold)
-                }
-                .font(.system(size: 12))
-                .foregroundStyle(YTColor.secondaryText)
+                    .lineLimit(2)
+                (Text(metaLine) + Text("  ...ещё").fontWeight(.semibold).foregroundColor(YTColor.primaryText))
+                    .font(.system(size: 12))
+                    .foregroundStyle(YTColor.secondaryText)
+                    .lineLimit(1)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 12)
@@ -68,35 +68,69 @@ struct YTWatchDetails: View {
     }
 
     private var channelRow: some View {
-        Button(action: actions.channel) {
-            HStack(spacing: 10) {
-                YTChannelAvatar(title: video.channelTitle, size: 36)
-                Text(video.channelTitle)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(YTColor.primaryText)
-                    .lineLimit(1)
-                Spacer()
+        HStack(spacing: 10) {
+            Button(action: actions.channel) {
+                HStack(spacing: 10) {
+                    avatar
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(owner.channelTitle ?? video.channelTitle)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(YTColor.primaryText)
+                            .lineLimit(1)
+                        if let subs = owner.subscriberText {
+                            Text(Self.shortSubscribers(subs))
+                                .font(.system(size: 12))
+                                .foregroundStyle(YTColor.secondaryText)
+                                .lineLimit(1)
+                        }
+                    }
+                    Spacer(minLength: 0)
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
-            .contentShape(Rectangle())
+            .buttonStyle(YTPressStyle())
+            .disabled((owner.channelId ?? video.channelId ?? "").isEmpty)
+            .accessibilityIdentifier("watch.channel")
+
+            Button(action: actions.subscribe) {
+                Text(isSubscribed ? "Вы подписаны" : "Подписаться")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSubscribed ? YTColor.primaryText : YTColor.chipSelectedText)
+                    .padding(.horizontal, 14)
+                    .frame(height: 36)
+                    .background(isSubscribed ? YTColor.chip : YTColor.chipSelected, in: Capsule())
+            }
+            .buttonStyle(YTPressStyle())
+            .disabled((owner.channelId ?? video.channelId ?? "").isEmpty)
+            .accessibilityIdentifier("watch.subscribe")
         }
-        .buttonStyle(YTPressStyle())
-        .disabled((video.channelId ?? "").isEmpty)
-        .accessibilityIdentifier("watch.channel")
+        .padding(.horizontal, 12)
+        .padding(.vertical, 12)
+    }
+
+    @ViewBuilder private var avatar: some View {
+        AsyncImage(url: owner.avatarURL) { phase in
+            if case .success(let image) = phase {
+                image.resizable().scaledToFill()
+            } else {
+                YTChannelAvatar(title: owner.channelTitle ?? video.channelTitle, size: 36)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .clipShape(Circle())
     }
 
     private var actionChips: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if isSignedIn {
-                    HStack(spacing: 0) {
-                        chipButton(likeStatus == .like ? "hand.thumbsup.fill" : "hand.thumbsup", nil, action: actions.like)
-                        Rectangle().fill(YTColor.divider).frame(width: 1, height: 20)
-                        chipButton(likeStatus == .dislike ? "hand.thumbsdown.fill" : "hand.thumbsdown", nil, action: actions.dislike)
-                    }
-                    .background(YTColor.chip, in: Capsule())
+                HStack(spacing: 0) {
+                    chipButton(likeStatus == .like ? "hand.thumbsup.fill" : "hand.thumbsup", owner.likeCountText, action: actions.like)
+                        .accessibilityLabel("Нравится")
+                    Rectangle().fill(YTColor.divider).frame(width: 1, height: 20)
+                    chipButton(likeStatus == .dislike ? "hand.thumbsdown.fill" : "hand.thumbsdown", nil, action: actions.dislike)
+                        .accessibilityLabel("Не нравится")
                 }
+                .background(YTColor.chip, in: Capsule())
                 chip("arrowshape.turn.up.right", "Поделиться", action: actions.share)
                 Menu {
                     Button(action: actions.downloadVideo) { Label("Видео", systemImage: "film") }
@@ -108,8 +142,9 @@ struct YTWatchDetails: View {
                 }
                 .accessibilityIdentifier("watch.download")
                 chip("text.quote", "Текст видео", action: actions.transcript)
+                    .accessibilityIdentifier("watch.transcript")
                 if isSignedIn {
-                    chip("clock", "Смотреть позже", action: actions.saveToWatchLater)
+                    chip("bookmark", "Сохранить", action: actions.saveToWatchLater)
                 }
             }
             .padding(.horizontal, 12)
@@ -124,14 +159,14 @@ struct YTWatchDetails: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(YTColor.primaryText)
                 Spacer()
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 13))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 12))
                     .foregroundStyle(YTColor.secondaryText)
             }
             .padding(12)
             .background(YTColor.chip, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+            .padding(.bottom, 16)
         }
         .buttonStyle(YTPressStyle())
         .accessibilityIdentifier("watch.comments")
@@ -145,6 +180,15 @@ struct YTWatchDetails: View {
         let published = VideoPublicationFormatter.string(for: video)
         if !published.isEmpty { parts.append(published) }
         return parts.joined(separator: "  ")
+    }
+
+    /// "1,2 млн подписчиков" → "1,2 млн", as YouTube prints it next to the name.
+    static func shortSubscribers(_ text: String) -> String {
+        let words = text.split(separator: " ")
+        guard let last = words.last, last.lowercased().hasPrefix("подписчик") || last.lowercased().hasPrefix("subscriber") else {
+            return text
+        }
+        return words.dropLast().joined(separator: " ")
     }
 
     private func chip(_ icon: String, _ title: String, action: @escaping () -> Void) -> some View {
@@ -166,7 +210,7 @@ struct YTWatchDetails: View {
         }
         .foregroundStyle(YTColor.primaryText)
         .padding(.horizontal, 14)
-        .frame(height: 34)
+        .frame(height: 36)
     }
 }
 #endif

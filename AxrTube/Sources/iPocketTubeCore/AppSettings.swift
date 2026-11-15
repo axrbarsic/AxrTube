@@ -67,6 +67,29 @@ public struct AppSettings: Codable {
     /// When `false`, the token is cleared and YouTube returns its default shared feed.
     public var perDeviceRecommendationsEnabled: Bool
     public var themeName: ThemeName
+    /// YouTube iOS appearance: device setting, dark or light. Replaces the
+    /// decorative themes on iPhone; `themeName` stays for tvOS/macOS screens.
+    public var appearance: Appearance
+
+    public enum Appearance: String, Codable, CaseIterable, Sendable {
+        case system, dark, light
+
+        public var colorScheme: ColorScheme? {
+            switch self {
+            case .system: nil
+            case .dark: .dark
+            case .light: .light
+            }
+        }
+
+        public var displayName: String {
+            switch self {
+            case .system: "Как на устройстве"
+            case .dark: "Тёмная тема"
+            case .light: "Светлая тема"
+            }
+        }
+    }
     /// Ordered list of section types visible in the sidebar/tab bar.
     /// When empty, all default sections are shown.
     public var enabledSections: [BrowseSection.SectionType]
@@ -360,6 +383,7 @@ public struct AppSettings: Codable {
         hideVideoPremieres   = false
         perDeviceRecommendationsEnabled = true
         themeName            = .matrix
+        appearance           = .system
         enabledSections      = BrowseSection.defaultSections.map(\.type)
         historyState         = .enabled
         sponsorBlockEnabled  = true
@@ -451,6 +475,7 @@ extension AppSettings {
         case hideVideoPremieres
         case perDeviceRecommendationsEnabled
         case themeName
+        case appearance
         case enabledSections
         case historyState
         case sponsorBlockEnabled
@@ -505,6 +530,7 @@ extension AppSettings {
         hideVideoPremieres           = c.safeDecode(Bool.self,              forKey: .hideVideoPremieres,           default: d.hideVideoPremieres)
         perDeviceRecommendationsEnabled = c.safeDecode(Bool.self,           forKey: .perDeviceRecommendationsEnabled, default: d.perDeviceRecommendationsEnabled)
         themeName                    = c.safeDecode(ThemeName.self,         forKey: .themeName,                    default: d.themeName)
+        appearance                   = c.safeDecode(Appearance.self,        forKey: .appearance,                   default: d.appearance)
         enabledSections              = c.safeDecode([BrowseSection.SectionType].self, forKey: .enabledSections,   default: d.enabledSections)
         historyState                 = c.safeDecode(HistoryState.self,      forKey: .historyState,                 default: d.historyState)
         sponsorBlockEnabled          = c.safeDecode(Bool.self,              forKey: .sponsorBlockEnabled,          default: d.sponsorBlockEnabled)

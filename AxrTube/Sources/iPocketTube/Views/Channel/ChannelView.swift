@@ -27,6 +27,7 @@ public struct ChannelView: View {
     @Environment(\.innerTubeAPI) private var api
     #if os(iOS)
     @Environment(PlayerRouter.self) private var playerRouter
+    @State private var shortsLaunch: ShortsLaunch?
     #endif
 
     public init(channelId: String, catalogContext: VideoCardCatalogContext) {
@@ -37,7 +38,7 @@ public struct ChannelView: View {
     public var body: some View {
         Group {
             if vm.isLoading && vm.channel == nil {
-                ProgressView("Loading channel…")
+                ProgressView()
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .accessibilityIdentifier("channel.view")
             } else {
@@ -67,6 +68,12 @@ public struct ChannelView: View {
             guard let channelId = note.userInfo?["channelId"] as? String, !channelId.isEmpty else { return }
             channelDestination = ChannelDestination(channelId: channelId)
         }
+        #if os(iOS)
+        .fullScreenCover(item: $shortsLaunch) { launch in
+            YTShortsPager(videos: launch.videos, startID: launch.startID, onClose: { shortsLaunch = nil })
+                .ignoresSafeArea()
+        }
+        #endif
         #if !os(macOS)
         .fullScreenCover(item: $shortsPresentation) { target in
             ShortsPlayerView(videos: target.videos, startIndex: target.startIndex, api: api)
@@ -95,7 +102,7 @@ public struct ChannelView: View {
                         toggleSponsorBlockExclusion(for: channel)
                     } label: {
                         Label(
-                            isExcluded ? "Remove SponsorBlock Exclusion" : "Exclude from SponsorBlock",
+                            isExcluded ? "Включить SponsorBlock на канале" : "Отключить SponsorBlock на канале",
                             systemImage: isExcluded ? "person.crop.circle.badge.checkmark" : "person.crop.circle.badge.minus"
                         )
                     }
@@ -113,13 +120,25 @@ public struct ChannelView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Channel header
                 if let channel = vm.channel {
+                    #if os(iOS)
+                    YTChannelHeader(channel: channel, isFollowedLocally: $isFollowedLocally)
+                    #else
                     channelHeader(channel)
+                    #endif
                 }
 
                 // All / Shorts filter. When Shorts are hidden globally, the
                 // dedicated route disappears too; a stale selection is reset below.
+                #if os(iOS)
                 if store.settings.showShorts {
-                    Picker("Filter", selection: Binding(
+                    YTChannelTabs(selection: Binding(
+                        get: { filter == .all ? 0 : 1 },
+                        set: { filter = $0 == 0 ? .all : .shorts }
+                    ))
+                }
+                #else
+                if store.settings.showShorts {
+                    Picker("Фильтр", selection: Binding(
                         get: { filter },
                         set: { newValue in
                             guard newValue != filter else { return }
@@ -136,6 +155,7 @@ public struct ChannelView: View {
                     .padding(.vertical, 10)
                     .accessibilityIdentifier("channel.filterPicker")
                 }
+                #endif
 
                 let filtered = filteredVideos
                 if vm.error != nil && vm.channel == nil {
@@ -174,9 +194,9 @@ public struct ChannelView: View {
             Image(systemName: "wifi.exclamationmark")
                 .font(.system(size: 44))
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-            Text("Could not load channel")
+            Text("Не удалось загрузить канал")
                 .font(.headline)
-            Button("Retry") {
+            Button("Повторить") {
                 iPocketTubeHaptics.shared.perform(.downloadRetry)
                 vm.load(channelId: channelId)
             }
@@ -192,7 +212,7 @@ public struct ChannelView: View {
             Image(systemName: "play.rectangle.on.rectangle")
                 .font(.system(size: 44))
                 .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
-            Text("No videos available in this channel")
+            Text("На канале пока нет видео")
                 .font(.headline)
                 .multilineTextAlignment(.center)
         }
@@ -287,6 +307,31 @@ public struct ChannelView: View {
     }
 
     private func shortsGrid(_ videos: [Video]) -> some View {
+        #if os(iOS)
+        let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 3)
+        return LazyVGrid(columns: columns, spacing: 2) {
+            ForEach(videos) { video in
+                Button { selectShort(video, from: videos) } label: {
+                    ThumbnailFillView(primaryURL: video.thumbnailURL, fallbackURLs: video.thumbnailFallbackURLs)
+                        .aspectRatio(9 / 16, contentMode: .fill)
+                        .background(YTColor.placeholder)
+                        .clipped()
+                        .overlay(alignment: .bottomLeading) {
+                            if let views = video.viewCount {
+                                Text(YouTubeMetaFormatter.views(views))
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .shadow(radius: 2)
+                                    .padding(6)
+                            }
+                        }
+                }
+                .buttonStyle(YTPressStyle())
+                .onAppear { if video.id == vm.videos.last?.id { vm.loadMore() } }
+            }
+        }
+        .accessibilityIdentifier("channel.videoGrid")
+        #else
         let columns = [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)]
         return LazyVGrid(columns: columns, spacing: 8) {
             ForEach(videos) { video in
@@ -301,11 +346,12 @@ public struct ChannelView: View {
         }
         .padding(.horizontal)
         .accessibilityIdentifier("channel.videoGrid")
+        #endif
     }
 
     private func selectShort(_ video: Video, from videos: [Video]) {
         #if os(iOS)
-        playerRouter.open(video: video, api: api)
+        shortsLaunch = ShortsLaunch(videos: videos, startID: video.id)
         #else
         let idx = videos.firstIndex(where: { $0.id == video.id }) ?? 0
         shortsPresentation = ShortsPresentation(videos: videos, startIndex: idx)

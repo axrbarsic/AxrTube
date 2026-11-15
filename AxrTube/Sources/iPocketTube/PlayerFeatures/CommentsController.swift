@@ -25,17 +25,33 @@ final class CommentsController {
         self.logError = logError
     }
 
-    /// Fetches top-level comments for `videoId`. No-op if already loaded or in flight.
+    /// The video the current `comments` belong to.
+    private(set) var videoId: String?
+    private var loadTask: Task<Void, Never>?
+
+    /// Fetches top-level comments for `videoId`. No-op if that video's comments
+    /// are already loaded or in flight; a different video discards the old list
+    /// so one video's comments never appear under another.
     func load(videoId: String) {
-        guard comments.isEmpty, !isLoading else { return }
+        if videoId == self.videoId, !comments.isEmpty || isLoading { return }
+        loadTask?.cancel()
+        self.videoId = videoId
+        comments = []
         isLoading = true
-        Task {
+        let api = api
+        loadTask = Task { [weak self] in
+            let result: [Comment]
             do {
-                comments = try await api.fetchComments(videoId: videoId)
+                result = try await api.fetchComments(videoId: videoId)
             } catch {
-                logError("fetchComments failed: \(String(describing: error))")
+                guard let self, self.videoId == videoId else { return }
+                self.logError("fetchComments failed: \(String(describing: error))")
+                self.isLoading = false
+                return
             }
-            isLoading = false
+            guard let self, !Task.isCancelled, self.videoId == videoId else { return }
+            self.comments = result
+            self.isLoading = false
         }
     }
 }

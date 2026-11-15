@@ -2,12 +2,9 @@
 import SwiftUI
 import iPocketTubeCore
 
-/// Bottom tabs of the YouTube iOS app.
-enum YTTab: String, CaseIterable, Identifiable {
-    case home, shorts, subscriptions, you
+typealias YTTab = MobileAppTab
 
-    var id: String { rawValue }
-
+extension MobileAppTab {
     var title: String {
         switch self {
         case .home: "Главная"
@@ -17,14 +14,17 @@ enum YTTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var icon: String {
+    /// Outline icon; YouTube fills the icon of the selected tab.
+    func icon(selected: Bool) -> String {
         switch self {
-        case .home: "house"
-        case .shorts: "play.square.stack"
-        case .subscriptions: "play.rectangle.on.rectangle"
-        case .you: "person.crop.circle"
+        case .home: selected ? "house.fill" : "house"
+        case .shorts: selected ? "play.square.stack.fill" : "play.square.stack"
+        case .subscriptions: selected ? "play.rectangle.on.rectangle.fill" : "play.rectangle.on.rectangle"
+        case .you: selected ? "person.crop.circle.fill" : "person.crop.circle"
         }
     }
+
+    var icon: String { icon(selected: false) }
 }
 
 /// Root of one tab: YouTube top bar, the tab content and a pushed search screen.
@@ -35,17 +35,39 @@ struct YTTabRoot: View {
 
     @Environment(\.innerTubeAPI) private var api
     @State private var showSearch = false
+    @State private var showSettings = false
     @State private var channel: ChannelDestination?
 
     var body: some View {
         VStack(spacing: 0) {
-            YTTopBar(title: tab == .you ? "Вы" : nil) { showSearch = true }
+            if tab != .shorts {
+                YTTopBar(
+                    onSearch: { showSearch = true },
+                    onSettings: tab == .you ? { showSettings = true } : nil
+                )
+            }
             content
         }
-        .background(YTColor.background)
+        .background(tab == .shorts ? Color.black : YTColor.background)
+        .overlay(alignment: .topTrailing) {
+            if tab == .shorts {
+                Button { showSearch = true } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 20))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .shadow(radius: 3)
+                }
+                .padding(.trailing, 6)
+                .accessibilityLabel("Поиск")
+            }
+        }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(isPresented: $showSearch) {
             SearchView(onClose: { showSearch = false })
+        }
+        .navigationDestination(isPresented: $showSettings) {
+            SettingsView()
         }
         .navigationDestination(item: $channel) { dest in
             ChannelView(channelId: dest.channelId, catalogContext: .standard)
@@ -60,9 +82,10 @@ struct YTTabRoot: View {
 
     @ViewBuilder private var content: some View {
         switch tab {
-        case .home: HomeView(api: api)
-        case .shorts: YTFeedView(type: .shorts, requiresSignIn: false, api: api)
-        case .subscriptions: YTFeedView(type: .subscriptions, requiresSignIn: true, api: api)
+        case .home: YTHomeFeedView(api: api)
+        case .shorts:
+            if isSelected { YTShortsTabView(api: api) } else { Color.black }
+        case .subscriptions: YTSubscriptionsView(api: api)
         case .you: YTYouView()
         }
     }

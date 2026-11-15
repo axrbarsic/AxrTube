@@ -1,34 +1,40 @@
 #if os(iOS)
 import SwiftUI
+import UIKit
 
-/// YouTube iOS top bar: logo on the left, search on the right.
+/// YouTube iOS header: logo, then cast (AirPlay), search and, on the "Вы"
+/// tab only, the settings gear.
 struct YTTopBar: View {
-    var title: String? = nil
     let onSearch: () -> Void
+    var onSettings: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 4) {
-            if let title {
-                Text(title)
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundStyle(YTColor.primaryText)
-            } else {
-                YTLogo()
-            }
+        HStack(spacing: 2) {
+            YTLogo()
             Spacer()
-            Button(action: onSearch) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 20, weight: .regular))
-                    .foregroundStyle(YTColor.primaryText)
-                    .frame(width: 44, height: 44)
+            AirPlayRoutePickerView(tint: UIColor(YTColor.primaryText))
+                .frame(width: 44, height: 44)
+                .accessibilityLabel("Трансляция")
+            iconButton("magnifyingglass", label: "Поиск", id: "topbar.search", action: onSearch)
+            if let onSettings {
+                iconButton("gearshape", label: "Настройки", id: "topbar.settings", action: onSettings)
             }
-            .accessibilityLabel("Поиск")
-            .accessibilityIdentifier("topbar.search")
         }
         .padding(.leading, 14)
-        .padding(.trailing, 6)
+        .padding(.trailing, 4)
         .frame(height: 48)
         .background(YTColor.background)
+    }
+
+    private func iconButton(_ symbol: String, label: String, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 20, weight: .regular))
+                .foregroundStyle(YTColor.primaryText)
+                .frame(width: 44, height: 44)
+        }
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
     }
 }
 
@@ -45,8 +51,8 @@ struct YTLogo: View {
                         .foregroundStyle(.white)
                 }
             Text("AxrTube")
-                .font(.system(size: 20, weight: .bold))
-                .tracking(-0.6)
+                .font(.system(size: 21, weight: .bold))
+                .tracking(-1)
                 .foregroundStyle(YTColor.primaryText)
         }
         .accessibilityElement(children: .ignore)

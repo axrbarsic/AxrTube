@@ -131,14 +131,14 @@ extension PlayerView {
                         }
                     },
                     onDoubleTap: { normalizedX in
-                        if normalizedX < 1.0 / 3.0 {
-                            iPocketTubeHaptics.shared.perform(.seekCommit)
+                        // YouTube: left half rewinds, right half fast-forwards.
+                        iPocketTubeHaptics.shared.perform(.seekCommit)
+                        if normalizedX < 0.5 {
                             vm.seekRelative(seconds: -Double(store.settings.seekBackSeconds))
-                            seekToastMessage = "← \(store.settings.seekBackSeconds)s"
-                        } else if normalizedX > 2.0 / 3.0 {
-                            iPocketTubeHaptics.shared.perform(.seekCommit)
+                            seekToastMessage = "« \(store.settings.seekBackSeconds) с"
+                        } else {
                             vm.seekRelative(seconds: Double(store.settings.seekForwardSeconds))
-                            seekToastMessage = "\(store.settings.seekForwardSeconds)s →"
+                            seekToastMessage = "\(store.settings.seekForwardSeconds) с »"
                         }
                     },
                     onTwoFingerTap: {},
@@ -795,24 +795,39 @@ extension PlayerView {
     // MARK: - Controls overlay
 
     /// Constructs the platform-appropriate `PlayerControlsOverlay` for this view.
+    #if os(iOS)
+    /// Full-screen button: portrait → landscape, landscape → portrait.
+    func toggleFullScreen(isLandscape: Bool) {
+        if isLandscape {
+            isLandscapeLocked = false
+            vm.isLandscape = false
+            OrientationManager.shared.playerIsActive = false
+        } else {
+            isLandscapeLocked = true
+        }
+    }
+    #endif
+
     @ViewBuilder
     private func makeControlsOverlay(size: CGSize, safeAreaInsets: EdgeInsets) -> some View {
         #if os(iOS)
-        PlayerControlsOverlay(
-            size: size,
+        YTPlayerControls(
+            isLandscape: size.width > size.height,
             safeAreaInsets: safeAreaInsets,
-            video: video,
-            controlScale: controlScale,
-            showMoreMenu: $showMoreMenu,
-            channelDestination: $channelDestination,
-            pipController: $pipController,
-            isPiPActive: $isPiPActive,
-            isLandscapeLocked: $isLandscapeLocked,
-            showQualityPicker: $showQualityPicker,
-            showSpeedPicker: $showSpeedPicker,
-            showAudioTrackPicker: $showAudioTrackPicker,
-            showSleepTimerPicker: $showSleepTimerPicker,
-            showTranscript: $showTranscript
+            isFullScreen: size.width > size.height,
+            onToggleFullScreen: { toggleFullScreen(isLandscape: size.width > size.height) },
+            onMinimize: {
+                // In full screen the chevron first leaves full screen, like YouTube.
+                if size.width > size.height {
+                    toggleFullScreen(isLandscape: true)
+                } else if store.settings.miniPlayerEnabled {
+                    playerState.minimize()
+                } else {
+                    playerState.stop()
+                }
+            },
+            onSettings: { showMoreMenu = true },
+            onCaptions: { showCaptionPicker = true }
         )
         #elseif os(tvOS)
         PlayerControlsOverlay(

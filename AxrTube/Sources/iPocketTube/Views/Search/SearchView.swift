@@ -114,7 +114,7 @@ public struct SearchView: View {
     // MARK: - Search bar
 
     private var compactSearchTitle: some View {
-        Text("AxrTube", bundle: .module)
+        Text("AxrTube")
             .font(.system(.title2, design: .rounded, weight: .heavy))
             .foregroundStyle(iPocketTubeVisualTokens.primaryText)
             .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
@@ -166,7 +166,7 @@ public struct SearchView: View {
             }
             Menu {
                 if vm.history.isEmpty {
-                    Text("No Recent Searches", bundle: .module)
+                    Text("Недавних запросов нет")
                 } else {
                     ForEach(vm.history.prefix(10)) { entry in
                         Button {
@@ -179,7 +179,7 @@ public struct SearchView: View {
                         }
                     }
                     Divider()
-                    Button("Clear History", role: .destructive) {
+                    Button("Очистить историю", role: .destructive) {
                         iPocketTubeHaptics.shared.perform(.searchHistoryDelete)
                         vm.clearHistory()
                     }
@@ -319,7 +319,7 @@ public struct SearchView: View {
         return List {
             // History section — only shown when there are matching entries
             if !vm.filteredHistory.isEmpty {
-                Section(header: Text("Recent").font(.caption).foregroundStyle(.secondary)) {
+                Section(header: Text("Недавние").font(.caption).foregroundStyle(.secondary)) {
                     ForEach(vm.filteredHistory) { entry in
                         Button {
                             iPocketTubeHaptics.shared.perform(.searchHistorySelection)
@@ -356,7 +356,7 @@ public struct SearchView: View {
                         iPocketTubeHaptics.shared.perform(.searchHistoryDelete)
                         vm.clearHistory()
                     } label: {
-                        Text("Clear History")
+                        Text("Очистить историю")
                             .font(.subheadline)
                             .frame(maxWidth: .infinity)
                     }
@@ -415,7 +415,7 @@ public struct SearchView: View {
             Image(systemName: AppSymbol.search)
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            Text("Search for videos, channels & playlists")
+            Text("Поиск видео, каналов и плейлистов")
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -491,8 +491,8 @@ struct SearchFilterSheet: View {
                     Text("Применяется к главной, рекомендациям и поиску. Неизвестный язык скрывается.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-                Section("Sort by") {
-                    Picker("Sort", selection: $draft.sortOrder) {
+                Section("Сортировать по") {
+                    Picker("Сортировка", selection: $draft.sortOrder) {
                         ForEach(SearchFilter.SortOrder.allCases, id: \.self) { order in
                             Text(LocalizedStringKey(order.label)).tag(order)
                         }
@@ -504,8 +504,8 @@ struct SearchFilterSheet: View {
                     }
                 }
 
-                Section("Upload date") {
-                    Picker("Upload date", selection: $draft.uploadDate) {
+                Section("Дата публикации") {
+                    Picker("Дата публикации", selection: $draft.uploadDate) {
                         ForEach(SearchFilter.UploadDate.allCases, id: \.self) { date in
                             Text(LocalizedStringKey(date.label)).tag(date)
                         }
@@ -530,8 +530,8 @@ struct SearchFilterSheet: View {
                     }
                 }
 
-                Section("Duration") {
-                    Picker("Duration", selection: $draft.duration) {
+                Section("Длительность") {
+                    Picker("Длительность", selection: $draft.duration) {
                         ForEach(SearchFilter.Duration.allCases, id: \.self) { dur in
                             Text(LocalizedStringKey(dur.label)).tag(dur)
                         }
@@ -543,19 +543,19 @@ struct SearchFilterSheet: View {
                     }
                 }
             }
-            .navigationTitle("Search filters")
+            .navigationTitle("Фильтры поиска")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button("Отмена") {
                         iPocketTubeHaptics.shared.perform(.primaryAction)
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Apply") {
+                    Button("Применить") {
                         iPocketTubeHaptics.shared.perform(.filterApply)
                         onApply(draft)
                         dismiss()
@@ -563,7 +563,7 @@ struct SearchFilterSheet: View {
                 }
                 #if os(iOS)
                 ToolbarItem(placement: .bottomBar) {
-                    Button("Reset") {
+                    Button("Сбросить") {
                         iPocketTubeHaptics.shared.perform(.settingsReset)
                         draft = .default
                     }

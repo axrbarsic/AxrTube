@@ -36,7 +36,7 @@ struct CurrentPlaybackTranscriptPanel: View {
                 )
             }
         }
-        .preferredColorScheme(settingsStore.settings.themeName.colorScheme)
+        .preferredColorScheme(settingsStore.settings.appearance.colorScheme)
     }
 }
 #endif

@@ -83,11 +83,11 @@ struct HideShortsFilterTests {
 
     // MARK: - AppSettings default
 
-    @Test("AppSettings default keeps Shorts hidden")
-    func appSettingsDefaultHidesShorts() {
+    @Test("AppSettings default shows Shorts, like YouTube")
+    func appSettingsDefaultShowsShorts() {
         let settings = AppSettings()
-        #expect(settings.hideShorts)
-        #expect(!settings.showShorts)
+        #expect(!settings.hideShorts)
+        #expect(settings.showShorts)
     }
 
     // MARK: - PlaylistView (task #46)

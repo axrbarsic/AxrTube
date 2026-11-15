@@ -144,8 +144,14 @@ public final class PlayerStateStore {
         //   3. Not playing — item is parked (fix12 park path): stop() keeps the
         //      AVPlayerItem alive but pauses and sets isPlaying=false. On re-tap,
         //      call load() so the park fast-path in PlaybackViewModel resumes it.
-        if vm.currentVideoId != video.id || vm.player.currentItem == nil || !vm.isPlaying {
+        vm.loopsCurrentItem = false
+        // Re-tapping the video already in the player continues it (YouTube
+        // expands the mini player); only a different or dead item reloads.
+        if vm.currentVideoId != video.id || vm.player.currentItem == nil || vm.error != nil
+            || vm.player.currentItem?.status == .failed {
             vm.load(video: video)
+        } else if !vm.isPlaying, !vm.isLoading {
+            vm.togglePlayPause()
         }
         currentVideo = video
         presentation = .fullScreen
@@ -158,9 +164,11 @@ public final class PlayerStateStore {
     public func playInline(video: Video) {
         storeLog.notice("[PlayerStateStore] playInline — id=\(video.id) currentPresentation=\(String(describing: self.presentation))")
         CrashlyticsLogger.setIntendedVideo(id: video.id, title: video.title)
-        if vm.currentVideoId != video.id || vm.player.currentItem == nil {
+        vm.loopsCurrentItem = true
+        if vm.currentVideoId != video.id || vm.player.currentItem == nil || vm.error != nil
+            || vm.player.currentItem?.status == .failed {
             vm.load(video: video)
-        } else if !vm.isPlaying {
+        } else if !vm.isPlaying, !vm.isLoading {
             vm.togglePlayPause()
         }
         currentVideo = video

@@ -54,6 +54,7 @@ public struct PlayerView: View {
     @State var pipDelegate: PiPDelegate?
     @State var isPiPActive: Bool = false
     @State var isLandscapeLocked = false
+    @State var ownerModel = YTWatchOwnerModel()
     var playerLayer: AVPlayerLayer { playerState.playerHostView.playerLayer }
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     @Environment(\.verticalSizeClass) var verticalSizeClass

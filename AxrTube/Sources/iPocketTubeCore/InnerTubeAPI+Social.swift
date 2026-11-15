@@ -288,7 +288,7 @@ extension InnerTubeAPI {
     /// Finds the comments continuation token inside the `engagementPanels` of a
     /// `/next` response — looks for the panel whose `panelIdentifier` or header title
     /// contains "comment".
-    private func parseCommentsContinuationToken(from json: [String: Any]) -> String? {
+    func parseCommentsContinuationToken(from json: [String: Any]) -> String? {
         guard let panels = json["engagementPanels"] as? [[String: Any]] else { return nil }
         for panel in panels {
             guard let pslr = panel["engagementPanelSectionListRenderer"] as? [String: Any] else { continue }
@@ -325,7 +325,7 @@ extension InnerTubeAPI {
     }
 
     /// Parses `commentRenderer` objects from a comments continuation `/next` response.
-    private func parseComments(from json: [String: Any]) -> [Comment] {
+    func parseComments(from json: [String: Any]) -> [Comment] {
         var comments: [Comment] = []
 
         // New entity-based format (YouTube InnerTube v2):

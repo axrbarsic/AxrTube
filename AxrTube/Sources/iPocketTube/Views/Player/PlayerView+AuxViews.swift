@@ -34,7 +34,7 @@ struct StatsForNerdsOverlay: View {
             smallRow("Stream URL",   snapshot.streamURL.isEmpty ? "—" : snapshot.streamURL)
             Divider().background(.white.opacity(0.2)).padding(.vertical, 2)
             row("Report ID",        snapshot.reportID)
-            Text("Two-finger tap to dismiss  ·  Quote Report ID when sending diagnostics")
+            Text("Коснитесь двумя пальцами, чтобы закрыть · При отправке диагностики укажите ID отчёта")
                 .foregroundStyle(.white.opacity(0.4))
                 .font(.system(.caption2, design: .monospaced))
                 .padding(.top, 4)
@@ -264,9 +264,11 @@ import AVKit
 
 /// Wraps `AVRoutePickerView` (the iOS AirPlay button) in a SwiftUI-compatible view.
 struct AirPlayRoutePickerView: UIViewRepresentable {
+    var tint: UIColor = .white
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let picker = AVRoutePickerView()
-        picker.tintColor = .white
+        picker.tintColor = tint
         picker.activeTintColor = UIColor.systemBlue
         // Set the identifier directly on the UIKit view so XCUITest can find it.
         // The SwiftUI `.accessibilityIdentifier()` modifier applies to the hosting
@@ -276,6 +278,6 @@ struct AirPlayRoutePickerView: UIViewRepresentable {
         picker.accessibilityTraits = [.button]
         return picker
     }
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) { uiView.tintColor = tint }
 }
 #endif

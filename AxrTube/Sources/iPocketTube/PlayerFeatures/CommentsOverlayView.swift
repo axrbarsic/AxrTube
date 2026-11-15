@@ -39,7 +39,7 @@ struct CommentsOverlayView: View {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Text("Comments")
+                    Text("Комментарии")
                         .fontWeight(.semibold)
                     Spacer()
                     Color.clear.frame(width: 44, height: 44)
@@ -50,7 +50,7 @@ struct CommentsOverlayView: View {
                     ProgressView()
                         .padding(40)
                 } else if comments.isEmpty {
-                    Text("No comments available.")
+                    Text("Комментариев пока нет")
                         .foregroundStyle(.secondary)
                         .padding(40)
                 } else {

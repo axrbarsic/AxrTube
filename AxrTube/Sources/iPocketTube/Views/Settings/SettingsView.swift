@@ -34,7 +34,7 @@ public struct SettingsView: View {
 
     public var body: some View {
         #if os(iOS)
-        matrixBody
+        YTSettingsView()
         #else
         Form {
             accountSection
@@ -59,18 +59,18 @@ public struct SettingsView: View {
         }
         #endif
         .alert("Clear Offline Collection", isPresented: $showClearOfflineConfirmation) {
-            Button("Clear All", role: .destructive) {
+            Button("Удалить всё", role: .destructive) {
                 downloadService.cancelAll()
                 downloadStore.clearAll()
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Отмена", role: .cancel) {}
         } message: {
             Text("Все сохранённые офлайн-видео будут удалены из AxrTube.")
         }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
-            Button("OK", role: .cancel) {}
+            Button("ОК", role: .cancel) {}
         } message: {
-            Text("Secure credentials could not be removed. Sign out was not completed.")
+            Text("Не удалось удалить защищённые данные входа. Выход не завершён.")
         }
         #endif
     }
@@ -100,7 +100,7 @@ public struct SettingsView: View {
                 }
 
                 iPocketTubeMatrixSection("Always On", systemImage: "checkmark.shield.fill") {
-                    Text("No ads • background • pause for external audio")
+                    Text("Без рекламы • фон • пауза на внешнее аудио")
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(iPocketTubeVisualTokens.mintSoft)
                         .fixedSize(horizontal: false, vertical: true)
@@ -127,15 +127,15 @@ public struct SettingsView: View {
             )
         }
         .alert("Sign Out", isPresented: $showSignOutFailure) {
-            Button("OK", role: .cancel) {}
+            Button("ОК", role: .cancel) {}
         } message: {
-            Text("Secure credentials could not be removed. Sign out was not completed.")
+            Text("Не удалось удалить защищённые данные входа. Выход не завершён.")
         }
         .alert("App Icon", isPresented: Binding(
             get: { appIconChangeError != nil },
             set: { if !$0 { appIconChangeError = nil } }
         )) {
-            Button("OK", role: .cancel) { appIconChangeError = nil }
+            Button("ОК", role: .cancel) { appIconChangeError = nil }
         } message: {
             Text(appIconChangeError ?? "")
         }
@@ -163,7 +163,7 @@ public struct SettingsView: View {
                 iPocketTubeHaptics.shared.perform(.signOut)
                 performSignOut()
             } label: {
-                Label("Sign Out", systemImage: "rectangle.portrait.and.arrow.right")
+                Label("Выйти", systemImage: "rectangle.portrait.and.arrow.right")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .buttonStyle(.plain)
@@ -172,7 +172,7 @@ public struct SettingsView: View {
                 iPocketTubeHaptics.shared.perform(.signIn)
                 showSignIn = true
             } label: {
-                Label("Sign in with Google", systemImage: "person.badge.key")
+                Label("Войти через Google", systemImage: "person.badge.key")
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -341,7 +341,7 @@ public struct SettingsView: View {
             .frame(minHeight: 60)
             Divider()
             Toggle(isOn: hapticBinding($store.settings.downloadsWiFiOnly)) {
-                Label("Wi-Fi Only Downloads", systemImage: "wifi")
+                Label("Загружать только по Wi-Fi", systemImage: "wifi")
             }
             .tint(iPocketTubeVisualTokens.mint)
             .frame(minHeight: 48)
@@ -397,7 +397,7 @@ public struct SettingsView: View {
 
             Toggle(isOn: hapticBinding($store.settings.russianOnlySearchEnabled)) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Russian-language videos only", systemImage: "waveform.and.mic")
+                    Label("Только русскоязычные ролики", systemImage: "waveform.and.mic")
                     Text("Главная, рекомендации и поиск. Ролики без подтверждённого русского аудио скрываются.")
                         .font(.caption)
                         .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
@@ -418,8 +418,8 @@ public struct SettingsView: View {
                 }
             )) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Label("Show Shorts", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                    Text("Shorts appear in video feeds")
+                    Label("Показывать Shorts", systemImage: "rectangle.portrait.on.rectangle.portrait")
+                    Text("Shorts будут показываться в лентах видео")
                         .font(.caption)
                         .foregroundStyle(iPocketTubeVisualTokens.secondaryText)
                 }
@@ -433,7 +433,7 @@ public struct SettingsView: View {
     private var matrixAboutContent: some View {
         VStack(spacing: 0) {
             HStack {
-                Label("Version", systemImage: "app.badge")
+                Label("Версия", systemImage: "app.badge")
                 Spacer()
                 Text(appVersion).foregroundStyle(iPocketTubeVisualTokens.secondaryText)
             }
@@ -457,7 +457,7 @@ public struct SettingsView: View {
                 Divider().overlay(iPocketTubeVisualTokens.stroke)
 
                 ShareLink(item: reportURL) {
-                    Label("Export Playback Journal", systemImage: "square.and.arrow.up")
+                    Label("Экспорт журнала воспроизведения", systemImage: "square.and.arrow.up")
                         .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }
                 .accessibilityIdentifier("settings.exportPlaybackJournal")
@@ -466,7 +466,7 @@ public struct SettingsView: View {
             Divider().overlay(iPocketTubeVisualTokens.stroke)
 
             Link(destination: URL(string: "https://github.com/axrbarsic/AxrTube/blob/alex-personal/LICENSE")!) {
-                Label("Licenses", systemImage: "doc.text")
+                Label("Лицензии", systemImage: "doc.text")
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
             }
             .accessibilityIdentifier("settings.licensesLink")
@@ -479,7 +479,7 @@ public struct SettingsView: View {
     private var audioSection: some View {
         @Bindable var store = store
         return Section {
-            Toggle("Wi-Fi Only Downloads", isOn: $store.settings.downloadsWiFiOnly)
+            Toggle("Загружать только по Wi-Fi", isOn: $store.settings.downloadsWiFiOnly)
                 .accessibilityIdentifier("settings.downloadsWiFiOnly")
         } header: {
             Text("Офлайн-видео")
@@ -491,7 +491,7 @@ public struct SettingsView: View {
     // MARK: - Account
 
     private var accountSection: some View {
-        Section("Account") {
+        Section("Аккаунт") {
             if auth.isSignedIn {
                 HStack {
                     #if os(tvOS)
@@ -514,9 +514,9 @@ public struct SettingsView: View {
                     .clipShape(Circle())
                     Text(auth.accountName ?? "Unknown")
                 }
-                Button("Sign Out", role: .destructive) { performSignOut() }
+                Button("Выйти", role: .destructive) { performSignOut() }
             } else {
-                Button("Sign in with Google") { showSignIn = true }
+                Button("Войти через Google") { showSignIn = true }
                     .accessibilityIdentifier("settings.signInButton")
                     .sheet(isPresented: $showSignIn) { SignInView() }
             }
@@ -535,18 +535,18 @@ public struct SettingsView: View {
 
     private var playerSection: some View {
         @Bindable var store = store
-        return Section("Player") {
-            Picker("Playback Speed", selection: $store.settings.playbackSpeed) {
+        return Section("Плеер") {
+            Picker("Скорость воспроизведения", selection: $store.settings.playbackSpeed) {
                 ForEach(AppSettings.availableSpeeds, id: \.self) { s in
                     Text(s == 1.0 ? "Normal" : "\(s, specifier: "%.2g")×").tag(s)
                 }
             }
 
             #if !os(iOS)
-            Picker("Max Resolution", selection: $store.settings.preferredQuality) {
+            Picker("Максимальное разрешение", selection: $store.settings.preferredQuality) {
                 ForEach(AppSettings.VideoQuality.allCases, id: \.self) { q in
                     if q == .auto {
-                        Text("Auto").tag(q)
+                        Text("Автоматически").tag(q)
                     } else {
                         Text(verbatim: q.rawValue).tag(q)
                     }
@@ -554,31 +554,31 @@ public struct SettingsView: View {
             }
             .accessibilityIdentifier("settings.preferredQualityPicker")
 
-            Picker("Preferred Audio Language", selection: $store.settings.preferredAudioLanguage) {
-                Text("System Default").tag(nil as String?)
+            Picker("Предпочитаемый язык аудиодорожки", selection: $store.settings.preferredAudioLanguage) {
+                Text("Как в системе").tag(nil as String?)
                 Divider()
-                Text("English").tag("en" as String?)
-                Text("Spanish").tag("es" as String?)
-                Text("French").tag("fr" as String?)
-                Text("German").tag("de" as String?)
-                Text("Japanese").tag("ja" as String?)
-                Text("Korean").tag("ko" as String?)
-                Text("Portuguese (Brazil)").tag("pt-BR" as String?)
-                Text("Chinese (Simplified)").tag("zh-Hans" as String?)
+                Text("Английский").tag("en" as String?)
+                Text("Испанский").tag("es" as String?)
+                Text("Французский").tag("fr" as String?)
+                Text("Немецкий").tag("de" as String?)
+                Text("Японский").tag("ja" as String?)
+                Text("Корейский").tag("ko" as String?)
+                Text("Португальский (Бразилия)").tag("pt-BR" as String?)
+                Text("Китайский (упрощённый)").tag("zh-Hans" as String?)
                 Divider()
-                Text("Original Track Only").tag("original" as String?)
+                Text("Только оригинальная аудиодорожка").tag("original" as String?)
             }
             .accessibilityIdentifier("settings.preferredAudioLanguageRow")
             #endif
 
             #if os(tvOS)
-            Picker("Seek Back", selection: $store.settings.seekBackSeconds) {
+            Picker("Перемотка назад", selection: $store.settings.seekBackSeconds) {
                 ForEach(AppSettings.availableSeekOptions, id: \.self) { s in
                     Text("\(s) s").tag(s)
                 }
             }
             .accessibilityIdentifier("settings.seekBackRow")
-            Picker("Seek Forward", selection: $store.settings.seekForwardSeconds) {
+            Picker("Перемотка вперёд", selection: $store.settings.seekForwardSeconds) {
                 ForEach(AppSettings.availableSeekOptions, id: \.self) { s in
                     Text("\(s) s").tag(s)
                 }
@@ -602,28 +602,28 @@ public struct SettingsView: View {
             #endif
 
             #if !os(iOS)
-            Picker("Hide Controls After", selection: $store.settings.controlsHideTimeout) {
-                Text("2s").tag(2)
-                Text("3s").tag(3)
-                Text("4s").tag(4)
-                Text("5s").tag(5)
-                Text("8s").tag(8)
-                Text("10s").tag(10)
+            Picker("Скрывать элементы управления через", selection: $store.settings.controlsHideTimeout) {
+                Text("2 с").tag(2)
+                Text("3 с").tag(3)
+                Text("4 с").tag(4)
+                Text("5 с").tag(5)
+                Text("8 с").tag(8)
+                Text("10 с").tag(10)
             }
 
-            Picker("Video Fit", selection: $store.settings.videoGravityMode) {
-                Text("Fit (letterbox)").tag(AppSettings.VideoGravityMode.fit)
-                Text("Fill (crop)").tag(AppSettings.VideoGravityMode.fill)
+            Picker("Масштаб видео", selection: $store.settings.videoGravityMode) {
+                Text("Вписать (с полями)").tag(AppSettings.VideoGravityMode.fit)
+                Text("Заполнить (с обрезкой)").tag(AppSettings.VideoGravityMode.fill)
             }
             #endif
 
-            Toggle("Loop Video", isOn: $store.settings.loopEnabled)
-            Toggle("Shuffle", isOn: $store.settings.shuffleEnabled)
+            Toggle("Зациклить видео", isOn: $store.settings.loopEnabled)
+            Toggle("Перемешать", isOn: $store.settings.shuffleEnabled)
 
-            Toggle("Autoplay next video", isOn: $store.settings.autoplayEnabled)
-            Toggle("Background Playback", isOn: $store.settings.backgroundPlaybackEnabled)
+            Toggle("Автовоспроизведение следующего видео", isOn: $store.settings.autoplayEnabled)
+            Toggle("Фоновое воспроизведение", isOn: $store.settings.backgroundPlaybackEnabled)
             #if !os(iOS)
-            Toggle("Prefer H.264 Codec", isOn: $store.settings.preferH264)
+            Toggle("Предпочитать кодек H.264", isOn: $store.settings.preferH264)
                 .accessibilityIdentifier("settings.preferH264Toggle")
             #endif
         }
@@ -633,12 +633,12 @@ public struct SettingsView: View {
 
     private var generalSection: some View {
         @Bindable var store = store
-        return Section("General") {
-            Picker("Watch History", selection: $store.settings.historyState) {
-                Text("Enabled").tag(AppSettings.HistoryState.enabled)
-                Text("Disabled").tag(AppSettings.HistoryState.disabled)
+        return Section("Основные") {
+            Picker("История просмотров", selection: $store.settings.historyState) {
+                Text("Включено").tag(AppSettings.HistoryState.enabled)
+                Text("Отключено").tag(AppSettings.HistoryState.disabled)
             }
-            Toggle("Sync to iCloud", isOn: $store.settings.iCloudSyncEnabled)
+            Toggle("Синхронизировать с iCloud", isOn: $store.settings.iCloudSyncEnabled)
                 .accessibilityIdentifier("settings.iCloudSyncToggle")
         }
     }
@@ -648,7 +648,7 @@ public struct SettingsView: View {
     private var offlineSection: some View {
         @Bindable var store = store
         return Section {
-            Picker("Storage Limit", selection: $store.settings.offlineStorageLimitMB) {
+            Picker("Лимит хранилища", selection: $store.settings.offlineStorageLimitMB) {
                 Text("1 GB").tag(1024)
                 Text("2 GB").tag(2048)
                 Text("4 GB").tag(4096)
@@ -663,14 +663,14 @@ public struct SettingsView: View {
             )
 
             if !downloadStore.entries.isEmpty {
-                Button("Clear Offline Collection", role: .destructive) {
+                Button("Очистить офлайн-коллекцию", role: .destructive) {
                     showClearOfflineConfirmation = true
                 }
             }
         } header: {
-            Text("Offline Collection")
+            Text("Офлайн-коллекция")
         } footer: {
-            Text("Every tapped video is saved as audio. Duplicate items are reused and the storage limit protects the device.")
+            Text("Каждый выбранный ролик сохраняется как аудио. Дубликаты переиспользуются, а лимит защищает память устройства.")
         }
     }
 
@@ -678,22 +678,22 @@ public struct SettingsView: View {
 
     private var uiSection: some View {
         @Bindable var store = store
-        return Section("Interface") {
-            Picker("Theme", selection: $store.settings.themeName) {
+        return Section("Интерфейс") {
+            Picker("Тема", selection: $store.settings.themeName) {
                 ForEach(AppSettings.ThemeName.allCases, id: \.self) { t in
                     Text(t.displayName).tag(t)
                 }
             }
             .accessibilityIdentifier("settings.themeRow")
-            Toggle("Hide Shorts", isOn: $store.settings.hideShorts)
+            Toggle("Скрывать Shorts", isOn: $store.settings.hideShorts)
                 .accessibilityIdentifier("settings.hideShortsToggle")
-            Toggle("Hide Live Shorts", isOn: $store.settings.hideLiveShorts)
+            Toggle("Скрывать прямые эфиры Shorts", isOn: $store.settings.hideLiveShorts)
                 .accessibilityIdentifier("settings.hideLiveShortsToggle")
-            Toggle("Hide Video Premieres", isOn: $store.settings.hideVideoPremieres)
+            Toggle("Скрывать премьеры видео", isOn: $store.settings.hideVideoPremieres)
                 .accessibilityIdentifier("settings.hideVideoPremieresToggle")
-            Toggle("Per-Device Recommendations", isOn: $store.settings.perDeviceRecommendationsEnabled)
+            Toggle("Отдельные рекомендации на каждом устройстве", isOn: $store.settings.perDeviceRecommendationsEnabled)
                 .accessibilityIdentifier("settings.perDeviceRecommendationsToggle")
-            Toggle("Compact Thumbnails", isOn: $store.settings.compactThumbnails)
+            Toggle("Компактные обложки", isOn: $store.settings.compactThumbnails)
             NavigationLink("Visible Sections") {
                 SectionsSettingsView()
                     .environment(store)
@@ -707,7 +707,7 @@ public struct SettingsView: View {
     private var sponsorBlockSection: some View {
         @Bindable var store = store
         return Section {
-            Toggle("Enable SponsorBlock", isOn: $store.settings.sponsorBlockEnabled)
+            Toggle("Включить SponsorBlock", isOn: $store.settings.sponsorBlockEnabled)
                 .accessibilityIdentifier("settings.sponsorBlockToggle")
 
             if store.settings.sponsorBlockEnabled {
@@ -720,21 +720,21 @@ public struct SettingsView: View {
                             get: { store.settings.sponsorBlockActions[cat] ?? .nothing },
                             set: { store.settings.sponsorBlockActions[cat] = $0 }
                         )) {
-                            Text("Skip").tag(AppSettings.SponsorBlockAction.skip)
-                            Text("Show Toast").tag(AppSettings.SponsorBlockAction.showToast)
-                            Text("Nothing").tag(AppSettings.SponsorBlockAction.nothing)
+                            Text("Пропускать").tag(AppSettings.SponsorBlockAction.skip)
+                            Text("Показывать кнопку").tag(AppSettings.SponsorBlockAction.showToast)
+                            Text("Не пропускать").tag(AppSettings.SponsorBlockAction.nothing)
                         }
                         .accessibilityIdentifier("settings.sponsorBlock.\(cat.rawValue)")
                     }
                 }
 
                 // Minimum segment duration
-                Picker("Min. Segment Length", selection: $store.settings.sponsorBlockMinSegmentDuration) {
-                    Text("Off").tag(0.0)
-                    Text("1s").tag(1.0)
-                    Text("2s").tag(2.0)
-                    Text("5s").tag(5.0)
-                    Text("10s").tag(10.0)
+                Picker("Мин. длительность сегмента", selection: $store.settings.sponsorBlockMinSegmentDuration) {
+                    Text("Выкл.").tag(0.0)
+                    Text("1 с").tag(1.0)
+                    Text("2 с").tag(2.0)
+                    Text("5 с").tag(5.0)
+                    Text("10 с").tag(10.0)
                 }
 
                 // Excluded channels
@@ -755,11 +755,11 @@ public struct SettingsView: View {
     private var deArrowSection: some View {
         @Bindable var store = store
         return Section {
-            Toggle("Enable DeArrow", isOn: $store.settings.deArrowEnabled)
+            Toggle("Включить DeArrow", isOn: $store.settings.deArrowEnabled)
         } header: {
             Text("DeArrow")
         } footer: {
-            Text("Replace clickbait titles and thumbnails with community-sourced alternatives.")
+            Text("Заменяет кликбейтные заголовки и превью на варианты от сообщества.")
         }
     }
 
@@ -769,19 +769,19 @@ public struct SettingsView: View {
     private var experimentalSection: some View {
         @Bindable var store = store
         return Section {
-            Toggle("EDR Press Glow", isOn: $store.settings.experimentalEDRPressGlowEnabled)
+            Toggle("EDR-свечение нажатий", isOn: $store.settings.experimentalEDRPressGlowEnabled)
                 .accessibilityIdentifier("settings.experimentalEDRPressGlow")
             #if os(macOS)
-            Toggle("IFrame Player (TOS-compliant, shows ads)", isOn: $store.settings.useTOSPlayerOnMac)
+            Toggle("IFrame-плеер (соответствует условиям YouTube, показывает рекламу)", isOn: $store.settings.useTOSPlayerOnMac)
                 .accessibilityIdentifier("settings.useTOSPlayerOnMacToggle")
             #endif
         } header: {
-            Text("Experimental")
+            Text("Экспериментальная функция")
         } footer: {
             #if os(macOS)
-            Text("EDR press glow targets supported displays. The IFrame player uses YouTube's official embedded player; quality selection and downloads are unavailable.")
+            Text("EDR-свечение рассчитано на поддерживаемые дисплеи. IFrame-плеер использует официальный встроенный плеер YouTube; выбор качества и загрузки недоступны.")
             #else
-            Text("Uses true local EDR headroom on supported displays. Simulator, Low Power Mode, and SDR displays use a restrained fallback.")
+            Text("На поддерживаемых дисплеях используется настоящий локальный запас яркости EDR. В симуляторе, режиме энергосбережения и на SDR-дисплеях применяется сдержанный запасной эффект.")
             #endif
         }
     }
@@ -791,16 +791,16 @@ public struct SettingsView: View {
 
     private var aboutSection: some View {
         Section {
-            LabeledContent("Version", value: appVersion)
+            LabeledContent("Версия", value: appVersion)
             #if os(tvOS)
             Button {
                 showGithubQR = true
             } label: {
-                Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label("Открыть на GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #else
             Link(destination: URL(string: "https://github.com/axrbarsic/AxrTube")!) {
-                Label("View on GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                Label("Открыть на GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
             }
             #endif
             Button {
@@ -808,18 +808,18 @@ public struct SettingsView: View {
                 reportSent = true
             } label: {
                 if reportSent {
-                    Label("Report Sent", systemImage: "checkmark.circle.fill")
+                    Label("Отчёт отправлен", systemImage: "checkmark.circle.fill")
                         .foregroundStyle(iPocketTubeVisualTokens.success)
                 } else {
-                    Label("Send Diagnostic Report", systemImage: "ladybug")
+                    Label("Отправить диагностический отчёт", systemImage: "ladybug")
                 }
             }
             .disabled(reportSent)
             .accessibilityIdentifier("settings.sendDiagnosticReportButton")
-            Link("Licenses", destination: URL(string: "https://github.com/axrbarsic/AxrTube/blob/alex-personal/LICENSE")!)
+            Link("Лицензии", destination: URL(string: "https://github.com/axrbarsic/AxrTube/blob/alex-personal/LICENSE")!)
                 .accessibilityIdentifier("settings.licensesLink")
         } header: {
-            Text("About")
+            Text("О приложении")
         }
     }
 
@@ -861,10 +861,10 @@ private struct GitHubQRView: View {
                         .font(.system(size: 56))
                         .foregroundStyle(.white)
 
-                    Text("AxrTube on GitHub")
+                    Text("AxrTube на GitHub")
                         .font(.largeTitle).fontWeight(.bold)
 
-                    Text("Scan the QR code with your phone to view the project on GitHub.")
+                    Text("Отсканируйте QR-код телефоном, чтобы посмотреть проект на GitHub.")
                         .font(.title3)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -886,7 +886,7 @@ private struct GitHubQRView: View {
             Button {
                 dismiss()
             } label: {
-                Label("Close", systemImage: "xmark")
+                Label("Закрыть", systemImage: "xmark")
                     .font(.headline)
             }
             .padding(40)
@@ -929,7 +929,7 @@ struct SectionsSettingsView: View {
                 ))
             }
         }
-        .navigationTitle("Visible Sections")
+        .navigationTitle("Видимые разделы")
         #if os(iOS)
         .toolbar(.visible, for: .navigationBar)
         #endif
@@ -967,7 +967,7 @@ struct SponsorBlockExcludedChannelsView: View {
                 }
             }
         }
-        .navigationTitle("Excluded Channels")
+        .navigationTitle("Каналы-исключения")
         #if os(iOS)
         .toolbar(.visible, for: .navigationBar)
         .navigationBarTitleDisplayMode(.inline)

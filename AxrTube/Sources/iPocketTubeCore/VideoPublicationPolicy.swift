@@ -106,15 +106,17 @@ public enum VideoListRoute: String, Sendable, CaseIterable {
 
     public var usesNewestFirstPublicationOrder: Bool {
         switch self {
-        case .search, .home, .recommended, .subscriptions, .channel, .rss:
+        case .subscriptions, .channel, .rss:
             true
-        case .history, .playlist, .queue, .downloads:
+        case .search, .home, .recommended, .history, .playlist, .queue, .downloads:
             false
         }
     }
 }
 
-/// One stable, typed publication-date ordering policy shared by every feed.
+/// Ranked discovery and search retain the order returned by YouTube, including
+/// explicit search sort filters already applied by the server. Only chronological
+/// routes use local publication-date ordering.
 /// Exact dates are preferred; parseable relative metadata contributes only a
 /// coarse typed age. Localized labels are never compared lexicographically.
 public enum VideoPublicationSortPolicy {

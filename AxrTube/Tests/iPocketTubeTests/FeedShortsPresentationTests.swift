@@ -8,10 +8,10 @@ struct FeedShortsPresentationTests {
         Video(id: id, title: id, channelTitle: "Channel", duration: duration, isShort: isShort)
     }
 
-    @Test("Show Shorts is off by default and persists both values")
+    @Test("Show Shorts is on by default and persists both values")
     func settingDefaultAndRoundTrip() throws {
         var settings = AppSettings()
-        #expect(!settings.showShorts)
+        #expect(settings.showShorts)
 
         settings.showShorts = true
         let enabled = try JSONDecoder().decode(AppSettings.self, from: JSONEncoder().encode(settings))

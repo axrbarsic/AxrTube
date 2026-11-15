@@ -427,8 +427,8 @@ struct HomeViewModelTests {
         #expect(vm.mergedVideos == recs)
     }
 
-    @Test("Exact publication enrichment atomically changes Home order")
-    func exactPublicationEnrichmentResortsHome() async {
+    @Test("Exact publication enrichment preserves Home recommendation rank")
+    func exactPublicationEnrichmentPreservesHomeRank() async {
         let token = UUID().uuidString
         let oldID = "old-\(token)"
         let newID = "new-\(token)"
@@ -447,11 +447,11 @@ struct HomeViewModelTests {
         defer { vm.cancel() }
         vm.load()
         await waitForTasks(until: {
-            vm.mergedVideos.map(\.id) == [newID, oldID]
+            vm.mergedVideos.map(\.id) == [oldID, newID]
                 && vm.mergedVideos.allSatisfy { $0.publishedAt != nil }
         })
 
-        #expect(vm.mergedVideos.map(\.id) == [newID, oldID])
+        #expect(vm.mergedVideos.map(\.id) == [oldID, newID])
         #expect(vm.mergedVideos.map(\.publicationDateStatus) == [.exact, .exact])
     }
 
@@ -1031,6 +1031,36 @@ struct BrowseViewModelTests {
 @Suite("SearchViewModel")
 @MainActor
 struct SearchViewModelTests {
+
+    @Test("Search rank survives date enrichment and continuation deduplication")
+    func serverRankSurvivesEnrichmentAndPagination() async {
+        let suffix = UUID().uuidString
+        let first = "relevant-old-\(suffix)"
+        let second = "unknown-\(suffix)"
+        let third = "new-page-\(suffix)"
+        let mock = MockInnerTubeAPI()
+        mock.searchResult = VideoGroup(
+            title: "Search", videos: [makeVideo(first), makeVideo(second)], nextPageToken: "next"
+        )
+        mock.exactPublicationDatesByVideoID = [
+            first: Date(timeIntervalSince1970: 100),
+            second: Date(timeIntervalSince1970: 200),
+            third: Date(timeIntervalSince1970: 300),
+        ]
+        let vm = makeSearchViewModel(api: mock)
+        vm.query = "ranked results"
+        vm.search()
+        await waitForTasks(until: {
+            vm.results.count == 2 && vm.results.allSatisfy { $0.publishedAt != nil } && !vm.isLoading
+        })
+        #expect(vm.results.map(\.id) == [first, second])
+        mock.searchResult = VideoGroup(title: "Page", videos: [makeVideo(first), makeVideo(third)])
+        vm.loadMore()
+        await waitForTasks(until: {
+            vm.results.count == 3 && vm.results.allSatisfy { $0.publishedAt != nil } && !vm.isLoading
+        })
+        #expect(vm.results.map(\.id) == [first, second, third])
+    }
 
     @Test("search() with non-empty query populates results")
     func searchPopulatesResults() async {

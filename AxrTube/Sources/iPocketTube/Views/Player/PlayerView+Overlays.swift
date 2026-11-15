@@ -37,9 +37,15 @@ extension PlayerView {
     /// compiled function, reducing __swift5_typeref size in the binary.
     @ViewBuilder var overlayStack: some View {
         if showMoreMenu {
+            #if os(iOS)
+            ytSettingsSheet
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .animation(.easeOut(duration: 0.2), value: showMoreMenu)
+            #else
             moreMenuOverlay
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showMoreMenu)
+            #endif
         }
         if showSpeedPicker {
             speedPickerOverlay
@@ -84,11 +90,22 @@ extension PlayerView {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showDescriptionSheet)
         }
+        #if os(iOS)
+        // Portrait shows comments in the details area under the player
+        // (PlayerView+Watch); landscape uses the same YouTube panel over video.
+        if showCommentsSheet, vm.isLandscape {
+            YTCommentsSheet(videoID: (vm.playerInfo?.video ?? video).id, onClose: { showCommentsSheet = false })
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .transition(.move(edge: .trailing))
+        }
+        #else
         if showCommentsSheet {
             commentsOverlay
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.easeOut(duration: 0.2), value: showCommentsSheet)
         }
+        #endif
     }
 
     // MARK: - More menu overlay
@@ -248,7 +265,7 @@ extension PlayerView {
                     }
                     .buttonStyle(.plain)
                     Spacer()
-                    Text("Description")
+                    Text("Описание")
                         .fontWeight(.semibold)
                     Spacer()
                     Color.clear.frame(width: 44, height: 44)
@@ -268,7 +285,7 @@ extension PlayerView {
                             Text(descriptionAttributedString(description))
                                 .font(.body)
                         } else {
-                            Text("No description available.")
+                            Text("Описания нет")
                                 .font(.body)
                                 .foregroundStyle(.secondary)
                         }
@@ -354,7 +371,7 @@ extension PlayerView {
             showSpeedPicker = true
         } label: {
             HStack {
-                Label("Playback Speed", systemImage: "speedometer")
+                Label("Скорость воспроизведения", systemImage: "speedometer")
                 Spacer()
                 Text(store.settings.playbackSpeed == 1.0 ? "Normal"
                      : "\(store.settings.playbackSpeed, specifier: "%.2g")×")
@@ -379,7 +396,7 @@ extension PlayerView {
         Divider()
     }
 
-    private var shouldShowAudioTrackInMoreMenu: Bool {
+    var shouldShowAudioTrackInMoreMenu: Bool {
         #if os(tvOS)
         vm.availableAudioTracks.count > 1
         #else
@@ -449,7 +466,7 @@ extension PlayerView {
                 presentShareSheet(url: url)
             }
         } label: {
-            Label("Share", systemImage: AppSymbol.share)
+            Label("Поделиться", systemImage: AppSymbol.share)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
                 .contentShape(Rectangle())
@@ -468,13 +485,13 @@ extension PlayerView {
             showSleepTimerPicker = true
         } label: {
             HStack {
-                Label("Sleep Timer", systemImage: "moon.zzz")
+                Label("Таймер сна", systemImage: "moon.zzz")
                 Spacer()
                 if let mins = vm.sleepTimerMinutes {
                     Text("\(mins) min")
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("Off")
+                    Text("Выкл.")
                         .foregroundStyle(.secondary)
                 }
             }
@@ -537,9 +554,9 @@ extension PlayerView {
         } label: {
             Group {
                 if downloadService.state.isActive {
-                    Label("Downloading…", systemImage: AppSymbol.download)
+                    Label("Загрузка…", systemImage: AppSymbol.download)
                 } else {
-                    Label("Save Offline", systemImage: AppSymbol.download)
+                    Label("Сохранить офлайн", systemImage: AppSymbol.download)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -566,7 +583,7 @@ extension PlayerView {
                 showCaptionPicker = true
             } label: {
                 HStack {
-                    Label("Captions", systemImage: "captions.bubble")
+                    Label("Субтитры", systemImage: "captions.bubble")
                     Spacer()
                     Text(vm.selectedCaption.map {
                         $0.isAutoGenerated ? "\($0.name) (auto)" : $0.name
@@ -596,7 +613,7 @@ extension PlayerView {
                 showAudioTrackPicker = true
             } label: {
                 HStack {
-                    Label("Audio Track", systemImage: "waveform")
+                    Label("Аудиодорожка", systemImage: "waveform")
                     Spacer()
                     Text(vm.selectedAudioTrack.map {
                         $0.isOriginal ? "\($0.name) (Original)" : $0.name
@@ -626,7 +643,7 @@ extension PlayerView {
                 showMoreMenu = false
                 showDescriptionSheet = true
             } label: {
-                Label("Description", systemImage: "text.alignleft")
+                Label("Описание", systemImage: "text.alignleft")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
                     .contentShape(Rectangle())
@@ -650,7 +667,7 @@ extension PlayerView {
             showCommentsSheet = true
             loadComments()
         } label: {
-            Label("Comments", systemImage: "bubble.left.and.bubble.right")
+            Label("Комментарии", systemImage: "bubble.left.and.bubble.right")
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding()
                 .contentShape(Rectangle())
@@ -673,7 +690,7 @@ extension PlayerView {
             showMoreMenu = false
         } label: {
             HStack {
-                Label("Stats for Nerds", systemImage: "chart.bar.xaxis")
+                Label("Статистика для сисадминов", systemImage: "chart.bar.xaxis")
                 Spacer()
                 if vm.statsForNerdsVisible {
                     Image(systemName: "checkmark")
@@ -699,7 +716,7 @@ extension PlayerView {
             iPocketTubeHaptics.shared.perform(.primaryAction)
             showMoreMenu = false
         } label: {
-            Text("Cancel")
+            Text("Отмена")
                 .frame(maxWidth: .infinity)
                 .padding()
                 .fontWeight(.semibold)

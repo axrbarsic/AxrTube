@@ -112,7 +112,7 @@ extension PlaybackViewModel {
     }
 
     public func handlePlaybackEnd() {
-        if settings.loopEnabled {
+        if settings.loopEnabled || loopsCurrentItem {
             player.seek(to: .zero)
             requestPlaybackStart(reason: "loop")
             return

@@ -37,7 +37,7 @@ public struct PlaylistView: View {
     public var body: some View {
         Group {
             if vm.isLoading && vm.videos.isEmpty {
-                ProgressView("Loading…")
+                ProgressView("Загрузка…")
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if vm.videos.isEmpty {
                 emptyState
@@ -56,7 +56,7 @@ public struct PlaylistView: View {
                             dismiss()
                         }
                     } label: {
-                        Label("Clear Queue", systemImage: "trash")
+                        Label("Очистить очередь", systemImage: "trash")
                     }
                 }
                 #else
@@ -67,7 +67,7 @@ public struct PlaylistView: View {
                             dismiss()
                         }
                     } label: {
-                        Label("Clear Queue", systemImage: "trash")
+                        Label("Очистить очередь", systemImage: "trash")
                     }
                 }
                 #endif
@@ -89,8 +89,8 @@ public struct PlaylistView: View {
             channelDestination = ChannelDestination(channelId: channelId)
         }
         .alert("Error", isPresented: .constant(vm.error != nil), presenting: vm.error) { _ in
-            Button("Retry") { vm.load(playlistId: playlistId) }
-            Button("Dismiss", role: .cancel) { vm.error = nil }
+            Button("Повторить") { vm.load(playlistId: playlistId) }
+            Button("Закрыть", role: .cancel) { vm.error = nil }
         } message: { err in
             Text(err.localizedDescription)
         }
@@ -240,7 +240,7 @@ public struct PlaylistView: View {
             Image(systemName: AppSymbol.stackLayers)
                 .font(.system(size: 60))
                 .foregroundStyle(.secondary)
-            Text("No videos in this playlist")
+            Text("В этом плейлисте нет видео")
                 .font(.headline)
                 .foregroundStyle(.secondary)
         }

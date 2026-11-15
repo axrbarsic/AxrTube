@@ -149,38 +149,90 @@ struct MiniPlayerView: View {
     @Environment(PlayerStateStore.self) private var playerState
     @Environment(PlayerRouter.self) private var playerRouter
     let openDetails: () -> Void
-    @State private var showTranscript = false
+    @State private var dragOffset: CGFloat = 0
 
+    private var vm: PlaybackViewModel { playerState.vm }
+
+    /// YouTube mini player: video, title and channel, play/pause and close,
+    /// a progress line on top. Drag up opens the watch page, drag down closes.
     var body: some View {
-        NowPlayingAccessoryChrome(
-            title: playerState.currentVideo?.title ?? "Текущее видео",
-            isPlaying: playerState.vm.isPlaying,
-            canTogglePlayback: playerState.vm.player.currentItem != nil,
-            openDetails: openDetails,
-            togglePlayback: {
-                iPocketTubeHaptics.shared.perform(.playbackTransport)
-                playerState.vm.togglePlayPause()
-            },
-            close: {
-                iPocketTubeHaptics.shared.perform(.primaryAction)
-                playerRouter.closePlayback()
-            },
-            openTranscript: {
-                iPocketTubeHaptics.shared.perform(.contentSelection)
-                showTranscript = true
-            },
-        ) {
-            FullScreenPlayerLayerView(
-                hostView: playerState.playerHostView,
-                videoGravity: .resizeAspectFill
-            )
-                .background(Color.black)
-        }
-        .fullScreenCover(isPresented: $showTranscript) {
-            CurrentPlaybackTranscriptPanel {
-                showTranscript = false
+        let video = playerState.currentVideo
+        VStack(spacing: 0) {
+            YTThinProgress(vm: vm).frame(height: 2)
+            HStack(spacing: 10) {
+                Button(action: openDetails) {
+                    HStack(spacing: 10) {
+                        FullScreenPlayerLayerView(hostView: playerState.playerHostView, videoGravity: .resizeAspect)
+                            .frame(width: 107, height: 60)
+                            .background(Color.black)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(video?.title ?? "Текущее видео")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(YTColor.primaryText)
+                                .lineLimit(1)
+                            Text(video?.channelTitle ?? "")
+                                .font(.system(size: 12))
+                                .foregroundStyle(YTColor.secondaryText)
+                                .lineLimit(1)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(video?.title ?? "Текущее видео")
+                .accessibilityHint("Открыть видео")
+                .accessibilityIdentifier("nowPlayingAccessory.detailsButton")
+
+                Button {
+                    iPocketTubeHaptics.shared.perform(.playbackTransport)
+                    vm.togglePlayPause()
+                } label: {
+                    Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(YTColor.primaryText)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .disabled(vm.player.currentItem == nil)
+                .accessibilityLabel(vm.isPlaying ? "Пауза" : "Воспроизвести")
+                .accessibilityIdentifier("nowPlayingAccessory.playPauseButton")
+
+                Button {
+                    iPocketTubeHaptics.shared.perform(.primaryAction)
+                    playerRouter.closePlayback()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18))
+                        .foregroundStyle(YTColor.primaryText)
+                        .frame(width: 44, height: 44)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Закрыть")
+                .accessibilityIdentifier("nowPlayingAccessory.closeButton")
             }
+            .padding(.trailing, 4)
         }
+        .background(YTColor.elevated)
+        .offset(y: max(dragOffset, 0))
+        .opacity(1 - Double(min(max(dragOffset, 0) / 120, 0.7)))
+        .gesture(
+            DragGesture(minimumDistance: 12)
+                .onChanged { dragOffset = $0.translation.height }
+                .onEnded { value in
+                    let dy = value.translation.height
+                    if dy < -40 {
+                        openDetails()
+                    } else if dy > 50 {
+                        iPocketTubeHaptics.shared.perform(.primaryAction)
+                        playerRouter.closePlayback()
+                    }
+                    withAnimation(.easeOut(duration: 0.2)) { dragOffset = 0 }
+                }
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("nowPlayingAccessory.bar")
     }
 }
 

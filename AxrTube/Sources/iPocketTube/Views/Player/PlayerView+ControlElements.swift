@@ -688,7 +688,7 @@ extension PlayerView {
                     iPocketTubeHaptics.shared.perform(.downloadRetry)
                     vm.retryLoad()
                 } label: {
-                    Text("Try Again")
+                    Text("Попробовать снова")
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(.black)
                         .padding(.horizontal, 20)
@@ -826,7 +826,7 @@ private struct SignInButtonView: View {
             iPocketTubeHaptics.shared.perform(.signIn)
             showSignIn = true
         } label: {
-            Text("Sign In")
+            Text("Войти")
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.black)
                 .padding(.horizontal, 20)
