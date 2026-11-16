@@ -20,7 +20,7 @@ extension PlayerView {
                         .frame(height: (geo.size.width * 9 / 16).rounded())
                         .clipped()
                         .overlay(alignment: .bottom) {
-                            if !vm.controlsVisible { YTThinProgress(vm: vm).frame(height: 2) }
+                            if !vm.controlsVisible { YTThinProgress(vm: vm).frame(height: YTThinProgress.height) }
                         }
                     ZStack {
                         watchDetails

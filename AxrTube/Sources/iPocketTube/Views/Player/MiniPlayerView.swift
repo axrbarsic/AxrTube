@@ -158,7 +158,7 @@ struct MiniPlayerView: View {
     var body: some View {
         let video = playerState.currentVideo
         VStack(spacing: 0) {
-            YTThinProgress(vm: vm).frame(height: 2)
+            YTThinProgress(vm: vm).frame(height: YTThinProgress.height)
             HStack(spacing: 10) {
                 Button(action: openDetails) {
                     HStack(spacing: 10) {

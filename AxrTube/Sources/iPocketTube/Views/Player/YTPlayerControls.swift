@@ -219,22 +219,22 @@ struct YTScrubber: View {
             let time = vm.isScrubbing ? vm.scrubTime : vm.currentTime
             let fraction = CGFloat(min(max(time / duration, 0), 1))
             ZStack(alignment: .leading) {
-                Rectangle().fill(.white.opacity(0.3)).frame(height: vm.isScrubbing ? 5 : 3)
-                YTProgressLayers(vm: vm, width: width, height: vm.isScrubbing ? 5 : 3)
+                Rectangle().fill(.white.opacity(0.4)).frame(height: vm.isScrubbing ? 8 : 5)
+                YTProgressLayers(vm: vm, width: width, height: vm.isScrubbing ? 8 : 5)
                 ForEach(vm.sponsorSegments) { segment in
                     Rectangle()
                         .fill(segment.category.color)
-                        .frame(width: max(width * CGFloat((segment.end - segment.start) / duration), 2), height: 3)
+                        .frame(width: max(width * CGFloat((segment.end - segment.start) / duration), 2), height: vm.isScrubbing ? 8 : 5)
                         .offset(x: width * CGFloat(segment.start / duration))
                 }
-                Rectangle().fill(YTColor.brandRed).frame(width: width * fraction, height: vm.isScrubbing ? 5 : 3)
+                Rectangle().fill(YTColor.brandRed).frame(width: width * fraction, height: vm.isScrubbing ? 8 : 5)
                 ForEach(vm.chapters.dropFirst()) { chapter in
-                    Rectangle().fill(.black).frame(width: 2, height: 5)
+                    Rectangle().fill(.black).frame(width: 2, height: vm.isScrubbing ? 8 : 5)
                         .offset(x: width * CGFloat(chapter.startTime / duration) - 1)
                 }
                 Circle().fill(YTColor.brandRed)
-                    .frame(width: vm.isScrubbing ? 18 : 12, height: vm.isScrubbing ? 18 : 12)
-                    .offset(x: width * fraction - (vm.isScrubbing ? 9 : 6))
+                    .frame(width: vm.isScrubbing ? 20 : 14, height: vm.isScrubbing ? 20 : 14)
+                    .offset(x: width * fraction - (vm.isScrubbing ? 10 : 7))
             }
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())

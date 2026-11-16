@@ -5,15 +5,18 @@ import iPocketTubeCore
 /// Thin red line along the bottom of the portrait player while controls are
 /// hidden, over the cached (blue) or buffered (grey) part.
 struct YTThinProgress: View {
+    /// Line thickness under the video and in the mini player.
+    static let height: CGFloat = 4
+
     let vm: PlaybackViewModel
 
     var body: some View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
-                Rectangle().fill(.white.opacity(0.2)).frame(height: 2)
-                YTProgressLayers(vm: vm, width: geo.size.width, height: 2)
+                Rectangle().fill(.white.opacity(0.35)).frame(height: Self.height)
+                YTProgressLayers(vm: vm, width: geo.size.width, height: Self.height)
                 Rectangle().fill(YTColor.brandRed)
-                    .frame(width: geo.size.width * CGFloat(min(max(vm.currentTime / max(vm.duration, 1), 0), 1)), height: 2)
+                    .frame(width: geo.size.width * CGFloat(min(max(vm.currentTime / max(vm.duration, 1), 0), 1)), height: Self.height)
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
         }
@@ -37,10 +40,10 @@ struct YTProgressLayers: View {
             let duration = vm.duration
             ZStack(alignment: .leading) {
                 ForEach(vm.bufferedTimeRanges, id: \.lowerBound) { range in
-                    bar(range, duration: duration, color: .white.opacity(0.55))
+                    bar(range, duration: duration, color: .white.opacity(0.75))
                 }
                 ForEach(vm.cachedTimeRanges, id: \.lowerBound) { range in
-                    bar(range, duration: duration, color: Self.cacheColor.opacity(0.85))
+                    bar(range, duration: duration, color: Self.cacheColor)
                 }
             }
             .frame(width: width, alignment: .leading)
