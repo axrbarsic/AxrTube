@@ -10,7 +10,7 @@ import os
 final class StreamAudioScope: AudioScopeSource, @unchecked Sendable {
     let identity: AudioScopeRenderIdentity
     private weak var player: AVPlayer?
-    private let lock = OSAllocatedUnfairLock(initialState: [Int: [Float]]())
+    private let lock = OSAllocatedUnfairLock(initialState: [Int: TSAudioEnvelope.Signal]())
     private let timeline = OSAllocatedUnfairLock<StreamAudioTimeline?>(initialState: nil)
     private var worker: Task<Void, Never>?
 
@@ -42,15 +42,15 @@ final class StreamAudioScope: AudioScopeSource, @unchecked Sendable {
         for i in wanted.subtracting(ready).sorted() {
             guard let data = await StreamSegmentCache.shared.segment(
                 video: current.video, rendition: current.rendition, index: i
-            ), let values = TSAudioEnvelope.envelope(of: data) else { continue }
-            lock.withLock { $0[i] = values }
+            ), let signal = TSAudioEnvelope.signal(of: data) else { continue }
+            lock.withLock { $0[i] = signal }
         }
         lock.withLock { cache in cache = cache.filter { abs($0.key - index) <= 4 } }
     }
 
     /// Envelope value at absolute time `t`, if decoded.
-    private func level(at t: Double, timeline: StreamAudioTimeline, envelopes: [Int: [Float]]) -> Float? {
-        guard let i = timeline.segment(at: t), let values = envelopes[i] else { return nil }
+    private func level(at t: Double, timeline: StreamAudioTimeline, envelopes: [Int: TSAudioEnvelope.Signal]) -> Float? {
+        guard let i = timeline.segment(at: t), let values = envelopes[i]?.rms else { return nil }
         let bin = Int((t - timeline.starts[i]) * TSAudioEnvelope.binsPerSecond)
         return bin >= 0 && bin < values.count ? values[bin] : nil
     }
@@ -89,8 +89,20 @@ final class StreamAudioScope: AudioScopeSource, @unchecked Sendable {
             identity: identity,
             sequence: UInt64(max(0, t) * 60),
             samples: samples,
-            waveform: []
+            waveform: waveform(at: t, timeline: timeline, envelopes: envelopes, gain: gain)
         )
+    }
+
+    /// 128 points of the real decoded signal ending at `t`, scaled like the
+    /// live tap, for the oscilloscope mode.
+    private func waveform(at t: Double, timeline: StreamAudioTimeline,
+                          envelopes: [Int: TSAudioEnvelope.Signal], gain: Float) -> [Float] {
+        guard let i = timeline.segment(at: t), let signal = envelopes[i], !signal.wave.isEmpty else { return [] }
+        let end = min(signal.wave.count, Int((t - timeline.starts[i]) * signal.waveRate))
+        let start = end - 128
+        guard start >= 0 else { return [] }
+        let scale = max(0.02, gain * 3)
+        return signal.wave[start..<end].map { min(1, max(-1, $0 / scale)) }
     }
 }
 #endif

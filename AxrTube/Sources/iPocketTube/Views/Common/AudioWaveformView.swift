@@ -125,7 +125,7 @@ struct InlineAudioPulseView: View {
         Group {
             if frameDriver.scopeState.phase == .realEnvelope,
                !frameDriver.displayedSamples.isEmpty {
-                if settingsStore.settings.oscilloscopeEnabled {
+                if settingsStore.settings.oscilloscopeEnabled, frameDriver.waveform.count > 1 {
                     OscilloscopeCurve(samples: frameDriver.waveform)
                 } else {
                 Canvas { context, size in

@@ -7,12 +7,26 @@ import Foundation
 /// and measure RMS in short bins. Offsets are seconds from segment start.
 public enum TSAudioEnvelope {
     public static let binsPerSecond = 50.0
+    /// Decimation of the mono signal kept for the oscilloscope view.
+    public static let waveDecimation = 8
 
-    /// RMS per bin (0…1), first bin at the segment's first audio sample.
+    /// Decoded audio of one segment: loudness bins and a decimated waveform.
+    public struct Signal: Sendable {
+        /// RMS per bin (0…1), first bin at the segment's first audio sample.
+        public var rms: [Float]
+        /// Mono samples (-1…1) at `waveRate` Hz.
+        public var wave: [Float]
+        public var waveRate: Double
+    }
+
     public static func envelope(of segment: Data) -> [Float]? {
+        signal(of: segment)?.rms
+    }
+
+    public static func signal(of segment: Data) -> Signal? {
         let frames = adtsFrames(in: segment)
         guard let first = frames.first, let header = ADTSHeader(first) else { return nil }
-        return decodeRMS(frames: frames, header: header)
+        return decode(frames: frames, header: header)
     }
 
     // MARK: Container
@@ -133,7 +147,7 @@ public enum TSAudioEnvelope {
         }
     }
 
-    private static func decodeRMS(frames: [Data], header: ADTSHeader) -> [Float]? {
+    private static func decode(frames: [Data], header: ADTSHeader) -> Signal? {
         var asbd = AudioStreamBasicDescription(
             mSampleRate: header.sampleRate, mFormatID: kAudioFormatMPEG4AAC, mFormatFlags: 0,
             mBytesPerPacket: 0, mFramesPerPacket: 1024, mBytesPerFrame: 0,
@@ -185,6 +199,14 @@ public enum TSAudioEnvelope {
             values.append(min(1, (sum / Float((end - start) * Int(output.channelCount))).squareRoot()))
             start = end
         }
-        return values
+        var wave: [Float] = []
+        wave.reserveCapacity(count / waveDecimation + 1)
+        let channelCount = Int(output.channelCount)
+        for i in stride(from: 0, to: count, by: waveDecimation) {
+            var mono: Float = 0
+            for c in 0..<channelCount { mono += channels[c][i] }
+            wave.append(mono / Float(channelCount))
+        }
+        return Signal(rms: values, wave: wave, waveRate: header.sampleRate / Double(waveDecimation))
     }
 }
