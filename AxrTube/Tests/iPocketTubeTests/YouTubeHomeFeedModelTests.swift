@@ -113,6 +113,56 @@ struct YouTubeHomeFeedModelTests {
     }
 }
 
+@MainActor
+@Suite("YouTube Home admission before commit")
+struct YouTubeHomeAdmissionTests {
+    private func rows(_ ids: [String], token: String? = nil) -> [VideoGroup] {
+        [VideoGroup(title: "Home", videos: ids.map { Video(id: $0, title: $0, channelTitle: "c") }, nextPageToken: token)]
+    }
+
+    private static let keepRU = FeedAdmission(key: "test.ru") { $0.filter { $0.id.hasPrefix("ru") } }
+
+    @Test func filteredRefreshCommitsOnceWithOnlyAdmittedVideos() async {
+        let api = MockInnerTubeAPI()
+        api.homeRowsResult = rows(["ru1", "en1", "ru2"])
+        let model = YouTubeHomeFeedModel(api: api)
+        model.setAdmission(Self.keepRU)
+        await model.refresh()
+        #expect(model.videos.map(\.id) == ["ru1", "ru2"])
+        #expect(model.replacementID == 1)
+    }
+
+    @Test func sparseFilteredFirstPageIsFilledBeforeShowing() async {
+        let api = MockInnerTubeAPI()
+        api.queuedHomeRows = [
+            (rows(["en1", "en2", "en3", "en4", "ru1"], token: "t1"), 0),
+            (rows(["en5", "ru2", "ru3", "ru4"], token: "t2"), 0),
+            (rows(["ru5", "ru6", "ru7"], token: "t3"), 0),
+            (rows(["ru8", "ru9", "ru10"], token: "t4"), 0),
+        ]
+        let model = YouTubeHomeFeedModel(api: api)
+        model.setAdmission(Self.keepRU)
+        await model.refresh()
+        #expect(model.replacementID == 1)
+        #expect(model.videos.map(\.id) == (1...10).map { "ru\($0)" })
+        #expect(model.hasMore)
+    }
+
+    @Test func changingPolicyReloadsLoadedFeed() async {
+        let api = MockInnerTubeAPI()
+        api.homeRowsResult = rows(["ru1", "en1"])
+        let model = YouTubeHomeFeedModel(api: api)
+        await model.refresh()
+        #expect(model.videos.count == 2)
+        model.setAdmission(Self.keepRU)
+        await model.refresh()
+        #expect(model.videos.map(\.id) == ["ru1"])
+        model.setAdmission(.all)
+        await model.refresh()
+        #expect(model.videos.count == 2)
+    }
+}
+
 @Suite("YouTube appearance setting")
 struct AppearanceSettingTests {
     @Test func defaultsToDeviceAppearanceAndRoundTrips() throws {

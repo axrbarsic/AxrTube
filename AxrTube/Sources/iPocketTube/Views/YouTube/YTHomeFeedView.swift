@@ -7,7 +7,6 @@ import iPocketTubeCore
 /// whole feed with a fresh response and return to the top.
 struct YTHomeFeedView: View {
     @State private var model: YouTubeHomeFeedModel
-    @State private var languageGate = FeedLanguageGate()
     @State private var selectedPlaylist: Video?
     @State private var shorts: ShortsLaunch?
     @State private var isAtTop = true
@@ -59,11 +58,11 @@ struct YTHomeFeedView: View {
                 .ignoresSafeArea()
         }
         .task(id: auth.authSnapshot) {
+            model.setAdmission(admission)
             await model.applyAuthSnapshot(auth.authSnapshot)
         }
-        .task(id: languageTaskID) {
-            guard store.settings.russianOnlySearchEnabled else { return }
-            await languageGate.check(model.videos.map(\.id), api: api)
+        .onChange(of: store.settings.russianOnlySearchEnabled) { _, _ in
+            model.setAdmission(admission)
         }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.refreshIfStale() }
@@ -107,7 +106,7 @@ struct YTHomeFeedView: View {
     @ViewBuilder
     private var feed: some View {
         let items = regularVideos
-        if items.isEmpty && (model.isLoading || isCheckingLanguage) {
+        if items.isEmpty && model.isLoading {
             ForEach(0..<3, id: \.self) { _ in YTVideoCardSkeleton() }
         } else if items.isEmpty, let error = model.errorMessage {
             YTFeedMessage(title: error, actionTitle: "Повторить") { model.load() }
@@ -132,10 +131,10 @@ struct YTHomeFeedView: View {
                 }
             }
             ForEach(Array(items.dropFirst(shelfAfter))) { card($0) }
-            if model.isLoadingMore || (model.hasMore && isCheckingLanguage) {
+            if model.isLoadingMore {
                 ProgressView().frame(maxWidth: .infinity).padding()
             }
-            // Keeps paging when the language filter hides most of a page.
+            // Keeps paging when a short (filtered) feed ends above the fold.
             Color.clear.frame(height: 1)
                 .id(model.videos.count)
                 .onAppear { model.loadMore() }
@@ -153,25 +152,19 @@ struct YTHomeFeedView: View {
 
     // MARK: Filtering
 
-    private var languageTaskID: String {
-        "\(store.settings.russianOnlySearchEnabled)-\(model.videos.count)-\(model.replacementID)"
-    }
-
-    private var isCheckingLanguage: Bool {
-        store.settings.russianOnlySearchEnabled && languageGate.isChecking
-    }
-
-    private func passesLanguage(_ video: Video) -> Bool {
-        !store.settings.russianOnlySearchEnabled || languageGate.approvedIDs.contains(video.id)
+    /// The Russian-only policy is applied inside the model before a page is
+    /// shown, so the feed never rebuilds while languages are being checked.
+    private var admission: FeedAdmission {
+        store.settings.russianOnlySearchEnabled ? .russianOnly(api: api) : .all
     }
 
     private var regularVideos: [Video] {
-        FeedCatalogPolicy.visibleVideos(model.regularVideos.filter(passesLanguage), showShorts: store.settings.showShorts)
+        FeedCatalogPolicy.visibleVideos(model.regularVideos, showShorts: store.settings.showShorts)
     }
 
     private var shortsShelf: [Video] {
         guard store.settings.showShorts else { return [] }
-        return model.shorts.filter(passesLanguage)
+        return model.shorts
     }
 
     private func open(_ video: Video) {
