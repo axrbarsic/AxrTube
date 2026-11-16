@@ -425,6 +425,7 @@ extension PlaybackViewModel {
         isLoading = true
         stallCount = 0
         firstRapidStallTime = nil
+        cancelStallRecovery()
         needsQuickStartup = true
         // Note: isLoading = false is set in the AVPlayerItem .readyToPlay observer so the
         // spinner stays visible until the first frame is actually ready. It was previously
@@ -939,9 +940,9 @@ extension PlaybackViewModel {
                                 try? await Task.sleep(for: .milliseconds(800))
                                 guard let self, !Task.isCancelled else { return }
                                 self.timeToHighQualityMs = Int(Date().timeIntervalSince(self.videoLoadStartedAt) * 1000)
-                                // Reset to system default so scrubbing has a comfortable
-                                // forward buffer after the first frame is on screen.
-                                item?.preferredForwardBufferDuration = 0
+                                // Raise to the steady target so the player keeps buffering
+                                // minutes ahead (weak/flapping networks play from buffer).
+                                item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
                                 if let h = targetMaxH {
                                     let hf = CGFloat(h)
                                     item?.preferredMaximumResolution = CGSize(width: hf * 4, height: hf)
@@ -1008,30 +1009,9 @@ extension PlaybackViewModel {
                         "video_duration": String(Int(self.duration)),
                         "stall_trigger":  "AVPlayerItemPlaybackStalled"
                     ])
-                    // Stall recovery (#193): wait 2 s for AVPlayer to self-heal;
-                    // if still stalled, nudge the pipeline with a near-zero seek
-                    // + explicit rate restore. Capped at 3 attempts per item.
-                    let recoveryCount = self.stallCount
-                    if recoveryCount <= 3 {
-                        Task { @MainActor [weak self] in
-                            try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            guard let self, self.isPlaying, self.player.rate == 0,
-                                  !self.isQualityChangePending else { return }
-                            let seekT = self.currentTime
-                            playerLog.notice("[stall] recovery#\(recoveryCount): seeking to \(seekT)s to flush pipeline")
-                            self.player.seek(
-                                to: CMTime(seconds: seekT, preferredTimescale: 600),
-                                toleranceBefore: .zero,
-                                toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600)
-                            ) { [weak self] _ in
-                                Task { @MainActor [weak self] in
-                                    guard let self, self.isPlaying else { return }
-                                    self.requestPlaybackStart(reason: "buffer recovery")
-                                    playerLog.notice("[stall] recovery#\(recoveryCount): rate restored")
-                                }
-                            }
-                        }
-                    }
+                    // Weak-network aware: waits while offline or while bytes
+                    // still arrive; seeks/reloads only when stuck online.
+                    self.beginStallRecovery(item: item, source: "stalled")
                 }
             }
 

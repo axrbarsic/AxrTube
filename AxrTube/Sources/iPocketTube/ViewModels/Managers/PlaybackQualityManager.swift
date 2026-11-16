@@ -239,7 +239,7 @@ final class PlaybackQualityManager {
         item.preferredForwardBufferDuration = 2.0
         Task { [weak item] in
             try? await Task.sleep(for: .seconds(5))
-            item?.preferredForwardBufferDuration = 0
+            item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
         }
         if let cap = quality.maxHeight {
             let h = CGFloat(cap)
@@ -596,7 +596,7 @@ final class PlaybackQualityManager {
         item.preferredForwardBufferDuration = 2.0
         Task { [weak item] in
             try? await Task.sleep(for: .seconds(5))
-            item?.preferredForwardBufferDuration = 0
+            item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
         }
         itemObserverTask?.cancel()
         itemObserverTask = Task { [weak self] in

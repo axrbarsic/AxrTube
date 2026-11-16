@@ -210,54 +210,10 @@ extension PlaybackViewModel {
                     #if canImport(UIKit)
                     self.updateNowPlayingPlayback()
                     #endif
-                    // Stall recovery: mirror the AVPlayerItemPlaybackStalled path (#193).
-                    // Wait 2 s for the system to self-heal (audio route change, interruption
-                    // resume, etc.), then nudge the pipeline if still stalled. Guard on
-                    // !isPlaying (already set above) rather than isPlaying, and also on
-                    // !isSwappingItem to avoid interfering with intentional item swaps.
-                    // Capped at 3 attempts per item, same as the notification-based path.
-                    let recoveryCount = self.stallCount
-                    let elapsed = self.firstRapidStallTime.map { Date().timeIntervalSince($0) } ?? 0
-                    let isRapidRepeat = elapsed < 30
-                    if recoveryCount >= 3 && isRapidRepeat && self.exhaustiveRetryTask == nil {
-                        // Rapid stall loop: seeks are re-stalling immediately because the
-                        // format URL is expired or rate-limited (CDN returns the same broken
-                        // URL after each seek). Escalate to exhaustiveRetry instead of
-                        // another wasted seek. Guard on exhaustiveRetryTask == nil to avoid
-                        // launching duplicate retries if further stalls fire during retry.
-                        if let video = self.currentVideo {
-                            playerLog.notice("[rateObserver] rapid stall loop — \(recoveryCount) stalls in \(Int(elapsed))s — escalating to exhaustiveRetry")
-                            let loopError = NSError(
-                                domain: "iPocketTube.PlaybackStall",
-                                code: 2,
-                                userInfo: [NSLocalizedDescriptionKey: "Stall loop \(recoveryCount)× in \(Int(elapsed))s — format unrecoverable, escalating"]
-                            )
-                            self.exhaustiveRetryTask = Task { await self.exhaustiveRetry(video: video, originalError: loopError) }
-                        }
-                    } else if recoveryCount <= 3 {
-                        let interruptionGeneration = self.audioInterruptionGeneration
-                        Task { @MainActor [weak self] in
-                            try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            guard let self, !self.isPlaying, self.player.rate == 0,
-                                  !self.isQualityChangePending, !self.isSwappingItem,
-                                  !self.isHandlingAudioInterruption,
-                                  self.audioInterruptionGeneration == interruptionGeneration else { return }
-                            let seekT = self.currentTime
-                            playerLog.notice("[rateObserver] recovery#\(recoveryCount): seeking to \(seekT)s to flush pipeline")
-                            self.player.seek(
-                                to: CMTime(seconds: seekT, preferredTimescale: 600),
-                                toleranceBefore: .zero,
-                                toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600)
-                            ) { [weak self] _ in
-                                Task { @MainActor [weak self] in
-                                    guard let self, !self.isPlaying, self.player.rate == 0,
-                                          !self.isHandlingAudioInterruption,
-                                          self.audioInterruptionGeneration == interruptionGeneration else { return }
-                                    guard self.requestPlaybackStart(reason: "stall recovery") else { return }
-                                    playerLog.notice("[rateObserver] recovery#\(recoveryCount): rate restored, isPlaying=true")
-                                }
-                            }
-                        }
+                    // Weak-network aware recovery: no seek or reload while offline
+                    // or while bytes still arrive, so the buffer survives drop-outs.
+                    if let item = self.player.currentItem {
+                        self.beginStallRecovery(item: item, source: "rateObserver")
                     }
                 }
             }

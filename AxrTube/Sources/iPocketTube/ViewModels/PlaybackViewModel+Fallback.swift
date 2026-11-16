@@ -1122,7 +1122,7 @@ extension PlaybackViewModel {
         item.preferredForwardBufferDuration = 0.5
         Task { [weak item] in
             try? await Task.sleep(for: .seconds(5))
-            item?.preferredForwardBufferDuration = 0
+            item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
         }
         if applyHLSHints {
             if settings.preferredQuality != .auto, let maxH = settings.preferredQuality.maxHeight {
@@ -1425,7 +1425,7 @@ extension PlaybackViewModel {
             compositeItem.preferredForwardBufferDuration = 0.5
             Task { [weak compositeItem] in
                 try? await Task.sleep(for: .seconds(5))
-                compositeItem?.preferredForwardBufferDuration = 0
+                compositeItem?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
             }
             // fix235: Guard cancellation and video identity before touching the player.
             guard !Task.isCancelled, currentVideo?.id == video.id else {
@@ -2213,7 +2213,7 @@ extension PlaybackViewModel {
                     try? await Task.sleep(for: .milliseconds(800))
                     guard let self, !Task.isCancelled else { return }
                     self.timeToHighQualityMs = Int(Date().timeIntervalSince(self.videoLoadStartedAt) * 1000)
-                    item?.preferredForwardBufferDuration = 0
+                    item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
                     if preferredHeight > 0 {
                         item?.preferredMaximumResolution = CGSize(width: 7680, height: preferredHeight)
                         playerLog.notice("[webView/HLS] ABR ramp → \(preferredHeight)p + buffer unconstrained")
@@ -2284,7 +2284,7 @@ extension PlaybackViewModel {
         }
         Task { [weak item] in
             try? await Task.sleep(for: .seconds(5))
-            item?.preferredForwardBufferDuration = 0
+            item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
         }
 
         player.replaceCurrentItem(with: item)
@@ -2426,7 +2426,7 @@ extension PlaybackViewModel {
         item.preferredForwardBufferDuration = 2.0
         Task { [weak item] in
             try? await Task.sleep(for: .seconds(5))
-            item?.preferredForwardBufferDuration = 0
+            item?.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
         }
         player.replaceCurrentItem(with: item)
         itemObserverTask?.cancel()

@@ -315,6 +315,9 @@ public final class PlaybackViewModel {
     /// detect a rapid-repeat stall loop (≥3 stalls in <30s) where seeks re-stall immediately
     /// because the CDN URL is expired/rate-limited. Reset to nil alongside stallCount in load().
     var firstRapidStallTime: Date? = nil
+    /// Single-flight weak-network stall watcher (see +StallRecovery).
+    @ObservationIgnored var stallRecoveryTask: Task<Void, Never>?
+    @ObservationIgnored weak var stallRecoveryItem: AVPlayerItem?
     var qualityTask: Task<Void, Never>? {
         get { qualityManager.qualityTask }
         set { qualityManager.qualityTask = newValue }
