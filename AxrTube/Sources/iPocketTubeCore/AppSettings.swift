@@ -70,6 +70,9 @@ public struct AppSettings: Codable {
     /// YouTube iOS appearance: device setting, dark or light. Replaces the
     /// decorative themes on iPhone; `themeName` stays for tvOS/macOS screens.
     public var appearance: Appearance
+    /// Download the start of the next «Далее» video while the current one is
+    /// already cached. Off by default: the next suggestion is often skipped.
+    public var prefetchUpNextEnabled: Bool
 
     public enum Appearance: String, Codable, CaseIterable, Sendable {
         case system, dark, light
@@ -384,6 +387,7 @@ public struct AppSettings: Codable {
         perDeviceRecommendationsEnabled = true
         themeName            = .matrix
         appearance           = .system
+        prefetchUpNextEnabled = false
         enabledSections      = BrowseSection.defaultSections.map(\.type)
         historyState         = .enabled
         sponsorBlockEnabled  = true
@@ -476,6 +480,7 @@ extension AppSettings {
         case perDeviceRecommendationsEnabled
         case themeName
         case appearance
+        case prefetchUpNextEnabled
         case enabledSections
         case historyState
         case sponsorBlockEnabled
@@ -531,6 +536,7 @@ extension AppSettings {
         perDeviceRecommendationsEnabled = c.safeDecode(Bool.self,           forKey: .perDeviceRecommendationsEnabled, default: d.perDeviceRecommendationsEnabled)
         themeName                    = c.safeDecode(ThemeName.self,         forKey: .themeName,                    default: d.themeName)
         appearance                   = c.safeDecode(Appearance.self,        forKey: .appearance,                   default: d.appearance)
+        prefetchUpNextEnabled        = c.safeDecode(Bool.self, forKey: .prefetchUpNextEnabled, default: d.prefetchUpNextEnabled)
         enabledSections              = c.safeDecode([BrowseSection.SectionType].self, forKey: .enabledSections,   default: d.enabledSections)
         historyState                 = c.safeDecode(HistoryState.self,      forKey: .historyState,                 default: d.historyState)
         sponsorBlockEnabled          = c.safeDecode(Bool.self,              forKey: .sponsorBlockEnabled,          default: d.sponsorBlockEnabled)

@@ -11,10 +11,17 @@ struct RealtimeAudioScopeSnapshot: Sendable {
     let waveform: [Float]
 }
 
-private final class WeakAudioScopeContext: @unchecked Sendable {
-    weak var value: AudioScopeTapContext?
+/// Anything that can draw the downloads amplitude scope: the live audio tap
+/// (files) or the envelope decoded from cached HLS segments (streams).
+protocol AudioScopeSource: AnyObject {
+    var identity: AudioScopeRenderIdentity { get }
+    func snapshot() -> RealtimeAudioScopeSnapshot?
+}
 
-    init(_ value: AudioScopeTapContext) {
+private final class WeakAudioScopeContext: @unchecked Sendable {
+    weak var value: (any AudioScopeSource)?
+
+    init(_ value: any AudioScopeSource) {
         self.value = value
     }
 }
@@ -40,7 +47,14 @@ final class RealtimeAudioScopeRegistry: @unchecked Sendable {
         )
     }
 
-    func activate(_ context: AudioScopeTapContext) {
+    func nextIdentity(videoID: String) -> AudioScopeRenderIdentity {
+        lock.lock()
+        defer { lock.unlock() }
+        nextGeneration &+= 1
+        return AudioScopeRenderIdentity(videoID: videoID, generation: nextGeneration)
+    }
+
+    func activate(_ context: any AudioScopeSource) {
         lock.lock()
         contexts[context.identity.videoID] = WeakAudioScopeContext(context)
         lock.unlock()
@@ -58,7 +72,7 @@ final class RealtimeAudioScopeRegistry: @unchecked Sendable {
 /// Fixed-storage, single-producer signal envelope. The real-time callback never
 /// allocates and uses try-lock semantics, so a UI snapshot can at worst drop one
 /// visual sample rather than block the audio render thread.
-final class AudioScopeTapContext: @unchecked Sendable {
+final class AudioScopeTapContext: AudioScopeSource, @unchecked Sendable {
     let identity: AudioScopeRenderIdentity
 
     private static let capacity = 256

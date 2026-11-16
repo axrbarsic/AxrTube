@@ -179,3 +179,52 @@ struct StreamCacheProxyTests {
         await proxy.endSession()
     }
 }
+
+@Suite("Up-next head prefetch", .serialized)
+struct UpNextPrefetchTests {
+    @Test func headIsCachedAndReusedBySession() async throws {
+        let v360 = "https://m.example/hls_playlist/itag/134/v.m3u8"
+        let v720 = "https://m.example/hls_playlist/itag/136/v.m3u8"
+        let a = "https://m.example/hls_playlist/itag/140/a.m3u8"
+        let master = """
+        #EXTM3U
+        #EXT-X-MEDIA:URI="\(a)",TYPE=AUDIO,GROUP-ID="140",NAME="Default",DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,AUDIO="140"
+        \(v360)
+        #EXT-X-STREAM-INF:BANDWIDTH=2500000,RESOLUTION=1280x720,AUDIO="140"
+        \(v720)
+        """
+        var files: [String: Data] = ["https://m.example/next.m3u8": Data(master.utf8)]
+        for (pl, itag) in [(v360, 134), (v720, 136), (a, 140)] {
+            var text = "#EXTM3U\n"
+            for i in 0..<20 {   // 20 × 6 s = 2 min
+                let seg = "https://cdn.example/n/\(itag)/\(i).ts"
+                text += "#EXTINF:6.0,\n\(seg)\n"
+                files[seg] = Data(repeating: UInt8(i), count: 1_000)
+            }
+            files[pl] = Data((text + "#EXT-X-ENDLIST\n").utf8)
+        }
+        let originFiles = files
+        FakeOrigin.state.withLock { $0 = (originFiles, false) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("axr-next-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FakeOrigin.self]
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let proxy = HLSCachingProxy(cache: cache, configuration: config, estimateKey: "t.\(UUID().uuidString)")
+
+        await proxy.prefetchHead(videoID: "next", masterURL: URL(string: "https://m.example/next.m3u8")!,
+                                 headers: [:], preferredMaxHeight: 360, seconds: 60)
+        #expect(await cache.cachedIndices(video: "next", rendition: "itag134") == Set(0..<10))
+        #expect(await cache.cachedIndices(video: "next", rendition: "itag140") == Set(0..<10))
+        #expect(await cache.cachedIndices(video: "next", rendition: "itag136").isEmpty)
+
+        // Playing it later at a higher cap still uses the prefetched variant.
+        let entry = try #require(await proxy.startSession(
+            videoID: "next", masterURL: URL(string: "https://m.example/next.m3u8")!, headers: [:], preferredMaxHeight: 1080
+        ))
+        let (data, _) = try await URLSession.shared.data(from: entry)
+        #expect(String(decoding: data, as: UTF8.self).contains("RESOLUTION=640x360"))
+        await proxy.endSession()
+    }
+}

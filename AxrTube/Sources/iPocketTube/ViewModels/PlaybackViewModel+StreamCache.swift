@@ -60,11 +60,49 @@ extension PlaybackViewModel {
         let complete = shown?.isComplete ?? false
         if cachedTimeRanges != ranges { cachedTimeRanges = ranges }
         if isFullyCached != complete { isFullyCached = complete }
+        if let shown { prefetchUpNextIfReady(shown) }
         // A saved video downloading through the player reports its progress.
         if let id = currentVideo?.id, shown != nil, PinnedStreamLibrary.shared.entry(id) != nil {
             let fraction = cachedFraction
             Task { await PinnedStreamLibrary.shared.update(id, progress: fraction, isComplete: complete) }
         }
+    }
+
+    /// Opt-in («Загружать следующее видео»): once the current video is safe
+    /// (fully cached or 3+ minutes ahead of the playhead), download the
+    /// first minute of the next «Далее» video.
+    private func prefetchUpNextIfReady(_ progress: StreamCacheProgress) {
+        guard settings.prefetchUpNextEnabled, let current = currentVideo,
+              upNextPrefetchedFor != current.id else { return }
+        let ahead = progress.ranges.first { $0.contains(currentTime) }.map { $0.upperBound - currentTime } ?? 0
+        guard progress.isComplete || ahead >= 180 else { return }
+        upNextPrefetchedFor = current.id
+        let api = api
+        let maxHeight = settings.preferredQuality == .auto ? nil : settings.preferredQuality.maxHeight
+        Task { [weak self] in
+            guard let next = await self?.upNextCandidate(), next.id != current.id, !next.isLive,
+                  let info = try? await api.fetchStartupPlayerInfo(videoId: next.id),
+                  let hls = info.hlsURL else { return }
+            playerLog.notice("[stream-cache] prefetching up next \(next.id)")
+            await HLSCachingProxy.shared.prefetchHead(
+                videoID: next.id, masterURL: hls,
+                headers: [
+                    "User-Agent": InnerTubeClients.Web.userAgent,
+                    "Origin": "https://www.youtube.com",
+                    "Referer": "https://www.youtube.com/",
+                ],
+                preferredMaxHeight: maxHeight
+            )
+        }
+    }
+
+    /// What «Далее» would play: the next queue item, else the first suggestion.
+    func upNextCandidate() async -> Video? {
+        if let index = currentVideo?.playlistIndex, currentVideo?.playlistId == CurrentQueueStore.playlistID,
+           let next = await CurrentQueueStore.shared.videoAt(index: index + 1) {
+            return next
+        }
+        return relatedVideos.first
     }
 
     /// Share of the current video that is on disk (0…1), as on the bar.

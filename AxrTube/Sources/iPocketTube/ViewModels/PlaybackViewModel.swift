@@ -328,6 +328,12 @@ public final class PlaybackViewModel {
     var bufferedTimeRanges: [ClosedRange<Double>] = []
     @ObservationIgnored var cacheProgressTask: Task<Void, Never>?
     @ObservationIgnored var bufferSampleTask: Task<Void, Never>?
+    /// Video whose «Далее» successor was already head-prefetched.
+    @ObservationIgnored var upNextPrefetchedFor: String?
+    #if os(iOS)
+    /// Keeps the stream amplitude source alive (the registry holds it weakly).
+    @ObservationIgnored var streamAudioScope: StreamAudioScope?
+    #endif
     var qualityTask: Task<Void, Never>? {
         get { qualityManager.qualityTask }
         set { qualityManager.qualityTask = newValue }
@@ -677,7 +683,16 @@ public final class PlaybackViewModel {
                         item.audioMix = attachment.mix
                         RealtimeAudioScopeRegistry.shared.activate(attachment.context)
                     } catch {
-                        playerLog.notice("[audio-scope] signal unavailable for \(videoID): \(error.localizedDescription)")
+                        // HLS has no audio tap: decode the cached segments instead.
+                        if (item.asset as? AVURLAsset)?.url.host == "127.0.0.1" {
+                            let scope = StreamAudioScope(videoID: videoID, player: self.player)
+                            scope.start()
+                            self.streamAudioScope = scope
+                            RealtimeAudioScopeRegistry.shared.activate(scope)
+                            playerLog.notice("[audio-scope] stream envelope for \(videoID)")
+                        } else {
+                            playerLog.notice("[audio-scope] signal unavailable for \(videoID): \(error.localizedDescription)")
+                        }
                     }
                 }
             }

@@ -28,7 +28,7 @@ struct YTSettingsView: View {
                 Toggle("Показывать Shorts", isOn: $store.settings.showShorts)
             }
 
-            Section("Воспроизведение") {
+            Section {
                 Toggle("Автовоспроизведение", isOn: $store.settings.autoplayEnabled)
                 Picker("Качество видео", selection: $store.settings.preferredQuality) {
                     ForEach(AppSettings.VideoQuality.allCases, id: \.self) { quality in
@@ -43,6 +43,12 @@ struct YTSettingsView: View {
                 Toggle("Фоновое воспроизведение", isOn: $store.settings.backgroundPlaybackEnabled)
                 Toggle("Картинка в картинке", isOn: $store.settings.pipEnabled)
                 Toggle("Только аудио", isOn: $store.settings.audioOnlyMode)
+                Toggle("Загружать следующее видео", isOn: $store.settings.prefetchUpNextEnabled)
+                    .accessibilityIdentifier("settings.prefetchUpNext")
+            } header: {
+                Text("Воспроизведение")
+            } footer: {
+                Text("«Загружать следующее видео»: когда текущий ролик уже в кэше, заранее скачивается первая минута следующего из «Далее» — он начнётся сразу даже на слабой сети.")
             }
 
             Section {

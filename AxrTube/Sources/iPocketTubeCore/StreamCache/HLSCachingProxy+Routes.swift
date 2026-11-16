@@ -58,7 +58,11 @@ extension HLSCachingProxy {
         let previous = await cache.named(video: s.video, name: "variant").flatMap { String(data: $0, encoding: .utf8) }
         // Offline, or a saved video: stay on the variant already downloaded.
         let pinned = await cache.isPinned(s.video)
-        let reused = (online == nil || pinned) ? all.first { HLSPlaylistText.renditionKey(for: $0.uri) == previous } : nil
+        // Also reuse a variant that already has segments (e.g. an up-next head).
+        let previousCached = previous.map { _ in true } ?? false
+            ? !(await cache.cachedIndices(video: s.video, rendition: previous!).isEmpty) : false
+        let reused = (online == nil || pinned || previousCached)
+            ? all.first { HLSPlaylistText.renditionKey(for: $0.uri) == previous } : nil
         guard let chosen = reused ?? HLSPlaylistText.selectVariant(all, maxHeight: s.maxHeight, bandwidthBudget: budget) else {
             return .init(status: 502)
         }

@@ -14,6 +14,25 @@ public struct StreamSource: Codable, Sendable {
     }
 }
 
+/// Segment timing of the rendition that carries the audio.
+public struct StreamAudioTimeline: Sendable, Equatable {
+    public var video: String
+    public var rendition: String
+    public var starts: [Double]
+    public var durations: [Double]
+
+    /// Segment containing time `t` (seconds).
+    public func segment(at t: Double) -> Int? {
+        guard !starts.isEmpty else { return nil }
+        var low = 0, high = starts.count - 1
+        while low < high {
+            let mid = (low + high + 1) / 2
+            if starts[mid] <= t { low = mid } else { high = mid - 1 }
+        }
+        return low
+    }
+}
+
 /// Local caching proxy for HLS playback on weak networks.
 ///
 /// The player loads `http://127.0.0.1:<port>/<session>/master.m3u8`. The
@@ -184,6 +203,16 @@ public actor HLSCachingProxy {
             complete = complete && audio.done.count >= audio.segments.count
         }
         return StreamCacheProgress(ranges: ranges, duration: video.durations.reduce(0, +), isComplete: complete)
+    }
+
+    /// Where the audible track of the current video lives on disk: the
+    /// separate audio rendition if there is one, else the muxed video.
+    public func audioTimeline() -> StreamAudioTimeline? {
+        guard let s = session else { return nil }
+        let loaded = s.playlists.values.filter { !$0.segments.isEmpty && $0.touched != .distantPast }
+        let audio = loaded.filter(\.isAudio).max { $0.touched < $1.touched }
+        guard let pl = audio ?? loaded.filter({ !$0.isAudio }).max(by: { $0.touched < $1.touched }) else { return nil }
+        return StreamAudioTimeline(video: s.video, rendition: pl.rendition, starts: pl.starts, durations: pl.durations)
     }
 
     // MARK: Origin
