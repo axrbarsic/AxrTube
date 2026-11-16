@@ -6,6 +6,7 @@ import iPocketTubeCore
 struct YTDownloadRow: View {
     struct Actions {
         var play: () -> Void
+        var watchVideo: (() -> Void)?
         var transcript: () -> Void
         var pauseOrResume: (() -> Void)?
         var retry: (() -> Void)?
@@ -94,7 +95,10 @@ struct YTDownloadRow: View {
     private var menu: some View {
         Menu {
             if item.isPlayable {
-                Button(action: actions.play) { Label("Смотреть", systemImage: "play.fill") }
+                Button(action: actions.play) { Label("Слушать", systemImage: "headphones") }
+                if let watchVideo = actions.watchVideo {
+                    Button(action: watchVideo) { Label("Смотреть видео", systemImage: "play.rectangle") }
+                }
             }
             Button(action: actions.transcript) { Label("Текст видео", systemImage: "text.quote") }
             if let url = URL(string: "https://www.youtube.com/watch?v=\(item.videoID)") {

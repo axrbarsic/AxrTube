@@ -42,13 +42,23 @@ struct YTSettingsView: View {
                 }
                 Toggle("Фоновое воспроизведение", isOn: $store.settings.backgroundPlaybackEnabled)
                 Toggle("Картинка в картинке", isOn: $store.settings.pipEnabled)
-                Toggle("Только аудио", isOn: $store.settings.audioOnlyMode)
                 Toggle("Загружать следующее видео", isOn: $store.settings.prefetchUpNextEnabled)
                     .accessibilityIdentifier("settings.prefetchUpNext")
             } header: {
                 Text("Воспроизведение")
             } footer: {
                 Text("«Загружать следующее видео»: когда текущий ролик уже в кэше, заранее скачивается первая минута следующего из «Далее» — он начнётся сразу даже на слабой сети.")
+            }
+
+            Section {
+                Picker("Экономия трафика", selection: $store.settings.dataSaver) {
+                    ForEach(AppSettings.DataSaverMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                }
+                .accessibilityIdentifier("settings.dataSaver")
+            } header: {
+                Text("Экономия трафика")
+            } footer: {
+                Text("В этом режиме ролики идут только звуком: видео не скачивается совсем, трафика уходит примерно в 5–20 раз меньше (около 1 МБ в минуту). Картинку для отдельного ролика можно включить кнопкой «Включить видео» в плеере.")
             }
 
             Section {

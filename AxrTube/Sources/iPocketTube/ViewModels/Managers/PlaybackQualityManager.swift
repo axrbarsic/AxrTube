@@ -26,6 +26,8 @@ protocol QualityContext: AnyObject {
     var currentVideo: Video? { get }
     var currentTime: TimeInterval { get }
     var toastMessage: String? { get set }
+    /// Data saver / audio-only decision for the current video.
+    var streamsAudioOnlyNow: Bool { get }
 }
 
 // MARK: - QualityEventHandler
@@ -237,6 +239,7 @@ final class PlaybackQualityManager {
             info: delegate?.playerInfo, masterURL: hlsURL,
             headers: uaOpts["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] ?? [:],
             maxHeight: quality.maxHeight,
+            audioOnly: delegate?.streamsAudioOnlyNow ?? false,
             externalPlayback: (player as? AVPlayer)?.isExternalPlaybackActive ?? false
         )
         guard !Task.isCancelled else { return }

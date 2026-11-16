@@ -144,7 +144,9 @@ public actor PinnedStreamCompleter {
 
     private func storedRenditions(_ video: String) async -> [Rendition] {
         var result: [Rendition] = []
-        for kind in ["rendition-video", "rendition-audio"] {
+        let audioOnly = await cache.named(video: video, name: PinnedStreamLibrary.audioOnlyMarker)
+            .flatMap { String(data: $0, encoding: .utf8) } == "1"
+        for kind in audioOnly ? ["rendition-audio"] : ["rendition-video", "rendition-audio"] {
             guard let key = await cache.named(video: video, name: kind).flatMap({ String(data: $0, encoding: .utf8) }),
                   let text = await cache.named(video: video, name: "pl-" + key).flatMap({ String(data: $0, encoding: .utf8) }),
                   let base = await cache.named(video: video, name: "plurl-" + key).flatMap({ String(data: $0, encoding: .utf8) }).flatMap(URL.init(string:))

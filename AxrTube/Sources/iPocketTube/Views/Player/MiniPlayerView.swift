@@ -162,9 +162,25 @@ struct MiniPlayerView: View {
             HStack(spacing: 10) {
                 Button(action: openDetails) {
                     HStack(spacing: 10) {
-                        FullScreenPlayerLayerView(hostView: playerState.playerHostView, videoGravity: .resizeAspect)
+                        Group {
+                            if vm.isAudioOnlyMode {
+                                ThumbnailFillView(primaryURL: video?.thumbnailURL,
+                                                  fallbackURLs: video?.thumbnailFallbackURLs ?? [])
+                                    .overlay(alignment: .bottomLeading) {
+                                        Image(systemName: "headphones")
+                                            .font(.system(size: 10, weight: .bold))
+                                            .foregroundStyle(.white)
+                                            .padding(3)
+                                            .background(.black.opacity(0.7), in: RoundedRectangle(cornerRadius: 3))
+                                            .padding(3)
+                                    }
+                            } else {
+                                FullScreenPlayerLayerView(hostView: playerState.playerHostView, videoGravity: .resizeAspect)
+                            }
+                        }
                             .frame(width: 107, height: 60)
                             .background(Color.black)
+                            .clipped()
                             .accessibilityHidden(true)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(video?.title ?? "Текущее видео")

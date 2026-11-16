@@ -1,7 +1,7 @@
 import Foundation
 
-/// Which segments to download next: playhead-first, then onward to the end
-/// of the video, never twice.
+/// Which segments to download next: playhead-first, onward to the end of
+/// the video, then whatever a seek skipped — never twice.
 public enum SegmentPrefetchPlanner {
     /// - Parameters:
     ///   - count: segments in the playlist.
@@ -15,6 +15,12 @@ public enum SegmentPrefetchPlanner {
         var i = max(0, min(cursor, count - 1))
         while i < count, picked.count < slots {
             if !done.contains(i), !busy.contains(i) { picked.append(i) }
+            i += 1
+        }
+        // Everything ahead is done: fill what a seek skipped, from the start.
+        i = 0
+        while i < count, picked.count < slots {
+            if !done.contains(i), !busy.contains(i), !picked.contains(i) { picked.append(i) }
             i += 1
         }
         return picked

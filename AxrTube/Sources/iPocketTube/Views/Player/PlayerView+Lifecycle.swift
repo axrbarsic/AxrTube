@@ -904,7 +904,7 @@ extension PlayerView {
     var audioOnlyThumbnailOverlay: some View {
         ZStack {
             Color.black.ignoresSafeArea()
-            if let thumb = vm.playerInfo?.video.thumbnailURL {
+            if let thumb = vm.playerInfo?.video.thumbnailURL ?? vm.currentVideo?.thumbnailURL {
                 AsyncImage(url: thumb) { phase in
                     switch phase {
                     case .success(let image):

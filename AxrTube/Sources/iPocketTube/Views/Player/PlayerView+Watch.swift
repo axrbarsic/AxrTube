@@ -22,6 +22,21 @@ extension PlayerView {
                         .overlay(alignment: .bottom) {
                             if !vm.controlsVisible { YTThinProgress(vm: vm).frame(height: YTThinProgress.height) }
                         }
+                        .overlay(alignment: .bottom) {
+                            if vm.isAudioOnlyMode, !vm.controlsVisible, watchVideo.localMediaKind != .audio {
+                                Button { vm.setVideoWanted(true) } label: {
+                                    Label("Только звук · Включить видео", systemImage: "headphones")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 12)
+                                        .frame(height: 32)
+                                        .background(.black.opacity(0.7), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .padding(.bottom, 12)
+                                .accessibilityIdentifier("player.enableVideo")
+                            }
+                        }
                     ZStack {
                         watchDetails
                         if showDescriptionSheet {
@@ -68,7 +83,10 @@ extension PlayerView {
     func ytSaveState(for video: Video) -> YTWatchDetails.SaveState {
         guard let saved = PinnedStreamLibrary.shared.entry(video.id) else { return .none }
         let isPlaying = vm.currentVideo?.id == video.id
-        if saved.isComplete || (isPlaying && vm.isFullyCached) { return .saved }
+        // A sound-only session says nothing about a save that includes video.
+        let sessionCounts = isPlaying && (saved.isAudioOnly || !vm.isAudioOnlyMode)
+        if saved.isComplete || (sessionCounts && vm.isFullyCached) { return .saved }
+        guard sessionCounts else { return .saving(saved.progress) }
         return .saving(isPlaying ? max(saved.progress, vm.cachedFraction) : saved.progress)
     }
 
@@ -107,8 +125,10 @@ extension PlayerView {
                     }
                 },
                 downloadVideo: {
-                    SavedStreamService.pin(current, cachedFraction: vm.cachedFraction, isComplete: vm.isFullyCached)
-                    vm.toastMessage = vm.isFullyCached ? "Сохранено в «Скачанные»" : "Скачивается в «Скачанные»"
+                    SavedStreamService.pin(current, cachedFraction: vm.cachedFraction, isComplete: vm.isFullyCached,
+                                           audioOnly: vm.isAudioOnlyMode)
+                    let what = vm.isAudioOnlyMode ? " (только звук)" : ""
+                    vm.toastMessage = (vm.isFullyCached ? "Сохранено в «Скачанные»" : "Скачивается в «Скачанные»") + what
                 },
                 downloadAudio: { audioDownloadService.download(video: current) },
                 removeSaved: {

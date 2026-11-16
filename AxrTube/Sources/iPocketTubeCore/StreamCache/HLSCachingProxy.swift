@@ -66,6 +66,8 @@ public actor HLSCachingProxy {
         var maxHeight: Int
         /// The exposed variant takes audio from a separate rendition.
         var expectsAudio = false
+        /// «Экономия трафика»: expose only the audio rendition.
+        var audioOnly = false
         var playlists: [Int: Playlist] = [:]
         var others: [Int: (url: URL, name: String)] = [:]
         var retryAt: [String: Date] = [:]
@@ -103,7 +105,8 @@ public actor HLSCachingProxy {
     /// Starts caching playback of `videoID`; returns the URL to give AVPlayer,
     /// or nil when the loopback server cannot start (play directly then).
     public func startSession(
-        videoID: String, masterURL: URL, headers: [String: String], preferredMaxHeight: Int?
+        videoID: String, masterURL: URL, headers: [String: String], preferredMaxHeight: Int?,
+        audioOnly: Bool = false
     ) async -> URL? {
         if server == nil {
             server = LoopbackHTTPServer { [weak self] request in
@@ -117,6 +120,7 @@ public actor HLSCachingProxy {
         let maxHeight = preferredMaxHeight
             ?? (budget == nil ? StreamCachePolicy.unknownNetworkMaxHeight : StreamCachePolicy.autoMaxHeight)
         session = Session(id: id, video: videoID, master: masterURL, headers: headers, maxHeight: maxHeight)
+        session?.audioOnly = audioOnly
         await cache.markPlaying(videoID)
         if let source = try? JSONEncoder().encode(StreamSource(master: masterURL, headers: headers)) {
             await cache.storeNamed(source, video: videoID, name: StreamSource.fileName)
@@ -176,8 +180,16 @@ public actor HLSCachingProxy {
         notifyProgress()
     }
 
+    /// Call when the app returns to the foreground.
+    public func ensureServerAlive() async {
+        guard session != nil else { return }
+        await server?.ensureAlive()
+    }
+
     /// Video whose session is downloading right now.
     public var activeVideoID: String? { session?.video }
+    /// The running session streams audio only.
+    public var isAudioOnlySession: Bool { session?.audioOnly ?? false }
 
     public func isProxied(_ url: URL?) -> Bool {
         guard let url, url.host == "127.0.0.1", let id = session?.id else { return false }
@@ -191,9 +203,12 @@ public actor HLSCachingProxy {
     public func progress() -> StreamCacheProgress? {
         guard let s = session else { return nil }
         let loaded = s.playlists.values.filter { !$0.segments.isEmpty && $0.touched != .distantPast }
-        guard let video = loaded.filter({ !$0.isAudio }).max(by: { $0.touched < $1.touched }) else { return nil }
-        let audio = loaded.filter(\.isAudio).max(by: { $0.touched < $1.touched })
-        if s.expectsAudio && audio == nil { return nil }
+        let latestAudio = loaded.filter(\.isAudio).max(by: { $0.touched < $1.touched })
+        // Audio-only sessions have no video rendition: the audio is the track.
+        guard let video = loaded.filter({ !$0.isAudio }).max(by: { $0.touched < $1.touched })
+                ?? (s.audioOnly ? latestAudio : nil) else { return nil }
+        let audio = video.isAudio ? nil : latestAudio
+        if s.expectsAudio && audio == nil && !video.isAudio { return nil }
         var ranges = StreamCacheCoverage.ranges(starts: video.starts, durations: video.durations, done: video.done)
         var complete = video.done.count >= video.segments.count
         if let audio {

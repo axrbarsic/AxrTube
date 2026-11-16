@@ -61,14 +61,34 @@ public final class NetworkPathObserver: Sendable {
     public static let shared = NetworkPathObserver()
 
     private let monitor = NWPathMonitor()
-    private let state = OSAllocatedUnfairLock(initialState: true)
+    private let state = OSAllocatedUnfairLock(initialState: (available: true, mobile: false))
 
     private init() {
         monitor.pathUpdateHandler = { [state] path in
-            state.withLock { $0 = path.status == .satisfied }
+            state.withLock {
+                $0 = (path.status == .satisfied, path.isExpensive || path.isConstrained)
+            }
         }
         monitor.start(queue: DispatchQueue(label: "axrtube.network-path", qos: .utility))
     }
 
-    public var isAvailable: Bool { state.withLock { $0 } }
+    public var isAvailable: Bool { state.withLock { $0.available } }
+    /// Cellular, personal hotspot or Low Data Mode.
+    public var isMobile: Bool { state.withLock { $0.mobile } }
+}
+
+/// Whether a video should stream as audio only («Экономия трафика» or the
+/// explicit «Только аудио»), unless the user asked for video for it.
+public enum DataSaverPolicy {
+    public static func streamsAudioOnly(
+        mode: AppSettings.DataSaverMode, audioOnlySetting: Bool, onMobileNetwork: Bool, videoRequested: Bool
+    ) -> Bool {
+        if videoRequested { return false }
+        if audioOnlySetting { return true }
+        switch mode {
+        case .off: return false
+        case .always: return true
+        case .cellular: return onMobileNetwork
+        }
+    }
 }

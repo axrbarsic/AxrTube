@@ -109,7 +109,8 @@ struct YTDownloadsView: View {
     private func actions(for item: DownloadLibraryItem) -> YTDownloadRow.Actions {
         let file = fileEntry(item)
         return YTDownloadRow.Actions(
-            play: { play(item, file: file) },
+            play: { play(item, file: file, withVideo: false) },
+            watchVideo: item.source == .file(.audio) ? nil : { play(item, file: file, withVideo: true) },
             transcript: { transcriptVideo = file?.video ?? library.entry(item.videoID)?.video },
             pauseOrResume: file.flatMap { entry in
                 switch item.state {
@@ -128,12 +129,15 @@ struct YTDownloadsView: View {
         return downloadStore.entry(videoId: item.videoID, kind: kind)
     }
 
-    private func play(_ item: DownloadLibraryItem, file: DownloadedVideo?) {
+    /// Tap plays sound only and stays in the list; «Смотреть видео» opens
+    /// the watch page with the picture.
+    private func play(_ item: DownloadLibraryItem, file: DownloadedVideo?, withVideo: Bool) {
         iPocketTubeHaptics.shared.perform(.downloadSelection)
-        if let file {
-            playerRouter.open(video: file.video, api: api)
-        } else if let saved = library.entry(item.videoID) {
-            playerRouter.open(video: saved.video, api: api)
+        guard let video = file?.video ?? library.entry(item.videoID)?.video else { return }
+        if withVideo {
+            playerRouter.openWithVideo(video: video)
+        } else {
+            playerRouter.playAudio(video: video)
         }
     }
 

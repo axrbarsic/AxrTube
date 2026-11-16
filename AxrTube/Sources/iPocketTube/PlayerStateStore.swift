@@ -145,6 +145,8 @@ public final class PlayerStateStore {
         //      AVPlayerItem alive but pauses and sets isPlaying=false. On re-tap,
         //      call load() so the park fast-path in PlaybackViewModel resumes it.
         vm.loopsCurrentItem = false
+        // Opening the watch page ends a sound-only request made in «Скачанные».
+        if vm.audioForcedFor == video.id { vm.audioForcedFor = nil }
         // Re-tapping the video already in the player continues it (YouTube
         // expands the mini player); only a different or dead item reloads.
         if vm.currentVideoId != video.id || vm.player.currentItem == nil || vm.error != nil
@@ -154,8 +156,36 @@ public final class PlayerStateStore {
             vm.togglePlayPause()
         }
         currentVideo = video
+        vm.applyAudioOnlyDecision()
         presentation = .fullScreen
         storeLog.notice("[PlayerStateStore] play — presentation set to .fullScreen")
+    }
+
+    /// Plays `video` as sound only and stays on the current screen: the mini
+    /// player appears, the watch page does not open. Used by «Скачанные».
+    public func playAudio(video: Video) {
+        storeLog.notice("[PlayerStateStore] playAudio — id=\(video.id)")
+        CrashlyticsLogger.setIntendedVideo(id: video.id, title: video.title)
+        vm.loopsCurrentItem = false
+        vm.videoRequestedFor = nil
+        vm.audioForcedFor = video.id
+        if vm.currentVideoId != video.id || vm.player.currentItem == nil || vm.error != nil
+            || vm.player.currentItem?.status == .failed {
+            vm.load(video: video)
+        } else {
+            vm.applyAudioOnlyDecision()
+            if !vm.isPlaying, !vm.isLoading { vm.togglePlayPause() }
+        }
+        currentVideo = video
+        if presentation != .fullScreen { presentation = .miniPlayer }
+    }
+
+    /// Opens the watch page with the picture, even under data saver.
+    public func playVideo(video: Video) {
+        vm.audioForcedFor = nil
+        vm.videoRequestedFor = video.id
+        play(video: video)
+        vm.applyAudioOnlyDecision()
     }
 
     /// Load `video` into the shared player without presenting PlayerView. The

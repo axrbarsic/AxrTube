@@ -62,7 +62,8 @@ struct StreamCachePolicyTests {
 
     @Test func plannerGoesForwardFromPlayheadSkippingDone() {
         #expect(SegmentPrefetchPlanner.next(count: 10, cursor: 3, done: [3, 5], busy: [4], slots: 3) == [6, 7, 8])
-        #expect(SegmentPrefetchPlanner.next(count: 3, cursor: 2, done: [2], busy: [], slots: 2) == [])
+        #expect(SegmentPrefetchPlanner.next(count: 3, cursor: 2, done: [2], busy: [], slots: 2) == [0, 1])
+        #expect(SegmentPrefetchPlanner.next(count: 3, cursor: 1, done: [0, 1, 2], busy: [], slots: 2) == [])
     }
 
     @Test func throughputBudgetLeavesHeadroom() {

@@ -20,7 +20,8 @@ extension PlaybackViewModel {
         }
         guard let local = await HLSCachingProxy.shared.startSession(
             videoID: video.id, masterURL: masterURL, headers: headers,
-            preferredMaxHeight: maxHeight > 0 ? maxHeight : nil
+            preferredMaxHeight: maxHeight > 0 ? maxHeight : nil,
+            audioOnly: wantsAudioOnly(video)
         ) else {
             playerLog.notice("[stream-cache] loopback unavailable — playing origin directly")
             return masterURL
@@ -50,7 +51,7 @@ extension PlaybackViewModel {
         }
     }
 
-    private var currentItemIsProxied: Bool {
+    var currentItemIsProxied: Bool {
         (player.currentItem?.asset as? AVURLAsset)?.url.host == "127.0.0.1"
     }
 
@@ -64,7 +65,12 @@ extension PlaybackViewModel {
         // A saved video downloading through the player reports its progress.
         if let id = currentVideo?.id, shown != nil, PinnedStreamLibrary.shared.entry(id) != nil {
             let fraction = cachedFraction
-            Task { await PinnedStreamLibrary.shared.update(id, progress: fraction, isComplete: complete) }
+            let audioOnly = isAudioOnlyMode
+            Task {
+                await PinnedStreamLibrary.shared.updateFromPlayback(
+                    id, progress: fraction, isComplete: complete, audioOnlySession: audioOnly
+                )
+            }
         }
     }
 
@@ -119,11 +125,12 @@ extension PlaybackViewModel {
               let source = try? JSONDecoder().decode(StreamSource.self, from: data),
               !player.isExternalPlaybackActive,
               let local = await HLSCachingProxy.shared.startSession(
-                  videoID: video.id, masterURL: source.master, headers: source.headers, preferredMaxHeight: nil
+                  videoID: video.id, masterURL: source.master, headers: source.headers, preferredMaxHeight: nil,
+                  audioOnly: wantsAudioOnly(video)
               ) else { return false }
         ensureCacheProgressUpdates()
         streamCacheDirectSource = (source.master, source.headers)
-        isAudioOnlyMode = settings.audioOnlyMode
+        isAudioOnlyMode = wantsAudioOnly(video)
         if let known = video.duration, known > 0 { duration = known }
         let item = AVPlayerItem(asset: AVURLAsset(url: local))
         item.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
@@ -143,6 +150,51 @@ extension PlaybackViewModel {
             cachedTimeRanges = []
             isFullyCached = false
         }
+    }
+
+    // MARK: Data saver (audio only)
+
+    /// Sound only for `video`: the user's per-video choice wins, otherwise
+    /// «Экономия трафика» decides (always, or on a mobile network).
+    func wantsAudioOnly(_ video: Video) -> Bool {
+        if audioForcedFor == video.id { return true }
+        return DataSaverPolicy.streamsAudioOnly(
+            mode: settings.dataSaver, audioOnlySetting: settings.audioOnlyMode,
+            onMobileNetwork: NetworkPathObserver.shared.isMobile,
+            videoRequested: videoRequestedFor == video.id
+        )
+    }
+
+    /// Recomputes the mode for the current video and, when it changed while a
+    /// cached stream is playing, restarts the stream at the same position so
+    /// the video track starts or stops downloading.
+    func applyAudioOnlyDecision() {
+        guard let video = currentVideo else {
+            isAudioOnlyMode = settings.audioOnlyMode || settings.dataSaver == .always
+            return
+        }
+        let wanted = video.localMediaKind == .audio || wantsAudioOnly(video)
+        guard wanted != isAudioOnlyMode else { return }
+        isAudioOnlyMode = wanted
+        guard currentItemIsProxied else { return }
+        let time = currentTime
+        playerLog.notice("[data-saver] audioOnly=\(wanted) — restarting stream at \(Int(time))s")
+        if playerInfo?.hlsURL != nil {
+            let quality = settings.preferredQuality
+            Task { await self.reloadHLSItem(seekTo: time, quality: quality) }
+        } else {
+            Task {
+                if await self.playSavedStreamIfAvailable(video), time > 1 { self.seek(to: time) }
+            }
+        }
+    }
+
+    /// Per-video switch from the player: picture on or off for this video.
+    func setVideoWanted(_ wanted: Bool) {
+        guard let id = currentVideo?.id else { return }
+        videoRequestedFor = wanted ? id : nil
+        audioForcedFor = wanted ? nil : id
+        applyAudioOnlyDecision()
     }
 
     func endStreamCacheSession() {
@@ -168,11 +220,13 @@ extension PlaybackViewModel {
 /// unless the receiver is external (AirPlay) or the video is live.
 enum StreamCacheRouting {
     static func playbackURL(
-        info: PlayerInfo?, masterURL: URL, headers: [String: String], maxHeight: Int?, externalPlayback: Bool
+        info: PlayerInfo?, masterURL: URL, headers: [String: String], maxHeight: Int?,
+        audioOnly: Bool, externalPlayback: Bool
     ) async -> URL {
         guard let video = info?.video, !video.isLive, !externalPlayback,
               let local = await HLSCachingProxy.shared.startSession(
-                  videoID: video.id, masterURL: masterURL, headers: headers, preferredMaxHeight: maxHeight
+                  videoID: video.id, masterURL: masterURL, headers: headers, preferredMaxHeight: maxHeight,
+                  audioOnly: audioOnly
               ) else {
             await HLSCachingProxy.shared.endSession()
             return masterURL

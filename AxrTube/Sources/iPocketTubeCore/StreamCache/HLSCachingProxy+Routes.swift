@@ -63,8 +63,18 @@ extension HLSCachingProxy {
             ? !(await cache.cachedIndices(video: s.video, rendition: previous!).isEmpty) : false
         let reused = (online == nil || pinned || previousCached)
             ? all.first { HLSPlaylistText.renditionKey(for: $0.uri) == previous } : nil
-        guard let chosen = reused ?? HLSPlaylistText.selectVariant(all, maxHeight: s.maxHeight, bandwidthBudget: budget) else {
+        // Data saver on a stream without separate audio: take the lightest variant.
+        let lightest = s.audioOnly && all.allSatisfy({ $0.audioGroup == nil })
+            ? all.min(by: { $0.bandwidth < $1.bandwidth }) : nil
+        guard let chosen = lightest ?? reused ?? HLSPlaylistText.selectVariant(all, maxHeight: s.maxHeight, bandwidthBudget: budget) else {
             return .init(status: 502)
+        }
+        if s.audioOnly, let audioURL = Self.audioRendition(in: text, base: s.master, group: chosen.audioGroup) {
+            // Data saver: a master whose only variant is the audio rendition.
+            let pid = registerPlaylist(audioURL, isAudio: true)
+            log.notice("[stream-cache] audio-only master (data saver)")
+            let master = "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=160000,CODECS=\"mp4a.40.2\"\n/\(id)/pl/\(pid).m3u8\n"
+            return .init(status: 200, contentType: Self.playlistMime, body: Data(master.utf8))
         }
         let chosenKey = HLSPlaylistText.renditionKey(for: chosen.uri)
         await cache.storeNamed(Data(chosenKey.utf8), video: s.video, name: "variant")

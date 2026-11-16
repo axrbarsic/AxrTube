@@ -40,9 +40,9 @@ enum SavedStreamService {
         }
     }
 
-    static func pin(_ video: Video, cachedFraction: Double, isComplete: Bool) {
+    static func pin(_ video: Video, cachedFraction: Double, isComplete: Bool, audioOnly: Bool) {
         Task {
-            await PinnedStreamLibrary.shared.pin(video, progress: cachedFraction, isComplete: isComplete)
+            await PinnedStreamLibrary.shared.pin(video, progress: cachedFraction, isComplete: isComplete, audioOnly: audioOnly)
             resume()
         }
     }

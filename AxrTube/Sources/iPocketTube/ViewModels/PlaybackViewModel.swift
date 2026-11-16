@@ -328,6 +328,10 @@ public final class PlaybackViewModel {
     var bufferedTimeRanges: [ClosedRange<Double>] = []
     @ObservationIgnored var cacheProgressTask: Task<Void, Never>?
     @ObservationIgnored var bufferSampleTask: Task<Void, Never>?
+    /// The user asked for the picture of this video despite data saver.
+    @ObservationIgnored var videoRequestedFor: String?
+    /// The user asked for sound only for this video (tap in «Скачанные»).
+    @ObservationIgnored var audioForcedFor: String?
     /// Video whose «Далее» successor was already head-prefetched.
     @ObservationIgnored var upNextPrefetchedFor: String?
     #if os(iOS)
@@ -657,7 +661,7 @@ public final class PlaybackViewModel {
 
     public func updateSettings(_ newSettings: AppSettings) {
         settings = newSettings
-        isAudioOnlyMode = newSettings.audioOnlyMode
+        applyAudioOnlyDecision()
     }
 
     #if canImport(UIKit)
@@ -707,7 +711,9 @@ extension PlaybackViewModel: SponsorBlockDelegate {
     public func snapCurrentTime(to seconds: Double) { currentTime = seconds }
 }
 
-extension PlaybackViewModel: QualityContext {}
+extension PlaybackViewModel: QualityContext {
+    var streamsAudioOnlyNow: Bool { currentVideo.map(wantsAudioOnly) ?? false }
+}
 
 extension PlaybackViewModel: QualityEventHandler {
     func loadAudioTracks(from item: AVPlayerItem) {

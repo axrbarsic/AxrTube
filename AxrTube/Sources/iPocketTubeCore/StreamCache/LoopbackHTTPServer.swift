@@ -30,6 +30,9 @@ public final class LoopbackHTTPServer: @unchecked Sendable {
     private let queue = DispatchQueue(label: "axrtube.loopback-http", qos: .userInitiated)
     private let log = Logger(subsystem: "com.void.ipockettube.app", category: "StreamCache")
     private let lock = OSAllocatedUnfairLock<(listener: NWListener?, port: UInt16?)>(initialState: (nil, nil))
+    /// Port of the previous listener: a restart reuses it so URLs already
+    /// handed to the player keep working.
+    private let lastPort = OSAllocatedUnfairLock<UInt16?>(initialState: nil)
 
     public init(handler: @escaping Handler) {
         self.handler = handler
@@ -40,8 +43,52 @@ public final class LoopbackHTTPServer: @unchecked Sendable {
     /// Starts (or returns the running) listener's port.
     public func start() async -> UInt16? {
         if let port { return port }
+        if let previous = lastPort.withLock({ $0 }), let port = await listen(on: previous) { return port }
+        return await listen(on: nil)
+    }
+
+    /// Checks that the listener still accepts connections (iOS can reclaim
+    /// it while the app is suspended) and restarts it on the same port.
+    @discardableResult
+    public func ensureAlive() async -> UInt16? {
+        guard let port else { return await start() }
+        if await Self.accepts(port: port) { return port }
+        log.notice("[stream-cache] listener on \(port) is dead — restarting")
+        let old = lock.withLock { state -> NWListener? in
+            defer { state = (nil, nil) }
+            return state.listener
+        }
+        old?.cancel()
+        return await start()
+    }
+
+    private static func accepts(port: UInt16) async -> Bool {
+        guard let nwPort = NWEndpoint.Port(rawValue: port) else { return false }
+        let connection = NWConnection(host: .ipv4(.loopback), port: nwPort, using: .tcp)
+        return await withCheckedContinuation { continuation in
+            let resumed = OSAllocatedUnfairLock(initialState: false)
+            let finish: @Sendable (Bool) -> Void = { value in
+                if resumed.withLock({ let was = $0; $0 = true; return !was }) {
+                    connection.cancel()
+                    continuation.resume(returning: value)
+                }
+            }
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready: finish(true)
+                case .failed, .waiting, .cancelled: finish(false)
+                default: break
+                }
+            }
+            connection.start(queue: .global(qos: .userInitiated))
+            DispatchQueue.global().asyncAfter(deadline: .now() + 1) { finish(false) }
+        }
+    }
+
+    private func listen(on fixedPort: UInt16?) async -> UInt16? {
         let params = NWParameters.tcp
-        params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: .any)
+        let nwPort = fixedPort.flatMap(NWEndpoint.Port.init(rawValue:)) ?? .any
+        params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: nwPort)
         params.allowLocalEndpointReuse = true
         guard let listener = try? NWListener(using: params) else { return nil }
         listener.newConnectionHandler = { [weak self] connection in self?.serve(connection) }
@@ -67,6 +114,7 @@ public final class LoopbackHTTPServer: @unchecked Sendable {
         }
         guard let port else { listener.cancel(); return nil }
         lock.withLock { $0 = (listener, port) }
+        lastPort.withLock { $0 = port }
         return port
     }
 

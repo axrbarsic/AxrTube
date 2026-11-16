@@ -45,9 +45,11 @@ extension PlayerView {
     }
 
     private var audioOnlyRow: some View {
-        @Bindable var store = store
-        return Toggle(isOn: $store.settings.audioOnlyMode) {
-            Label("Только аудио", systemImage: "headphones")
+        return Toggle(isOn: Binding(
+            get: { vm.isAudioOnlyMode },
+            set: { vm.setVideoWanted(!$0) }
+        )) {
+            Label("Только звук (экономия трафика)", systemImage: "headphones")
                 .font(.system(size: 15))
         }
         .padding(.horizontal, 18)

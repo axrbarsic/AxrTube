@@ -228,3 +228,61 @@ struct UpNextPrefetchTests {
         await proxy.endSession()
     }
 }
+
+@Suite("Data saver: audio-only streaming", .serialized)
+struct DataSaverTests {
+    @Test func policyHonoursModeNetworkAndPerVideoChoice() {
+        func decide(_ mode: AppSettings.DataSaverMode, mobile: Bool, video: Bool = false, legacy: Bool = false) -> Bool {
+            DataSaverPolicy.streamsAudioOnly(mode: mode, audioOnlySetting: legacy, onMobileNetwork: mobile, videoRequested: video)
+        }
+        #expect(!decide(.off, mobile: true))
+        #expect(decide(.cellular, mobile: true))
+        #expect(!decide(.cellular, mobile: false))
+        #expect(decide(.always, mobile: false))
+        #expect(!decide(.always, mobile: true, video: true))
+        #expect(decide(.off, mobile: false, legacy: true))
+    }
+
+    @Test func audioOnlySessionNeverTouchesVideo() async throws {
+        let v = "https://m.example/hls_playlist/itag/134/v.m3u8"
+        let a = "https://m.example/hls_playlist/itag/140/a.m3u8"
+        let master = """
+        #EXTM3U
+        #EXT-X-MEDIA:URI="\(a)",TYPE=AUDIO,GROUP-ID="140",NAME="Default",DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,AUDIO="140"
+        \(v)
+        """
+        var files: [String: Data] = ["https://m.example/saver.m3u8": Data(master.utf8)]
+        var text = "#EXTM3U\n"
+        for i in 0..<3 {
+            let seg = "https://cdn.example/s/140/\(i).aac"
+            text += "#EXTINF:5.0,\n\(seg)\n"
+            files[seg] = Data(repeating: UInt8(i), count: 70_000)
+        }
+        files[a] = Data((text + "#EXT-X-ENDLIST\n").utf8)   // the video playlist is absent on purpose
+        let originFiles = files
+        FakeOrigin.state.withLock { $0 = (originFiles, false) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("axr-saver-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FakeOrigin.self]
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let proxy = HLSCachingProxy(cache: cache, configuration: config, estimateKey: "t.\(UUID().uuidString)")
+        let entry = try #require(await proxy.startSession(
+            videoID: "saver", masterURL: URL(string: "https://m.example/saver.m3u8")!, headers: [:],
+            preferredMaxHeight: nil, audioOnly: true
+        ))
+        let masterText = String(decoding: try await URLSession.shared.data(from: entry).0, as: UTF8.self)
+        #expect(!masterText.contains("RESOLUTION"))
+        let path = try #require(masterText.components(separatedBy: .newlines).first { $0.hasPrefix("/") })
+        let (pl, response) = try await URLSession.shared.data(from: URL(string: "http://127.0.0.1:\(entry.port!)\(path)")!)
+        #expect((response as? HTTPURLResponse)?.statusCode == 200)
+        #expect(String(decoding: pl, as: UTF8.self).contains("/seg/"))
+        let updates = await proxy.progressUpdates()
+        for await value in updates where value?.isComplete == true { break }
+        #expect(await proxy.progress()?.ranges == [0...15])
+        #expect(await cache.cachedIndices(video: "saver", rendition: "itag140") == [0, 1, 2])
+        #expect(await cache.cachedIndices(video: "saver", rendition: "itag134").isEmpty)
+        await proxy.endSession()
+    }
+}

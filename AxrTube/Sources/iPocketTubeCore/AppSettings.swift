@@ -73,6 +73,20 @@ public struct AppSettings: Codable {
     /// Download the start of the next «Далее» video while the current one is
     /// already cached. Off by default: the next suggestion is often skipped.
     public var prefetchUpNextEnabled: Bool
+    /// «Экономия трафика»: stream only the audio track.
+    public var dataSaver: DataSaverMode
+
+    public enum DataSaverMode: String, Codable, CaseIterable, Sendable {
+        case off, cellular, always
+
+        public var displayName: String {
+            switch self {
+            case .off: "Выкл"
+            case .cellular: "На мобильной сети"
+            case .always: "Всегда"
+            }
+        }
+    }
 
     public enum Appearance: String, Codable, CaseIterable, Sendable {
         case system, dark, light
@@ -388,6 +402,7 @@ public struct AppSettings: Codable {
         themeName            = .matrix
         appearance           = .system
         prefetchUpNextEnabled = false
+        dataSaver = .cellular
         enabledSections      = BrowseSection.defaultSections.map(\.type)
         historyState         = .enabled
         sponsorBlockEnabled  = true
@@ -481,6 +496,7 @@ extension AppSettings {
         case themeName
         case appearance
         case prefetchUpNextEnabled
+        case dataSaver
         case enabledSections
         case historyState
         case sponsorBlockEnabled
@@ -537,6 +553,16 @@ extension AppSettings {
         themeName                    = c.safeDecode(ThemeName.self,         forKey: .themeName,                    default: d.themeName)
         appearance                   = c.safeDecode(Appearance.self,        forKey: .appearance,                   default: d.appearance)
         prefetchUpNextEnabled        = c.safeDecode(Bool.self, forKey: .prefetchUpNextEnabled, default: d.prefetchUpNextEnabled)
+        // iOS: the old «Только аудио» toggle only hid the picture; it becomes
+        // the real audio-only mode («Экономия трафика: Всегда»).
+        let legacyAudioOnly = c.safeDecode(Bool.self, forKey: .audioOnlyMode, default: d.audioOnlyMode)
+        #if os(iOS)
+        let migrateAudioOnly = legacyAudioOnly && !c.contains(.dataSaver)
+        #else
+        let migrateAudioOnly = false
+        #endif
+        dataSaver = migrateAudioOnly ? .always
+            : c.safeDecode(DataSaverMode.self, forKey: .dataSaver, default: d.dataSaver)
         enabledSections              = c.safeDecode([BrowseSection.SectionType].self, forKey: .enabledSections,   default: d.enabledSections)
         historyState                 = c.safeDecode(HistoryState.self,      forKey: .historyState,                 default: d.historyState)
         sponsorBlockEnabled          = c.safeDecode(Bool.self,              forKey: .sponsorBlockEnabled,          default: d.sponsorBlockEnabled)
@@ -549,7 +575,7 @@ extension AppSettings {
         autoGenerateLocalTranscripts = c.safeDecode(Bool.self,              forKey: .autoGenerateLocalTranscripts, default: d.autoGenerateLocalTranscripts)
         deArrowEnabled               = c.safeDecode(Bool.self,              forKey: .deArrowEnabled,               default: d.deArrowEnabled)
         poTokenServiceURL            = c.safeDecode(URL?.self,              forKey: .poTokenServiceURL,            default: d.poTokenServiceURL)
-        audioOnlyMode                = c.safeDecode(Bool.self,              forKey: .audioOnlyMode,                default: d.audioOnlyMode)
+        audioOnlyMode                = migrateAudioOnly ? false : legacyAudioOnly
         offlineAutoSaveMode          = c.safeDecode(OfflineAutoSaveMode.self, forKey: .offlineAutoSaveMode,       default: d.offlineAutoSaveMode)
         offlineStorageLimitMB        = c.safeDecode(Int.self,               forKey: .offlineStorageLimitMB,        default: d.offlineStorageLimitMB)
         downloadsWiFiOnly            = c.safeDecode(Bool.self,              forKey: .downloadsWiFiOnly,            default: d.downloadsWiFiOnly)

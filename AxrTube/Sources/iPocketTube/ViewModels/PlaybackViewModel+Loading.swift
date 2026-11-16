@@ -249,6 +249,7 @@ extension PlaybackViewModel {
     /// Reactivates the AVAudioSession and resumes the player if it was playing
     /// before the interruption/background transition.
     public func handleForeground() {
+        Task { await HLSCachingProxy.shared.ensureServerAlive() }
         playbackSceneState = .active
         guard player.currentItem != nil else { return }
         synchronizePlaybackTimeFromPlayer(reason: "foreground")
@@ -426,6 +427,7 @@ extension PlaybackViewModel {
         stallCount = 0
         firstRapidStallTime = nil
         cancelStallRecovery()
+        isAudioOnlyMode = video.localMediaKind == .audio || wantsAudioOnly(video)
         needsQuickStartup = true
         // Note: isLoading = false is set in the AVPlayerItem .readyToPlay observer so the
         // spinner stays visible until the first frame is actually ready. It was previously
@@ -461,7 +463,7 @@ extension PlaybackViewModel {
                FileManager.default.fileExists(atPath: localURL.path) {
                 // A local M4A uses the exact same AVPlayer/audio-session/remote-command
                 // path as video, but keeps the thumbnail visible as player chrome.
-                isAudioOnlyMode = video.localMediaKind == .audio || settings.audioOnlyMode
+                isAudioOnlyMode = video.localMediaKind == .audio || wantsAudioOnly(video)
                 let item = AVPlayerItem(url: localURL)
                 playLocalItem(item, video: video, label: localURL.lastPathComponent)
                 return

@@ -54,6 +54,18 @@ public final class PlayerRouter {
         playerState.playInline(video: video)
     }
 
+    /// Sound only, without opening the watch page («Скачанные»).
+    public func playAudio(video: Video) {
+        if tosState.presentation != .hidden { tosState.stop() }
+        playerState.playAudio(video: video)
+    }
+
+    /// Watch page with the picture, even under data saver.
+    public func openWithVideo(video: Video) {
+        if tosState.presentation != .hidden { tosState.stop() }
+        playerState.playVideo(video: video)
+    }
+
     public func closePlayback() {
         playerState.stop()
     }

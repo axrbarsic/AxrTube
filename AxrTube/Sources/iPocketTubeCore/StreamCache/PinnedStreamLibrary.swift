@@ -13,6 +13,10 @@ public struct PinnedStream: Codable, Identifiable, Equatable, Sendable {
     public var progress: Double
     public var isComplete: Bool
     public var bytes: Int64
+    /// Saved under data saver: only the audio track is kept.
+    public var audioOnly: Bool?
+
+    public var isAudioOnly: Bool { audioOnly ?? false }
 
     public var video: Video {
         Video(id: videoId, title: title, channelTitle: channelTitle, thumbnailURL: thumbnailURL, duration: duration)
@@ -51,13 +55,18 @@ public final class PinnedStreamLibrary {
         entries.filter { !$0.isComplete }.map(\.videoId)
     }
 
-    public func pin(_ video: Video, progress: Double, isComplete: Bool) async {
+    /// Marker the background completer reads: "1" = finish the audio only.
+    public static let audioOnlyMarker = "pin-audio-only"
+
+    public func pin(_ video: Video, progress: Double, isComplete: Bool, audioOnly: Bool = false) async {
         guard entry(video.id) == nil else { return }
         await cache.pin(video.id)
+        await cache.storeNamed(Data((audioOnly ? "1" : "0").utf8), video: video.id, name: Self.audioOnlyMarker)
         entries.insert(PinnedStream(
             videoId: video.id, title: video.title, channelTitle: video.channelTitle,
             thumbnailURL: video.thumbnailURL, duration: video.duration ?? 0, pinnedAt: Date(),
-            progress: progress, isComplete: isComplete, bytes: await cache.pinnedBytes(video.id)
+            progress: progress, isComplete: isComplete, bytes: await cache.pinnedBytes(video.id),
+            audioOnly: audioOnly
         ), at: 0)
         save()
     }
@@ -66,6 +75,20 @@ public final class PinnedStreamLibrary {
         entries.removeAll { $0.videoId == videoID }
         save()
         await cache.unpin(videoID)
+    }
+
+    /// Progress from a playing session. A sound-only session cannot report
+    /// for a video save; a video session upgrades a sound-only save.
+    public func updateFromPlayback(_ videoID: String, progress: Double, isComplete: Bool, audioOnlySession: Bool) async {
+        guard let index = entries.firstIndex(where: { $0.videoId == videoID }) else { return }
+        if audioOnlySession, !entries[index].isAudioOnly { return }
+        if !audioOnlySession, entries[index].isAudioOnly {
+            entries[index].audioOnly = false
+            entries[index].isComplete = false
+            await cache.storeNamed(Data("0".utf8), video: videoID, name: Self.audioOnlyMarker)
+            save()
+        }
+        await update(videoID, progress: progress, isComplete: isComplete)
     }
 
     public func update(_ videoID: String, progress: Double, isComplete: Bool) async {

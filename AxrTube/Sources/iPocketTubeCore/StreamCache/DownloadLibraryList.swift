@@ -25,8 +25,10 @@ public struct DownloadLibraryItem: Identifiable, Equatable, Sendable {
     public var state: State
     public var bytes: Int64
     public var date: Date?
+    /// A save from the stream cache that holds only the audio track.
+    public var savedAudioOnly = false
 
-    public var isAudio: Bool { source == .file(.audio) }
+    public var isAudio: Bool { source == .file(.audio) || savedAudioOnly }
     public var isPlayable: Bool { state == .ready || source == .saved }
 }
 
@@ -37,7 +39,8 @@ public enum DownloadLibraryList {
             DownloadLibraryItem(
                 id: "saved::\(s.videoId)", videoID: s.videoId, title: s.title, channelTitle: s.channelTitle,
                 thumbnailURL: s.thumbnailURL, duration: s.duration, source: .saved,
-                state: s.isComplete ? .ready : .downloading(s.progress), bytes: s.bytes, date: s.pinnedAt
+                state: s.isComplete ? .ready : .downloading(s.progress), bytes: s.bytes, date: s.pinnedAt,
+                savedAudioOnly: s.isAudioOnly
             )
         }
         for f in files where f.status != .cancelled {
