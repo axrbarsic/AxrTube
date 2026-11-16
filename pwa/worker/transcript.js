@@ -43,17 +43,29 @@ export function transcriptDocument(cues){
   flush();const sections=[];for(const paragraph of paragraphs){const bucket=Math.floor(paragraph.start/300);if(sections.at(-1)?.bucket!==bucket)sections.push({bucket,start:paragraph.start,paragraphs:[]});sections.at(-1).paragraphs.push(paragraph)}return sections;
 }
 export function safeCaptionURL(raw,id){const u=new URL(raw);if(u.protocol!=='https:'||!['www.youtube.com','youtube.com','m.youtube.com','video.google.com'].includes(u.hostname)||u.port||u.username||u.password||!['/api/timedtext','/timedtext'].includes(u.pathname)||u.searchParams.get('v')!==id)throw transcriptFailure('TRANSCRIPT_SOURCE_UNAVAILABLE');u.searchParams.set('fmt','vtt');return u}
-async function captionMetadata(id){
-  const clients=[{clientName:'WEB',clientVersion:'2.20260206.01.00'},{clientName:'IOS',clientVersion:'21.02.3',deviceMake:'Apple',deviceModel:'iPhone16,2',osName:'iPhone',osVersion:'18.3.2'}];
-  const controllers=clients.map(()=>new AbortController()),timer=setTimeout(()=>controllers.forEach(c=>c.abort()),12000);let knownEmpty=false;
-  try{return await Promise.any(clients.map(async(client,index)=>{
-    const userAgent=index?'com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)':'Mozilla/5.0';
-    const response=await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',{method:'POST',redirect:'manual',signal:controllers[index].signal,headers:{'content-type':'application/json','user-agent':userAgent,origin:'https://www.youtube.com'},body:JSON.stringify({videoId:id,context:{client:{...client,hl:'en',gl:'US'}},contentCheckOk:true,racyCheckOk:true})});
-    const data=JSON.parse(await captionBody(response,4_000_000));if(data.videoDetails?.videoId!==id)throw transcriptFailure('TRANSCRIPT_SOURCE_UNAVAILABLE');
-    const tracks=(data.captions?.playerCaptionsTracklistRenderer?.captionTracks||[]).filter(t=>typeof t.languageCode==='string'&&/^[a-zA-Z0-9-]{2,35}$/.test(t.languageCode)&&typeof t.baseUrl==='string').filter(t=>{try{safeCaptionURL(t.baseUrl,id);return true}catch{return false}});
-    if(!tracks.length){knownEmpty=true;throw transcriptFailure('TRANSCRIPT_UNAVAILABLE')}return {tracks,title:String(data.videoDetails.title||id),channel:String(data.videoDetails.author||''),duration:Number(data.videoDetails.lengthSeconds)||0};
-  }))}catch{throw transcriptFailure(knownEmpty?'TRANSCRIPT_UNAVAILABLE':'TRANSCRIPT_SOURCE_UNAVAILABLE')}finally{clearTimeout(timer);controllers.forEach(c=>c.abort())}
+const captionClients=[
+  {client:{clientName:'IOS',clientVersion:'21.02.3',deviceMake:'Apple',deviceModel:'iPhone16,2',osName:'iPhone',osVersion:'18.3.2'},name:'5',ua:'com.google.ios.youtube/21.02.3 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)'},
+  {client:{clientName:'ANDROID',clientVersion:'20.10.38',androidSdkVersion:30,osName:'Android',osVersion:'11'},name:'3',ua:'com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip'},
+  {client:{clientName:'WEB',clientVersion:'2.20260206.01.00'},name:'1',ua:'Mozilla/5.0'}];
+async function captionClientTracks(id,c,signal){
+  const response=await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false',{method:'POST',redirect:'manual',signal,headers:{'content-type':'application/json','user-agent':c.ua,'x-youtube-client-name':c.name,'x-youtube-client-version':c.client.clientVersion,origin:'https://www.youtube.com'},body:JSON.stringify({videoId:id,context:{client:{...c.client,hl:'en',gl:'US'}},contentCheckOk:true,racyCheckOk:true})});
+  const data=JSON.parse(await captionBody(response,4_000_000));if(data.videoDetails?.videoId!==id)throw transcriptFailure('TRANSCRIPT_SOURCE_UNAVAILABLE');
+  const tracks=(data.captions?.playerCaptionsTracklistRenderer?.captionTracks||[]).filter(t=>typeof t.languageCode==='string'&&/^[a-zA-Z0-9-]{2,35}$/.test(t.languageCode)&&typeof t.baseUrl==='string').filter(t=>{try{safeCaptionURL(t.baseUrl,id);return true}catch{return false}});
+  return {client:c.client.clientName,tracks,title:String(data.videoDetails.title||id),channel:String(data.videoDetails.author||''),duration:Number(data.videoDetails.lengthSeconds)||0};
 }
+// App clients first: their caption URLs do not need a browser proof (exp=xpe).
+async function captionMetadata(id,report=null){
+  const controller=new AbortController(),timer=setTimeout(()=>controller.abort(),12000);
+  try{
+    const settled=await Promise.allSettled(captionClients.map(c=>captionClientTracks(id,c,controller.signal)));
+    if(report)settled.forEach((r,i)=>report.push({client:captionClients[i].client.clientName,ok:r.status==='fulfilled',tracks:r.value?.tracks.length??0,proof:r.value?.tracks.some(t=>t.baseUrl.includes('exp=xpe'))??false,code:r.reason?.code||(r.reason?String(r.reason.name||'ERROR'):undefined)}));
+    const ok=settled.filter(r=>r.status==='fulfilled').map(r=>r.value);
+    const best=ok.find(d=>d.tracks.length&&!d.tracks.some(t=>t.baseUrl.includes('exp=xpe')))||ok.find(d=>d.tracks.length);
+    if(best)return best;
+    throw transcriptFailure(ok.length?'TRANSCRIPT_UNAVAILABLE':'TRANSCRIPT_SOURCE_UNAVAILABLE');
+  }finally{clearTimeout(timer);controller.abort()}
+}
+const trackName=t=>t.name?.simpleText||t.name?.runs?.map(r=>r.text||'').join('')||t.languageCode;
 // Second source: the watch page "Show transcript" panel (next -> get_transcript).
 // Independent from the player endpoint that YouTube bot-checks on datacenter IPs.
 const panelVersion='2.20260311.01.00';
@@ -62,7 +74,7 @@ async function panelCall(endpoint,body,signal){
   const r=await fetch('https://www.youtube.com/youtubei/v1/'+endpoint+'?prettyPrint=false',{method:'POST',redirect:'manual',signal,
     headers:{'content-type':'application/json','user-agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',origin:'https://www.youtube.com','x-youtube-client-name':'1','x-youtube-client-version':panelVersion},
     body:JSON.stringify(body)});
-  if(!r.ok){await r.body?.cancel();throw transcriptFailure('PANEL_HTTP_'+r.status)}
+  if(!r.ok){await r.body?.cancel();throw Object.assign(transcriptFailure('PANEL_HTTP_'+r.status),{step:endpoint})}
   return JSON.parse(await captionBody(r,8_000_000));
 }
 function findKey(node,key,depth=0){
@@ -107,9 +119,11 @@ export async function panelTranscript(id,language=''){
 }
 // Diagnostics: which transcript source works from this host right now.
 export async function transcriptLab(id){
-  const out={id};
-  const t0=Date.now();try{const d=await captionMetadata(id);out.player={ok:true,tracks:d.tracks.length,ms:Date.now()-t0}}catch(e){out.player={ok:false,code:e.code,ms:Date.now()-t0}}
-  const t1=Date.now();try{const d=await panelTranscript(id);out.panel={ok:true,segments:d.cues.length,language:d.languageName,languages:d.languages.length,title:d.title.slice(0,60),ms:Date.now()-t1}}catch(e){out.panel={ok:false,code:e.code||String(e?.name||'ERROR'),ms:Date.now()-t1}}
+  const out={id,clients:[]};
+  try{await captionMetadata(id,out.clients)}catch{}
+  const t0=Date.now();const r=await transcriptResponse(new URL('https://lab.invalid/api/transcript?id='+id));const d=await r.json();
+  out.full={status:r.status,source:d.source||null,code:d.code||null,language:d.languageName||null,paragraphs:d.sections?.reduce((n,s)=>n+s.paragraphs.length,0)||0,ms:Date.now()-t0};
+  const t1=Date.now();try{const p=await panelTranscript(id);out.panel={ok:true,segments:p.cues.length,ms:Date.now()-t1}}catch(e){out.panel={ok:false,code:e.code||String(e?.name||'ERROR'),step:e.step||null,ms:Date.now()-t1}}
   return out;
 }
 export async function transcriptResponse(u){
@@ -120,7 +134,7 @@ export async function transcriptResponse(u){
     const tracks=[...data.tracks].sort((a,b)=>rank(a)-rank(b));let error;
     for(const track of tracks){try{
       const r=await fetch(safeCaptionURL(track.baseUrl,id),{redirect:'manual',headers:{accept:'text/vtt, */*'},signal:AbortSignal.timeout(12000)});const cues=parseCaptionVTT(await captionBody(r));const sections=transcriptDocument(cues);if(!sections.length)throw transcriptFailure('TRANSCRIPT_SOURCE_UNAVAILABLE');
-      return new Response(JSON.stringify({id,title:data.title,channel:data.channel,duration:Math.max(data.duration,sections.at(-1).paragraphs.at(-1).end),generatedAt:new Date().toISOString(),language:track.languageCode,languageName:track.name?.simpleText||track.name?.runs?.map(r=>r.text||'').join('')||track.languageCode,autoGenerated:track.kind==='asr',sections,source:'youtube-captions',complete:true}),{headers:transcriptHeaders});
+      return new Response(JSON.stringify({id,title:data.title,channel:data.channel,duration:Math.max(data.duration,sections.at(-1).paragraphs.at(-1).end),generatedAt:new Date().toISOString(),language:track.languageCode,languageName:trackName(track),autoGenerated:track.kind==='asr',languages:data.tracks.map(t=>({code:t.languageCode,name:trackName(t),auto:t.kind==='asr'})),sections,source:'youtube-captions',complete:true}),{headers:transcriptHeaders});
     }catch(e){error=e;if(e.code==='TRANSCRIPT_TOO_LARGE')break}if(error&&tracks.indexOf(track)>=2)break}
     throw error||transcriptFailure('TRANSCRIPT_UNAVAILABLE');
   }catch(error){

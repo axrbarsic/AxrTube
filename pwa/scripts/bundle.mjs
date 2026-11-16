@@ -2,7 +2,7 @@
 import {readFile,writeFile} from 'node:fs/promises';
 const root=new URL('../',import.meta.url);
 let entry=await readFile(new URL('worker/index.js',root),'utf8');
-const modules=['catalog.js','app-shell.js','app-client.js','background-playback.js','app-updates.js','youtube-account.js','i18n.js','transcript.js','transcript-ui.js','personal-home.js','media-diagnostics.js'];
+const modules=['catalog.js','youtube-account.js','transcript.js','comments.js','app-shell.js','app-client.js','app-icon.js'];
 const sources=[];
 for(const file of modules){
   const source=await readFile(new URL('worker/'+file,root),'utf8');

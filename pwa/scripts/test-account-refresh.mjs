@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {sealAccount,openAccount,youtubeAccountResponse} from '../worker/youtube-account.js';
 const origin='https://axrtube.axrbarsic.workers.dev',prefix='__Host-axr-yt-';
 const env={GOOGLE_OAUTH_ENABLED:'true',GOOGLE_OAUTH_PERSONAL_HOME_ENABLED:'true',GOOGLE_OAUTH_CLIENT_ID:'123-test.apps.googleusercontent.com',GOOGLE_OAUTH_CLIENT_SECRET:'test-only',GOOGLE_OAUTH_COOKIE_KEY:'03'.repeat(32)};
-const full='https://www.googleapis.com/auth/youtube',epoch='e'.repeat(43),refreshToken='test-private-refresh-token';
+const full='https://www.googleapis.com/auth/youtube.force-ssl',epoch='e'.repeat(43),refreshToken='test-private-refresh-token';
 const expires=Date.now()+180*86400000;
 const sealed=await sealAccount(env,'refresh',{epoch,token:refreshToken,recommendationsAuthorized:true,expires});
 const cookie=prefix+'epoch='+epoch+'; '+prefix+'refresh='+sealed;

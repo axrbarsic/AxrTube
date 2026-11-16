@@ -1,222 +1,515 @@
-export function sponsorSkipTarget(segments,time,duration) {
-  if(!Number.isFinite(time)||!Number.isFinite(duration)||duration<=0)return null;
-  let target=time;
-  for(const s of segments){if(s.start<=target&&target<s.end&&s.end<duration-0.25)target=s.end;}
-  return target>time?target:null;
+// AxrTube "transcript hunter" client. Pure helpers are exported for tests and
+// serialized into /app.js together with appMain. Text is always inserted with
+// textContent, never as HTML.
+
+export function videoIdFrom(raw) {
+  const text = String(raw || '').trim();
+  if (/^[\w-]{11}$/.test(text)) return text;
+  const found = text.match(/https?:\/\/[^\s<>"']+/i);
+  if (!found) return null;
+  let u;
+  try { u = new URL(found[0]); } catch { return null; }
+  const host = u.hostname.replace(/^www\./, '').replace(/^m\./, '');
+  let id = null;
+  if (host === 'youtu.be') id = u.pathname.split('/')[1];
+  else if (host === 'youtube.com' || host === 'music.youtube.com' || host === 'youtube-nocookie.com') {
+    id = u.searchParams.get('v');
+    const parts = u.pathname.split('/').filter(Boolean);
+    if (!id && ['shorts', 'live', 'embed', 'v'].includes(parts[0])) id = parts[1];
+  }
+  return /^[\w-]{11}$/.test(id || '') ? id : null;
 }
-export function visibleVideos(videos,hideShorts){return hideShorts?videos.filter(v=>!v.isShort):videos;}
-export function orderedChannels(channels,pinned){
-  const order=new Map(pinned.map((id,index)=>[id,index]));
-  return [...new Map(channels.filter(c=>/^UC[\w-]{22}$/.test(c.id||'')).map(c=>[c.id,c])).values()].sort((a,b)=>{
-    const ap=order.get(a.id),bp=order.get(b.id);
-    if(ap!==undefined||bp!==undefined)return (ap??Infinity)-(bp??Infinity);
-    return String(a.name).localeCompare(String(b.name),'ru',{sensitivity:'base'})||a.id.localeCompare(b.id);
+
+export function formatClock(seconds) {
+  const s = Math.max(0, Math.floor(Number(seconds) || 0));
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), r = s % 60;
+  const pad = n => String(n).padStart(2, '0');
+  return h ? h + ':' + pad(m) + ':' + pad(r) : m + ':' + pad(r);
+}
+
+export function transcriptText(data, timed) {
+  const paragraphs = (data?.sections || []).flatMap(s => s.paragraphs || []);
+  const body = paragraphs.map(p => (timed ? '[' + formatClock(p.start) + '] ' : '') + p.text).join('\n\n');
+  const head = [data?.title, data?.channel, data?.id ? 'https://youtu.be/' + data.id : ''].filter(Boolean).join('\n');
+  return head ? head + '\n\n' + body : body;
+}
+
+export function countWords(text) {
+  const m = String(text || '').match(/[\p{L}\p{N}]+(?:[-'’][\p{L}\p{N}]+)*/gu);
+  return m ? m.length : 0;
+}
+
+export function relativeTime(iso, now = Date.now()) {
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return '';
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return 'сейчас';
+  if (s < 3600) return Math.floor(s / 60) + ' мин';
+  if (s < 86400) return Math.floor(s / 3600) + ' ч';
+  if (s < 86400 * 7) return Math.floor(s / 86400) + ' дн';
+  const d = new Date(t), same = new Date(now).getFullYear() === d.getFullYear();
+  const months = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
+  return d.getDate() + ' ' + months[d.getMonth()] + (same ? '' : ' ' + d.getFullYear());
+}
+
+export function compactNumber(n) {
+  const v = Number(n) || 0;
+  if (v < 1000) return String(v);
+  if (v < 1e6) return (v / 1000).toFixed(v < 1e4 ? 1 : 0).replace(/\.0$/, '').replace('.', ',') + ' тыс.';
+  return (v / 1e6).toFixed(1).replace(/\.0$/, '').replace('.', ',') + ' млн';
+}
+
+export function appMain() {
+  const $ = id => document.getElementById(id);
+  const root = $('app');
+  function h(tag, attrs, ...children) {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (v === undefined || v === null || v === false) continue;
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const c of children.flat()) if (c !== null && c !== undefined && c !== false) el.append(c instanceof Node ? c : String(c));
+    return el;
+  }
+  const state = { account: null, view: null, video: null, transcript: null, comments: null, replyTo: null };
+  const store = {
+    get(key, fallback) { try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : fallback; } catch { return fallback; } },
+    set(key, value) { try { localStorage.setItem(key, JSON.stringify(value)); } catch {} }
+  };
+  const recent = () => store.get('axr.recent', []);
+  function remember(video) {
+    if (!video?.id) return;
+    const list = recent().filter(v => v.id !== video.id);
+    list.unshift({ id: video.id, title: video.title || '', channel: video.channel || '', at: Date.now() });
+    store.set('axr.recent', list.slice(0, 60));
+  }
+  function forget(id) { store.set('axr.recent', recent().filter(v => v.id !== id)); }
+
+  let toastTimer;
+  function toast(text) {
+    const el = $('toast');
+    el.textContent = text; el.hidden = false; el.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.classList.remove('show'); setTimeout(() => { el.hidden = true; }, 250); }, 2200);
+  }
+  async function copyText(text) {
+    try { await navigator.clipboard.writeText(text); return true; } catch {}
+    const area = h('textarea', { class: 'clip', readonly: true });
+    area.value = text; document.body.append(area); area.select(); area.setSelectionRange(0, text.length);
+    let ok = false; try { ok = document.execCommand('copy'); } catch {}
+    area.remove(); return ok;
+  }
+  async function api(path, options) {
+    const r = await fetch(path, { credentials: 'same-origin', cache: 'no-store', ...options });
+    let data = {}; try { data = await r.json(); } catch {}
+    return { ok: r.ok, status: r.status, data };
+  }
+  function postForm(action) {
+    const form = h('form', { method: 'POST', action });
+    document.body.append(form); form.submit();
+  }
+  function signIn() {
+    try { sessionStorage.setItem('axr.return', location.hash || ''); } catch {}
+    postForm('/oauth/google/start?recommendations=1');
+  }
+  function signOut() { postForm('/oauth/google/logout'); }
+  async function loadAccount() {
+    const r = await api('/api/account');
+    state.account = r.ok ? r.data : { signedIn: false, configured: r.data?.configured !== false };
+    renderAccountButton();
+    return state.account;
+  }
+  const thumb = id => 'https://i.ytimg.com/vi/' + id + '/mqdefault.jpg';
+  function hideBroken(e) { e.target.classList.add('broken'); }
+
+  // ---------- Header ----------
+  function renderAccountButton() {
+    const btn = $('account');
+    btn.textContent = '';
+    const a = state.account;
+    if (a?.signedIn) { btn.append(h('span', { class: 'avatar small', text: (a.name || '?').trim().charAt(0).toUpperCase() })); btn.setAttribute('aria-label', 'Аккаунт: ' + (a.name || '')); }
+    else { btn.append(h('span', { class: 'signin', text: 'Войти' })); btn.setAttribute('aria-label', 'Войти через Google'); }
+  }
+  $('account').addEventListener('click', () => {
+    const a = state.account;
+    if (!a?.signedIn) return signIn();
+    openSheet(h('div', { class: 'sheet-body' },
+      h('div', { class: 'sheet-title', text: a.name || 'Аккаунт YouTube' }),
+      h('p', { class: 'muted', text: a.recommendationsAuthorized ? 'Можно читать и писать комментарии от вашего имени.' : 'Комментарии только для чтения. Чтобы отвечать, войдите заново и разрешите комментарии.' }),
+      a.recommendationsAuthorized ? null : h('button', { class: 'btn primary wide', onclick: signIn, text: 'Разрешить комментарии' }),
+      h('button', { class: 'btn wide', onclick: signOut, text: 'Выйти' })));
   });
+  function openSheet(content) {
+    const sheet = $('sheet');
+    sheet.textContent = '';
+    sheet.append(h('div', { class: 'sheet-scrim', onclick: closeSheet }), h('div', { class: 'sheet-panel', role: 'dialog' }, h('div', { class: 'grabber' }), content));
+    sheet.hidden = false;
+  }
+  function closeSheet() { $('sheet').hidden = true; $('sheet').textContent = ''; }
+
+  // ---------- Home ----------
+  function videoRow(v, extra) {
+    return h('a', { class: 'row', href: '#v=' + v.id, onclick: () => { state.video = { id: v.id, title: v.title, channel: v.channel }; } },
+      h('div', { class: 'row-thumb' }, h('img', { src: v.thumbnail || thumb(v.id), alt: '', loading: 'lazy', onerror: hideBroken }), v.duration ? h('span', { class: 'badge', text: v.duration }) : null),
+      h('div', { class: 'row-text' }, h('div', { class: 'row-title', text: v.title || v.id }),
+        h('div', { class: 'row-meta', text: [v.channel, v.views, v.published].filter(Boolean).join(' · ') })),
+      extra || null);
+  }
+  function renderHome() {
+    state.view = 'home';
+    document.title = 'AxrTube';
+    $('back').hidden = true; $('title').textContent = 'AxrTube';
+    $('composer').hidden = true;
+    const input = h('input', { id: 'q', type: 'search', enterkeyhint: 'search', autocomplete: 'off', placeholder: 'Ссылка на ролик или поиск', 'aria-label': 'Ссылка на ролик или поиск' });
+    const suggest = h('div', { class: 'suggest', hidden: true });
+    const results = h('div', { class: 'list' });
+    const pasteBtn = h('button', { type: 'button', class: 'btn', text: 'Вставить ссылку', onclick: async () => {
+      try { const t = await navigator.clipboard.readText(); const id = videoIdFrom(t); if (id) { location.hash = 'v=' + id; return; } input.value = t; toast('В буфере нет ссылки на ролик'); }
+      catch { input.focus(); toast('Вставьте ссылку в поле'); }
+    } });
+    async function search(q) {
+      suggest.hidden = true;
+      const id = videoIdFrom(q);
+      if (id) { location.hash = 'v=' + id; return; }
+      if (!q.trim()) return;
+      results.textContent = ''; results.append(...skeletonRows(4));
+      const r = await api('/api/catalog?' + new URLSearchParams({ q: q.trim() }));
+      results.textContent = '';
+      if (!r.ok) { results.append(errorBox(r.data?.error || 'Поиск не удался', () => search(q))); return; }
+      const videos = (r.data.videos || []).filter(v => !v.isShort);
+      if (!videos.length) { results.append(h('p', { class: 'empty', text: 'Ничего не нашлось' })); return; }
+      results.append(h('div', { class: 'section-title', text: 'Результаты' }), ...videos.map(v => videoRow(v)));
+    }
+    let suggestTimer, suggestSeq = 0;
+    input.addEventListener('input', () => {
+      clearTimeout(suggestTimer);
+      const q = input.value.trim();
+      if (!q || videoIdFrom(q)) { suggest.hidden = true; return; }
+      suggestTimer = setTimeout(async () => {
+        const seq = ++suggestSeq;
+        const r = await api('/api/suggest?' + new URLSearchParams({ q }));
+        if (seq !== suggestSeq || input.value.trim() !== q) return;
+        const items = r.data?.suggestions || [];
+        suggest.textContent = '';
+        items.forEach(s => suggest.append(h('button', { type: 'button', class: 'suggest-item', text: s, onclick: () => { input.value = s; search(s); } })));
+        suggest.hidden = !items.length;
+      }, 180);
+    });
+    const form = h('form', { class: 'search', onsubmit: e => { e.preventDefault(); input.blur(); search(input.value); } },
+      h('div', { class: 'search-box' }, input, h('button', { class: 'btn primary', type: 'submit', text: 'Найти' })), suggest);
+    const list = recent();
+    const recentBox = h('div', { class: 'list' });
+    if (list.length) {
+      recentBox.append(h('div', { class: 'section-title', text: 'Недавние' }));
+      for (const v of list) {
+        const row = videoRow(v, h('button', { class: 'icon-btn', 'aria-label': 'Убрать из недавних', text: '×', onclick: e => { e.preventDefault(); e.stopPropagation(); forget(v.id); row.remove(); } }));
+        recentBox.append(row);
+      }
+    }
+    const hero = h('div', { class: 'hero' },
+      h('h1', { text: 'Стенограммы и обсуждения' }),
+      h('p', { class: 'muted', text: 'Вставьте ссылку на ролик YouTube или найдите его. Полный текст копируется одной кнопкой, а комментарии читаются как лента.' }));
+    $('main').textContent = '';
+    $('main').append(hero, form, h('div', { class: 'actions' }, pasteBtn), results, recentBox);
+  }
+  function skeletonRows(n) { return Array.from({ length: n }, () => h('div', { class: 'row skeleton' }, h('div', { class: 'row-thumb' }), h('div', { class: 'row-text' }, h('div', { class: 'line' }), h('div', { class: 'line short' })))); }
+  function errorBox(text, retry) { return h('div', { class: 'error' }, h('p', { text }), retry ? h('button', { class: 'btn', text: 'Повторить', onclick: retry }) : null); }
+
+  // ---------- Video ----------
+  function renderVideo(id, tab) {
+    const same = state.view === 'video' && state.video?.id === id;
+    state.view = 'video';
+    if (!same) { state.video = state.video?.id === id ? state.video : { id }; state.transcript = null; state.comments = null; state.replyTo = null; }
+    $('back').hidden = false;
+    $('title').textContent = state.video.title || 'Ролик';
+    const header = h('div', { class: 'video-head' },
+      h('a', { class: 'video-thumb', href: 'https://www.youtube.com/watch?v=' + id, target: '_blank', rel: 'noopener' }, h('img', { src: thumb(id), alt: '', onerror: hideBroken }), h('span', { class: 'play', text: '▶' })),
+      h('div', { class: 'video-text' }, h('div', { class: 'video-title', id: 'vtitle', text: state.video.title || 'Загрузка…' }), h('div', { class: 'muted', id: 'vchannel', text: state.video.channel || '' })));
+    const tabs = h('div', { class: 'tabs', role: 'tablist' },
+      h('a', { class: 'tab' + (tab !== 'comments' ? ' active' : ''), href: '#v=' + id, role: 'tab', text: 'Стенограмма' }),
+      h('a', { class: 'tab' + (tab === 'comments' ? ' active' : ''), href: '#v=' + id + '&tab=comments', role: 'tab', id: 'tabc', text: state.comments?.total ? 'Обсуждение · ' + compactNumber(state.comments.total) : 'Обсуждение' }));
+    const pane = h('div', { class: 'pane', id: 'pane' });
+    $('main').textContent = '';
+    $('main').append(header, tabs, pane);
+    if (tab === 'comments') showComments(id); else showTranscript(id);
+  }
+  function setVideoMeta(meta) {
+    if (!state.video || meta.id && meta.id !== state.video.id) return;
+    if (meta.title) state.video.title = meta.title;
+    if (meta.channel) state.video.channel = meta.channel;
+    const t = $('vtitle'), c = $('vchannel');
+    if (t) t.textContent = state.video.title || '';
+    if (c) c.textContent = state.video.channel || '';
+    $('title').textContent = state.video.title || 'Ролик';
+    document.title = (state.video.title || 'Ролик') + ' · AxrTube';
+    remember(state.video);
+  }
+  async function loadMeta(id) {
+    if (state.video?.title && state.video?.channel) { remember(state.video); return; }
+    const r = await api('/api/video?id=' + id);
+    if (r.ok) setVideoMeta({ id, title: r.data.title, channel: r.data.channel });
+  }
+
+  // ---------- Transcript ----------
+  async function showTranscript(id, lang) {
+    $('composer').hidden = true;
+    const pane = $('pane'); pane.textContent = '';
+    loadMeta(id);
+    if (!state.transcript || state.transcript.id !== id || (lang && state.transcript.language !== lang)) {
+      pane.append(h('div', { class: 'loading' }, h('div', { class: 'spinner' }), h('p', { class: 'muted', text: 'Получаем полную стенограмму…' })));
+      const r = await api('/api/transcript?' + new URLSearchParams({ id, ...(lang ? { lang } : {}) }));
+      if (state.video?.id !== id || state.view !== 'video') return;
+      if (!r.ok) {
+        pane.textContent = '';
+        const text = r.data?.code === 'TRANSCRIPT_UNAVAILABLE' ? 'У этого ролика нет субтитров, поэтому стенограммы нет.' : r.data?.code === 'TRANSCRIPT_TOO_LARGE' ? 'Стенограмма слишком большая.' : 'YouTube сейчас не отдал субтитры. Попробуйте ещё раз через минуту.';
+        pane.append(errorBox(text, r.data?.code === 'TRANSCRIPT_UNAVAILABLE' ? null : () => showTranscript(id, lang)));
+        return;
+      }
+      state.transcript = r.data;
+      setVideoMeta({ id, title: r.data.title, channel: r.data.channel });
+    }
+    if (!location.hash.includes('tab=comments')) renderTranscript();
+  }
+  function renderTranscript() {
+    const data = state.transcript, pane = $('pane');
+    pane.textContent = '';
+    const plain = transcriptText(data, false);
+    const words = countWords((data.sections || []).flatMap(s => s.paragraphs.map(p => p.text)).join(' '));
+    const find = h('input', { type: 'search', class: 'find', placeholder: 'Поиск по тексту', 'aria-label': 'Поиск по тексту' });
+    const counter = h('span', { class: 'muted find-count' });
+    const langs = data.languages || [];
+    const picker = langs.length > 1 ? h('select', { class: 'lang', 'aria-label': 'Язык субтитров', onchange: e => showTranscript(data.id, e.target.value) },
+      langs.map(l => { const o = h('option', { value: l.code, text: l.name + (l.auto ? ' (авто)' : '') }); if (l.code === data.language) o.selected = true; return o; })) : null;
+    const bar = h('div', { class: 'toolbar' },
+      h('button', { class: 'btn primary', onclick: async () => { toast(await copyText(plain) ? 'Скопировано: ' + words.toLocaleString('ru-RU') + ' слов' : 'Не удалось скопировать'); }, text: 'Копировать всё' }),
+      h('button', { class: 'btn', onclick: async () => { toast(await copyText(transcriptText(data, true)) ? 'Скопировано с таймкодами' : 'Не удалось скопировать'); }, text: 'С таймкодами' }),
+      h('button', { class: 'btn icon', 'aria-label': 'Поделиться', text: '↗', onclick: async () => {
+        if (navigator.share) { try { await navigator.share({ title: data.title, text: plain }); } catch {} }
+        else toast(await copyText(plain) ? 'Скопировано' : 'Не удалось скопировать');
+      } }));
+    const info = h('div', { class: 'tinfo muted', text: [data.languageName && (data.languageName + (data.autoGenerated ? ', автосубтитры' : '')), words.toLocaleString('ru-RU') + ' слов', data.duration ? formatClock(data.duration) : ''].filter(Boolean).join(' · ') });
+    const body = h('div', { class: 'tbody' });
+    const paragraphs = [];
+    for (const section of data.sections || []) for (const p of section.paragraphs || []) {
+      const textEl = h('p', { class: 'ptext', text: p.text });
+      paragraphs.push({ p, textEl });
+      body.append(h('div', { class: 'para' },
+        h('button', { class: 'time', text: formatClock(p.start), 'aria-label': 'Скопировать ссылку на ' + formatClock(p.start), onclick: async () => {
+          toast(await copyText('https://youtu.be/' + data.id + '?t=' + Math.floor(p.start)) ? 'Ссылка на ' + formatClock(p.start) + ' скопирована' : 'Не удалось скопировать');
+        } }), textEl));
+    }
+    let findTimer;
+    find.addEventListener('input', () => { clearTimeout(findTimer); findTimer = setTimeout(() => highlight(find.value.trim()), 120); });
+    function highlight(q) {
+      let hits = 0, first = null;
+      const lower = q.toLocaleLowerCase('ru');
+      for (const { p, textEl } of paragraphs) {
+        textEl.textContent = '';
+        if (!q) { textEl.textContent = p.text; textEl.parentElement.hidden = false; continue; }
+        const src = p.text, low = src.toLocaleLowerCase('ru');
+        let at = 0, i = low.indexOf(lower);
+        if (i < 0) { textEl.textContent = src; textEl.parentElement.hidden = true; continue; }
+        textEl.parentElement.hidden = false;
+        while (i >= 0) { textEl.append(src.slice(at, i), h('mark', { text: src.slice(i, i + q.length) })); hits++; at = i + q.length; i = low.indexOf(lower, at); }
+        textEl.append(src.slice(at));
+        first ||= textEl;
+      }
+      counter.textContent = q ? (hits ? hits + ' совп.' : 'нет совпадений') : '';
+    }
+    pane.append(h('div', { class: 'sticky' }, bar, h('div', { class: 'findrow' }, find, counter, picker)), info, body);
+  }
+
+  // ---------- Comments ----------
+  function avatar(c) {
+    if (c.avatar) return h('img', { class: 'avatar', src: c.avatar, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer', onerror: e => e.target.replaceWith(h('span', { class: 'avatar', text: (c.author || '?').replace(/^@/, '').charAt(0).toUpperCase() })) });
+    return h('span', { class: 'avatar', text: (c.author || '?').replace(/^@/, '').charAt(0).toUpperCase() });
+  }
+  function commentText(text) {
+    const el = h('div', { class: 'ctext', text });
+    if (text.length > 420 || text.split('\n').length > 7) {
+      el.classList.add('clamped');
+      const more = h('button', { class: 'more', text: 'Ещё', onclick: () => { el.classList.remove('clamped'); more.remove(); } });
+      return [el, more];
+    }
+    return [el];
+  }
+  function commentCard(c, thread) {
+    const card = h('article', { class: 'comment' + (c.parentId ? ' reply' : ''), 'data-id': c.id },
+      avatar(c),
+      h('div', { class: 'cbody' },
+        h('div', { class: 'chead' }, h('span', { class: 'cname', text: c.author || 'Без имени' }), h('span', { class: 'muted', text: ' · ' + relativeTime(c.published) + (c.edited ? ' · изм.' : '') })),
+        commentText(c.text),
+        h('div', { class: 'cactions' },
+          (thread ? thread.canReply : true) ? h('button', { class: 'link', text: 'Ответить', onclick: () => startReply(thread || c, c) }) : null,
+          c.likes ? h('span', { class: 'muted likes', text: '♥ ' + compactNumber(c.likes) }) : null,
+          h('button', { class: 'link', text: 'Копировать', onclick: async () => toast(await copyText(c.text) ? 'Комментарий скопирован' : 'Не удалось скопировать') }))));
+    return card;
+  }
+  function threadView(t) {
+    const box = h('div', { class: 'thread', 'data-thread': t.id });
+    box.append(commentCard(t, t));
+    const replies = h('div', { class: 'replies' });
+    t.replies.forEach(r => replies.append(commentCard(r, t)));
+    box.append(replies);
+    if (t.replyCount > t.replies.length) {
+      const btn = h('button', { class: 'link toggle', text: 'Показать все ответы (' + t.replyCount + ')' });
+      btn.addEventListener('click', async () => {
+        btn.disabled = true; btn.textContent = 'Загрузка…';
+        const all = []; let page = '';
+        do {
+          const r = await api('/api/account/replies?' + new URLSearchParams({ parent: t.id, ...(page ? { page } : {}) }));
+          if (!r.ok) { btn.disabled = false; btn.textContent = 'Не удалось загрузить. Повторить'; return; }
+          all.push(...r.data.items); page = r.data.nextPage || '';
+        } while (page && all.length < 500);
+        t.replies = all.sort((a, b) => Date.parse(a.published) - Date.parse(b.published));
+        replies.textContent = ''; t.replies.forEach(r => replies.append(commentCard(r, t)));
+        btn.remove();
+      });
+      box.append(btn);
+    }
+    return box;
+  }
+  async function showComments(id) {
+    const pane = $('pane'); pane.textContent = '';
+    loadMeta(id);
+    if (!state.account) await loadAccount();
+    if (state.video?.id !== id || state.view !== 'video') return;
+    if (!state.account?.signedIn) {
+      $('composer').hidden = true;
+      pane.append(h('div', { class: 'gate' },
+        h('p', { text: 'Обсуждение читается и пишется через ваш аккаунт YouTube.' }),
+        h('button', { class: 'btn primary', text: 'Войти через Google', onclick: signIn })));
+      return;
+    }
+    if (!state.comments || state.comments.id !== id) state.comments = { id, order: 'relevance', items: [], nextPage: null, total: null, loaded: false };
+    renderComments();
+    if (!state.comments.loaded) loadComments(false);
+  }
+  function renderComments() {
+    const pane = $('pane'), c = state.comments;
+    pane.textContent = '';
+    const seg = h('div', { class: 'segmented' },
+      [['relevance', 'Популярные'], ['time', 'Новые']].map(([value, label]) => h('button', { class: c.order === value ? 'on' : '', text: label, onclick: () => {
+        if (c.order === value) return; c.order = value; c.items = []; c.nextPage = null; c.loaded = false; renderComments(); loadComments(false);
+      } })));
+    const list = h('div', { class: 'threads', id: 'threads' });
+    c.items.forEach(t => list.append(threadView(t)));
+    const foot = h('div', { class: 'foot', id: 'cfoot' });
+    pane.append(h('div', { class: 'sticky' }, seg), list, foot);
+    renderFoot();
+    $('composer').hidden = false;
+    updateComposer();
+  }
+  function renderFoot() {
+    const foot = $('cfoot'), c = state.comments; if (!foot) return;
+    foot.textContent = '';
+    if (c.error) foot.append(errorBox(c.error, () => { c.error = null; loadComments(c.items.length > 0); }));
+    else if (!c.loaded) foot.append(h('div', { class: 'loading' }, h('div', { class: 'spinner' })));
+    else if (c.nextPage) { const more = h('button', { class: 'btn wide', text: 'Загрузить ещё', onclick: () => loadComments(true) }); foot.append(more); observeMore(more); }
+    else if (!c.items.length) foot.append(h('p', { class: 'empty', text: 'Комментариев пока нет. Будьте первым.' }));
+    else foot.append(h('p', { class: 'empty', text: 'Это все комментарии' }));
+  }
+  let moreObserver;
+  function observeMore(el) {
+    moreObserver?.disconnect();
+    if (!('IntersectionObserver' in window)) return;
+    moreObserver = new IntersectionObserver(entries => { if (entries.some(e => e.isIntersecting)) { moreObserver.disconnect(); loadComments(true); } }, { rootMargin: '600px' });
+    moreObserver.observe(el);
+  }
+  async function loadComments(more) {
+    const c = state.comments, id = c.id, order = c.order;
+    if (c.busy) return; c.busy = true; c.loaded = more ? c.loaded : false; renderFoot();
+    const r = await api('/api/account/comments?' + new URLSearchParams({ id, order, ...(more && c.nextPage ? { page: c.nextPage } : {}) }));
+    c.busy = false;
+    if (state.comments !== c || c.order !== order) return;
+    if (!r.ok) {
+      c.loaded = true;
+      if (r.status === 401) { await loadAccount(); if (!state.account?.signedIn) return showComments(id); }
+      c.error = r.data?.error || 'Не удалось загрузить обсуждение'; renderFoot(); return;
+    }
+    c.loaded = true; c.error = null;
+    if (r.data.total) { c.total = r.data.total; const tab = $('tabc'); if (tab) tab.textContent = 'Обсуждение · ' + compactNumber(c.total); }
+    const list = $('threads');
+    for (const t of r.data.items) { if (c.items.some(x => x.id === t.id)) continue; c.items.push(t); list?.append(threadView(t)); }
+    c.nextPage = r.data.nextPage; renderFoot();
+  }
+
+  // ---------- Composer ----------
+  const field = $('field'), send = $('send');
+  function startReply(thread, target) {
+    state.replyTo = { threadId: thread.id, author: target.author, mention: target.parentId && target.authorChannelId !== thread.authorChannelId ? target.author : '' };
+    updateComposer();
+    if (state.replyTo.mention && !field.value.startsWith(state.replyTo.mention)) field.value = state.replyTo.mention + ' ' + field.value;
+    field.focus(); autosize();
+  }
+  function updateComposer() {
+    const chip = $('replychip');
+    chip.textContent = '';
+    if (state.replyTo) {
+      chip.append(h('span', { text: 'Ответ для ' + (state.replyTo.author || 'комментария') }), h('button', { class: 'icon-btn', 'aria-label': 'Отменить ответ', text: '×', onclick: () => { state.replyTo = null; updateComposer(); } }));
+      chip.hidden = false; field.placeholder = 'Ваш ответ';
+    } else { chip.hidden = true; field.placeholder = 'Написать комментарий'; }
+    send.disabled = !field.value.trim();
+  }
+  function autosize() { field.style.height = 'auto'; field.style.height = Math.min(field.scrollHeight, 160) + 'px'; send.disabled = !field.value.trim(); }
+  field.addEventListener('input', autosize);
+  field.addEventListener('keydown', e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); $('composer').requestSubmit(); } });
+  $('composer').addEventListener('submit', async e => {
+    e.preventDefault();
+    const text = field.value.trim(), c = state.comments;
+    if (!text || !c) return;
+    const parent = state.replyTo?.threadId || null;
+    send.disabled = true; field.disabled = true;
+    const body = JSON.stringify(parent ? { parent, text } : { video: c.id, text });
+    const post = () => api('/api/account/comment', { method: 'POST', headers: { 'content-type': 'application/json' }, body });
+    let r = await post();
+    if (r.status === 401) { await loadAccount(); if (state.account?.signedIn) r = await post(); }
+    field.disabled = false;
+    if (!r.ok) {
+      send.disabled = false;
+      if (r.data?.code === 'COMMENTS_SCOPE') openSheet(h('div', { class: 'sheet-body' }, h('div', { class: 'sheet-title', text: 'Нужно разрешение' }), h('p', { class: 'muted', text: 'Чтобы публиковать комментарии, войдите заново и разрешите приложению управлять комментариями.' }), h('button', { class: 'btn primary wide', text: 'Войти заново', onclick: signIn })));
+      else toast(r.data?.error || 'Не удалось отправить');
+      return;
+    }
+    field.value = ''; autosize();
+    if (parent) {
+      const thread = c.items.find(t => t.id === parent);
+      if (thread) { thread.replies.push(r.data.item); thread.replyCount++; }
+      const box = document.querySelector('[data-thread="' + CSS.escape(parent) + '"] .replies');
+      const card = box && thread ? commentCard(r.data.item, thread) : null;
+      if (card) { box.append(card); card.classList.add('fresh'); card.scrollIntoView({ block: 'center', behavior: 'smooth' }); }
+    } else {
+      c.items.unshift(r.data.item);
+      const view = threadView(r.data.item); view.classList.add('fresh');
+      $('threads')?.prepend(view); view.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+    state.replyTo = null; updateComposer();
+    toast('Опубликовано');
+  });
+
+  // ---------- Router ----------
+  function route() {
+    closeSheet();
+    const hash = location.hash.slice(1), params = new URLSearchParams(hash);
+    const id = params.get('v');
+    if (id && /^[\w-]{11}$/.test(id)) renderVideo(id, params.get('tab'));
+    else renderHome();
+    window.scrollTo(0, 0);
+  }
+  let inApp = false;
+  $('back').addEventListener('click', () => { if (inApp) history.back(); else location.hash = ''; });
+  window.addEventListener('hashchange', () => { inApp = true; route(); });
+  const query = new URLSearchParams(location.search);
+  if (query.has('auth') || location.hash === '#you') {
+    let back = ''; try { back = sessionStorage.getItem('axr.return') || ''; sessionStorage.removeItem('axr.return'); } catch {}
+    const auth = query.get('auth');
+    history.replaceState(null, '', '/' + back);
+    setTimeout(() => toast(auth === 'denied' ? 'Вход отменён' : auth === 'failed' ? 'Вход не удался' : auth === 'partial' ? 'Вход выполнен без права на комментарии' : 'Вы вошли'), 300);
+  }
+  loadAccount();
+  route();
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
-export function installStandaloneUI(win,doc,nav){
-  const active=!!nav.standalone||win.matchMedia('(display-mode: standalone)').matches;
-  if(!active)return false;
-  doc.documentElement.classList.add('axr-standalone');
-  const viewport=doc.querySelector('meta[name="viewport"]');
-  if(viewport)viewport.setAttribute('content','width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover');
-  for(const name of ['gesturestart','gesturechange','gestureend'])doc.addEventListener(name,e=>{if(e.cancelable)e.preventDefault()},{passive:false});
-  doc.addEventListener('touchmove',e=>{if(e.touches.length>1&&e.cancelable)e.preventDefault()},{passive:false});
-  return true;
-}
-export function installPullRefresh(win,doc,canStart,refresh,translate=value=>value){
-  let start=null,distance=0,running=false;
-  const indicator=doc.createElement('div');indicator.id='pull-refresh';indicator.hidden=true;indicator.setAttribute('role','status');indicator.setAttribute('aria-live','polite');
-  indicator.style.cssText='position:fixed;top:calc(60px + env(safe-area-inset-top,0px));left:50%;transform:translateX(-50%);z-index:45;background:#303030;color:#fff;border-radius:24px;padding:12px 18px;font:14px system-ui;pointer-events:none;max-width:90%;text-align:center';doc.body.append(indicator);
-  const reset=()=>{start=null;distance=0;if(!running)indicator.hidden=true};
-  doc.addEventListener('touchstart',e=>{reset();if(running||!canStart()||win.scrollY>0||e.touches.length!==1||e.target.closest('input,textarea,select,video,audio,#watch,.chips,nav'))return;start={x:e.touches[0].clientX,y:e.touches[0].clientY}},{passive:true});
-  doc.addEventListener('touchmove',e=>{
-    if(!start)return;if(!canStart()||e.touches.length!==1||win.scrollY>0){reset();return}
-    const dx=Math.abs(e.touches[0].clientX-start.x),dy=e.touches[0].clientY-start.y;
-    if(dy<0||dx>Math.max(12,dy)){reset();return}
-    if(dy>0&&e.cancelable)e.preventDefault();distance=dy;
-    if(dy>12){indicator.hidden=false;indicator.textContent=translate(dy>=84?'Отпустите, чтобы обновить':'Потяните, чтобы обновить')}
-  },{passive:false});
-  doc.addEventListener('touchend',async e=>{const ready=!!start&&distance>=84&&canStart();reset();if(!ready||running)return;if(e.cancelable)e.preventDefault();running=true;indicator.hidden=false;indicator.textContent=translate('Обновляем подборку...');try{await refresh()}finally{running=false;indicator.hidden=true}},{passive:false});
-  doc.addEventListener('touchcancel',reset,{passive:true});
-  return {cancel:reset};
-}
-export const appClient = 'const sponsorSkipTarget='+sponsorSkipTarget.toString()+';const visibleVideos='+visibleVideos.toString()+';const orderedChannels='+orderedChannels.toString()+';const installStandaloneUI='+installStandaloneUI.toString()+';const installPullRefresh='+installPullRefresh.toString()+';'+String.raw`
-(()=>{'use strict';
-const i18n=window.axrI18n,t=i18n?i18n.t:value=>value;i18n?.translateStatic();
-installStandaloneUI(window,document,navigator);
-const el=id=>document.getElementById(id),player=window.axrPlayer;
-const storeKey='axrtube.pwa.library.v1';
-const cleanVideo=v=>v&&/^[\w-]{11}$/.test(v.id||'')?{id:v.id,title:String(v.title||t('Видео')).slice(0,500),channel:String(v.channel||'').slice(0,200),channelId:/^UC[\w-]{22}$/.test(v.channelId||'')?v.channelId:null,thumbnail:'https://i.ytimg.com/vi/'+v.id+'/hqdefault.jpg',duration:String(v.duration||'').slice(0,30),views:String(v.views||'').slice(0,100),published:String(v.published||'').slice(0,100),isShort:!!v.isShort,position:Number.isFinite(v.position)?Math.max(0,v.position):0}:null;
-let library={history:[],later:[],liked:[],queue:[],subscriptions:[],pinnedChannels:[],hideShorts:false,mode:'video',autoplay:false,sponsorBlock:true};
-let storageOK=true;
-try{const d=JSON.parse(localStorage.getItem(storeKey)||'null');if(d&&typeof d==='object'){
-for(const key of ['history','later','liked','queue'])library[key]=(Array.isArray(d[key])?d[key]:[]).map(cleanVideo).filter(Boolean).slice(0,300);
-library.subscriptions=(Array.isArray(d.subscriptions)?d.subscriptions:[]).filter(c=>/^UC[\w-]{22}$/.test(c.id||'')).map(c=>({id:c.id,name:String(c.name||t('Канал')).slice(0,200)})).slice(0,200);
-library.pinnedChannels=[...new Set((Array.isArray(d.pinnedChannels)?d.pinnedChannels:[]).filter(id=>/^UC[\w-]{22}$/.test(id||'')))].slice(0,7500);library.hideShorts=d.hideShorts===true;
-library.mode=d.mode==='audio'?'audio':'video';library.autoplay=d.autoplay===true;library.sponsorBlock=d.sponsorBlock!==false;
-}}catch{storageOK=false;}
-const state={current:null,route:'',videos:[],continuation:null,request:0,controller:null,relatedRequest:0,query:'',lastSaved:0,segments:[]};
-const transcriptUI=window.axrCreateTranscript?.({doc:document,win:window,t,language:()=>i18n?.locale||'ru'});
-let account={configured:false,signedIn:false,loading:true};
-let accountCheck=null,accountCheckedAt=0;
-async function refreshAccount(){if(accountCheck)return accountCheck;accountCheck=(async()=>{const before=JSON.stringify(account);try{const r=await fetch('/api/account',{cache:'no-store',credentials:'same-origin'});const data=await r.json();if(!r.ok&&!(r.status===503&&data.configured===false)&&!(r.status===401&&data.signedIn===false))throw Error(data.error||t('Не удалось проверить аккаунт'));account={...data,loading:false}}catch{account={...account,loading:false,error:t('Не удалось проверить аккаунт. Повторите проверку.')}}accountCheckedAt=Date.now();if(before!==JSON.stringify(account)){if(state.route==='you')you();else if(state.route==='subscriptions')subscriptions();else if(state.route==='home')home();else if(state.route==='settings')settings()}})();try{await accountCheck}finally{accountCheck=null}}
-function accountAction(path){if(state.current&&!confirm(t('Для входа или выхода нужно открыть новую страницу. Текущий ролик будет остановлен. Продолжить?')))return;if(state.current)closePlayer();const form=node('form');form.method='POST';form.action=path;document.body.append(form);form.submit()}
-function persist(){try{localStorage.setItem(storeKey,JSON.stringify(library));return true}catch{storageOK=false;toast(t('Хранилище недоступно. Изменения останутся только до закрытия.'));return false}}
-let toastTimer;function toast(message){el('toast').textContent=message;el('toast').hidden=false;clearTimeout(toastTimer);toastTimer=setTimeout(()=>el('toast').hidden=true,3500)}
-function node(tag,cls,text){const n=document.createElement(tag);if(cls)n.className=cls;if(text!==undefined)n.textContent=text;return n}
-function button(text,fn,cls='pill'){const b=node('button',cls,text);b.type='button';b.onclick=fn;return b}
-function empty(title,text,action){const box=node('div','empty');box.append(node('h2','',title),node('p','',text));if(action)box.append(action);return box}
-function videoId(raw){if(/^[\w-]{11}$/.test(raw))return raw;try{const u=new URL(raw);if(!['youtube.com','www.youtube.com','m.youtube.com','youtu.be'].includes(u.hostname)||u.protocol!=='https:')return null;const id=u.hostname==='youtu.be'?u.pathname.slice(1):u.searchParams.get('v')||u.pathname.split('/').pop();return /^[\w-]{11}$/.test(id||'')?id:null}catch{return null}}
-function has(key,id){return library[key].some(v=>v.id===id)}
-function toggle(key,v){library[key]=has(key,v.id)?library[key].filter(i=>i.id!==v.id):[cleanVideo(v),...library[key]].slice(0,300);persist();syncWatch();toast(has(key,v.id)?t('Сохранено на этом устройстве'):t('Удалено из списка'))}
-function enqueue(v){if(has('queue',v.id)){toast(t('Ролик уже в очереди'));return}library.queue.push(cleanVideo(v));library.queue=library.queue.slice(0,300);persist();renderQueue();toast(t('Добавлено в очередь'))}
-function card(v){const article=node('article','video-card');article.dataset.short=String(v.isShort);const imageButton=button('',()=>openVideo(v),'thumbnail-button');imageButton.setAttribute('aria-label',v.title);
-const img=node('img');img.src=v.thumbnail;img.alt='';img.loading='lazy';img.decoding='async';imageButton.append(img);if(v.duration)imageButton.append(node('span','duration',v.duration));
-const details=node('div','card-details');const avatar=node('span','avatar',(v.channel||'A').slice(0,1));avatar.setAttribute('aria-hidden','true');const copy=node('div','card-copy');
-copy.append(button(v.title,()=>openVideo(v),'card-title'));if(v.channel)copy.append(button(v.channel,()=>openChannel(v),'card-channel'));
-copy.append(node('p','card-meta',[v.views,v.published].filter(Boolean).join(' · ')));
-const menu=button('⋮',()=>cardMenu(v),'card-menu');menu.setAttribute('aria-label',t('Действия: ')+v.title);details.append(avatar,copy,menu);article.append(imageButton,details);return article}
-function cardMenu(v){const old=document.getElementById('card-dialog');if(old)old.remove();const dialog=node('dialog');dialog.id='card-dialog';dialog.style.cssText='background:#242424;color:white;border:1px solid #444;border-radius:16px;width:min(90vw,380px);padding:16px';
-dialog.append(node('h3','',v.title),button(has('later',v.id)?t('Убрать из «Смотреть позже»'):t('Смотреть позже'),()=>{toggle('later',v);dialog.close()},'list-row'),button(t('Добавить в очередь'),()=>{enqueue(v);dialog.close()},'list-row'),button(t('Стенограмма'),()=>{dialog.close();transcriptUI?.open(v)},'list-row'),button(t('Открыть канал'),()=>{openChannel(v);dialog.close()},'list-row'),button(t('Закрыть'),()=>dialog.close(),'list-row'));document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove());dialog.showModal()}
-function grid(videos,short=false){const g=node('div','video-grid'+(short?' short-feed':''));for(const v of visibleVideos(videos,library.hideShorts))g.append(card(v));return g}
-function applyShortsPreference(){const tab=document.querySelector('[data-tab="shorts"]');if(tab)tab.hidden=library.hideShorts;document.querySelectorAll('.video-card[data-short="true"]').forEach(card=>{card.hidden=library.hideShorts});if(library.hideShorts&&state.route==='shorts')location.hash='home';renderQueue()}
-function openChannel(v){if(!v.channelId){search(v.channel||v.title);return}location.hash='channel/'+v.channelId+'/'+encodeURIComponent(v.channel||t('Канал'))}
-function syncWatch(){const v=state.current;if(!v)return;el('watch-title').textContent=v.title;el('mini-title').textContent=v.title;el('mini-channel').textContent=v.channel;el('watch-channel').textContent=v.channel||'YouTube';el('watch-meta').textContent=[v.views,v.published].filter(Boolean).join(' · ');
-el('watch-save').textContent=has('later',v.id)?t('Сохранено ✓'):t('Смотреть позже');el('watch-like').textContent=has('liked',v.id)?t('Нравится ✓'):t('Нравится');
-el('subscribe').hidden=!v.channelId;el('subscribe').textContent=library.subscriptions.some(c=>c.id===v.channelId)?t('Вы подписаны'):t('Подписаться');}
-function setPresentation(full){if(!state.current)return;el('watch').hidden=false;el('watch').classList.toggle('minimized',!full);el('video').controls=full;document.body.classList.add('has-player');if(full)el('watch').scrollTop=0;}
-function rememberPosition(force=false){if(!state.current||player.busy)return;const media=player.media;if(!force&&Date.now()-state.lastSaved<5000)return;state.lastSaved=Date.now();const current=library.history.find(v=>v.id===state.current.id);if(current){current.position=Number.isFinite(media.currentTime)?media.currentTime:0;persist()}}
-async function openVideo(raw){const v=cleanVideo(raw);if(!v)return;if(library.hideShorts&&v.isShort){toast(t('Shorts скрыты в настройках'));return}if(player.busy){toast(t('Дождитесь запуска текущего ролика'));return}
-transcriptUI?.close();rememberPosition(true);const prior=library.history.find(i=>i.id===v.id);state.current={...v,position:prior?.position||0};state.segments=[];library.history=[state.current,...library.history.filter(i=>i.id!==v.id)].slice(0,300);persist();syncWatch();setPresentation(true);el('speed').value='1';renderQueue();
-const url=new URL(location.href);url.searchParams.set('video',v.id);url.searchParams.set('mode',el('mode').value);history.replaceState(null,'',url);
-const relatedKey=++state.relatedRequest;el('related').replaceChildren(node('p','muted-text',t('Загружаем похожие видео...')));
-// The existing engine is the sole owner of both media elements. No reparenting.
-const start=player.start(v.id,el('mode').value);
-if(library.sponsorBlock)fetch('/api/sponsor?id='+v.id).then(r=>r.json()).then(d=>{if(relatedKey===state.relatedRequest)state.segments=d.segments||[]}).catch(()=>{});
-fetch('/api/catalog?feed=related&id='+v.id).then(r=>r.json()).then(d=>{if(relatedKey!==state.relatedRequest)return;el('related').replaceChildren(d.videos?.length?grid(d.videos.map(cleanVideo).filter(Boolean)):node('p','muted-text',t('Похожие видео пока недоступны.')))}).catch(()=>{if(relatedKey===state.relatedRequest)el('related').replaceChildren(node('p','muted-text',t('Не удалось загрузить похожие видео.')))});
-await start;}
-function closePlayer(){transcriptUI?.close();rememberPosition(true);player.stop();state.current=null;++state.relatedRequest;el('watch').hidden=true;document.body.classList.remove('has-player');const u=new URL(location.href);u.searchParams.delete('video');u.searchParams.delete('mode');history.replaceState(null,'',u)}
-function renderQueue(){const visible=visibleVideos(library.queue,library.hideShorts);el('queue-count').textContent=visible.length;const list=el('queue-list');list.replaceChildren();for(const v of visible){const row=node('div','queue-item');row.append(button(v.title,()=>{library.queue=library.queue.filter(i=>i.id!==v.id);persist();openVideo(v);renderQueue()},''),button('×',()=>{library.queue=library.queue.filter(i=>i.id!==v.id);persist();renderQueue()},'icon-button'));list.append(row)}if(!visible.length)list.append(node('p','muted-text',t('Добавляйте ролики через меню карточки.')))}
-for(const id of ['video','offlineAudio']){
-el(id).addEventListener('loadedmetadata',()=>{if(!state.current||el(id)!==player.media)return;const m=el(id),p=state.current.position;if(p>3&&Number.isFinite(m.duration)&&p<m.duration-10){try{m.currentTime=p}catch{}}});
-el(id).addEventListener('timeupdate',()=>{if(el(id)!==player.media)return;const media=el(id);if(library.sponsorBlock&&!media.paused){const target=sponsorSkipTarget(state.segments,media.currentTime,media.duration);if(target!==null){try{media.currentTime=target;toast(t('SponsorBlock: интеграция пропущена'))}catch{}}}rememberPosition()});
-el(id).addEventListener('playing',()=>{el('mini-toggle').textContent='Ⅱ';const title=player.title;if(title&&state.current&&state.current.title===state.current.id){state.current.title=title;const h=library.history.find(v=>v.id===state.current.id);if(h)h.title=title;persist();syncWatch()}});
-el(id).addEventListener('pause',()=>{el('mini-toggle').textContent='▶';if(el(id)===player.media)rememberPosition(true)});
-el(id).addEventListener('ended',()=>{if(el(id)!==player.media)return;const current=library.history.find(v=>v.id===state.current?.id);if(current)current.position=0;persist();const next=visibleVideos(library.queue,library.hideShorts)[0];if(library.autoplay&&next){library.queue=library.queue.filter(v=>v.id!==next.id);persist();openVideo(next)}});
-}
-el('minimize').onclick=()=>setPresentation(false);el('expand-player').onclick=()=>setPresentation(true);el('close-player').onclick=closePlayer;el('mini-close').onclick=closePlayer;
-el('watch-info').insertBefore(button(t('Повторить запуск'),()=>state.current&&openVideo(state.current)),el('watch-title'));
-const transcriptButton=button(t('Стенограмма'),()=>state.current&&transcriptUI?.open(state.current));el('watch-save').parentElement.append(transcriptButton);
-el('mini-toggle').onclick=()=>player.toggle();el('watch-save').onclick=()=>state.current&&toggle('later',state.current);el('watch-like').onclick=()=>state.current&&toggle('liked',state.current);el('watch-queue').onclick=()=>state.current&&enqueue(state.current);el('watch-channel').onclick=()=>{if(state.current){setPresentation(false);openChannel(state.current)}};
-el('subscribe').onclick=()=>{const v=state.current;if(!v?.channelId)return;const exists=library.subscriptions.some(c=>c.id===v.channelId);library.subscriptions=exists?library.subscriptions.filter(c=>c.id!==v.channelId):[...library.subscriptions,{id:v.channelId,name:v.channel}];persist();syncWatch();toast(exists?t('Локальная подписка удалена'):t('Канал сохранён на этом устройстве'))};
-el('watch-share').onclick=async()=>{if(!state.current)return;const url='https://www.youtube.com/watch?v='+state.current.id;try{if(navigator.share)await navigator.share({title:state.current.title,url});else{await navigator.clipboard.writeText(url);toast(t('Ссылка скопирована'))}}catch{toast(t('Ссылка: ')+url)}};
-el('mode').value=library.mode;el('mode').onchange=()=>{if(player.busy){el('mode').value=library.mode;toast(t('Дождитесь запуска'));return}library.mode=el('mode').value;persist();if(state.current)openVideo(state.current)};
-el('speed').onchange=()=>player.setRate(Number(el('speed').value));
-el('pip').onclick=async()=>{try{const media=el('video');if(media.hidden){toast(t('PiP доступен только для видео'));return}if(media.requestPictureInPicture)await media.requestPictureInPicture();else if(media.webkitSetPresentationMode)media.webkitSetPresentationMode('picture-in-picture');else toast(t('Этот браузер не поддерживает PiP'))}catch{toast(t('Запустите видео перед включением PiP'))}};
-document.addEventListener('visibilitychange',()=>{if(document.hidden)rememberPosition(true)});window.addEventListener('pagehide',()=>rememberPosition(true));
-async function catalog(params,append=false){const request=++state.request;state.controller?.abort();state.controller=new AbortController();const container=el('content');let loading;
-if(!append){state.videos=[];state.continuation=null;container.replaceChildren();const title=state.route==='shorts'?'Shorts':params.feed==='search'?t('Результаты поиска'):params.feed==='channel'?state.channelTitle||t('Канал'):t('Главная');container.append(node('h1','page-heading',title));if(params.feed==='home'){container.append(node('p','intro',t('Гостевая лента YouTube. Без аккаунта, без локальной пересортировки.')));const chips=node('div','chips');for(const q of [t('Музыка'),t('Наука'),t('Технологии'),t('Новости'),t('Подкасты')])chips.append(button(q,()=>search(q),''));container.append(chips)}}
-loading=node('p','loading',t('Загрузка...'));container.append(loading);
-try{const r=await fetch('/api/catalog?'+new URLSearchParams(params),{signal:state.controller.signal});const d=await r.json();if(request!==state.request)return;if(!r.ok)throw Error(d.error||t('Не удалось загрузить'));
-const seen=new Set(state.videos.map(v=>v.id));const fresh=visibleVideos((d.videos||[]).map(cleanVideo).filter(v=>v&&!seen.has(v.id)),library.hideShorts);state.videos.push(...fresh);state.continuation=d.continuation;loading.remove();container.querySelector('.more')?.remove();
-if(fresh.length)container.append(grid(fresh,state.route==='shorts'));else if(!append)container.append(empty(t('Здесь пока нет видео'),params.feed==='home'?t('YouTube не прислал гостевую главную. Найдите интересную тему или откройте ссылку на ролик.'):t('По этому запросу видео не найдены.'),button(t('Открыть поиск'),showSearch)));
-if(d.continuation)container.append(button(t('Показать ещё'),()=>catalog({...params,continuation:state.continuation},true),'more'));
-}catch(e){if(request!==state.request||e.name==='AbortError')return;loading.replaceWith(empty(t('Лента недоступна'),e.message,button(t('Повторить'),()=>catalog(params,append))))}}
-function search(q){++suggestionKey;const id=videoId(q.trim());el('suggestions').replaceChildren();if(id){hideSearch();openVideo({id,title:id,isShort:/youtube\.com\/shorts\//.test(q)});return}el('query').value=q;location.hash='search/'+encodeURIComponent(q)}
-function showSearch(){el('search-bar').hidden=false;el('query').focus();if(state.current)setPresentation(false)}
-function hideSearch(){++suggestionKey;el('search-bar').hidden=true;el('suggestions').replaceChildren()}
-el('open-search').onclick=showSearch;el('close-search').onclick=hideSearch;el('search-form').onsubmit=e=>{e.preventDefault();const q=el('query').value.trim();if(q)search(q)};
-let suggestionTimer,suggestionKey=0;el('query').oninput=()=>{clearTimeout(suggestionTimer);const key=++suggestionKey;const q=el('query').value.trim();el('suggestions').replaceChildren();if(q.length<2||videoId(q))return;suggestionTimer=setTimeout(async()=>{try{const r=await fetch('/api/suggest?q='+encodeURIComponent(q));const d=await r.json();if(key!==suggestionKey)return;el('suggestions').replaceChildren(...(d.suggestions||[]).map(s=>button(s,()=>search(s),'')))}catch{}},250)};
-function localList(key,title){const container=el('content');container.replaceChildren(node('h1','page-heading',title));if(library[key].length)container.append(grid(library[key]));else container.append(empty(t('Список пуст'),t('Видео появятся здесь после просмотра или сохранения.')));}
-function you(){const container=el('content');container.replaceChildren();const profile=node('div','profile');const copy=node('div');copy.append(node('h1','',account.signedIn?account.name||t('Аккаунт YouTube'):t('Вы')),node('p','',account.loading?t('Проверяем аккаунт...'):account.signedIn?(account.recommendationsAuthorized?t('Подключён YouTube · расширенное разрешение'):t('Подключён YouTube · доступ только на чтение')):t('Гостевой профиль · данные на этом устройстве')));profile.append(node('div','avatar','A'),copy);container.append(profile);
-if(account.signedIn){container.append(button(t('Подписки YouTube'),()=>location.hash='subscriptions','list-row'),button(t('Плейлисты YouTube'),()=>location.hash='playlists','list-row'),button(t('Выйти на этом устройстве'),()=>accountAction('/oauth/google/logout'),'list-row'),node('p','intro',account.remembered?t('Вход сохранён и продлевается автоматически. Google может отозвать доступ.'):t('Старая сессия без автопродления. Войдите один раз заново, чтобы сохранить вход.')));if(!account.remembered)container.append(button(t('Сохранить вход Google'),()=>accountAction('/oauth/google/start'),'list-row'))}else if(account.configured){container.append(node('p','intro',t('Один вход для профиля и рекомендаций. Google запросит управление YouTube и сохранение доступа. AxrTube использует доступ только для чтения.')),button(t('Войти через Google'),()=>accountAction('/oauth/google/start'),'list-row'))}else if(!account.loading)container.append(node('p','intro',t('Google-вход пока недоступен.')));
-if(account.signedIn&&account.recommendationsAvailable&&!account.recommendationsAuthorized)container.append(node('p','intro',t('Рекомендации требуют разрешения Google на управление YouTube. AxrTube использует его только для чтения.')),button(t('Подключить рекомендации YouTube'),()=>accountAction('/oauth/google/start?recommendations=1'),'list-row'));
-if(account.error)container.append(node('p','intro',account.error));
-container.append(node('h2','page-heading',t('На этом устройстве')));for(const [key,title]of [['history',t('История')],['later',t('Смотреть позже')],['liked',t('Понравившиеся видео')],['queue',t('Очередь')]]){const row=button('',()=>location.hash=key,'list-row');row.append(node('span','',title),node('small','',String(library[key].length)));container.append(row)}container.append(button(t('Настройки'),()=>location.hash='settings','list-row'),button(t('Диагностика плеера'),()=>location.href='/lab','list-row'));if(!storageOK)container.append(node('p','storage-warning',t('Постоянное хранилище недоступно.')))}
-function settings(){const container=el('content');container.replaceChildren();const box=node('div','settings');box.append(node('h1','',t('Настройки')),node('p','muted-text','AxrTube PWA · '+t('Версия')+' 38. '+t('Собственный плеер, без рекламного iframe.')),node('h2','',t('Аккаунт YouTube')),node('p','',account.loading?t('Проверяем аккаунт...'):account.signedIn?t('Подключён YouTube: ')+(account.name||t('Аккаунт YouTube')):t('YouTube не подключён в этом браузере.')),button(t('Открыть профиль YouTube'),()=>location.hash='you'),button(t('Все каналы'),()=>location.hash='subscriptions'));if(account.error)box.append(node('p','intro',account.error));
-box.append(node('h2','',t('Тест экрана блокировки')),button(t('Открыть встроенный тест'),()=>{if(state.current&&!confirm(t('Тест остановит текущий ролик. Продолжить?')))return;if(state.current)closePlayer();location.href='/system-player'}));
-if(i18n){const languageLabel=node('label','',t('Язык')+' '),language=node('select');language.setAttribute('aria-label',t('Язык'));for(const [value,title]of [['auto',t('Как на телефоне')],...Object.entries(i18n.names)]){const option=node('option','',title);option.value=value;language.append(option)}language.value=i18n.choice;language.onchange=()=>i18n.setLanguage(language.value);languageLabel.append(language);box.append(languageLabel)}
-box.append(node('h2','',t('Лента')));const shortsLabel=node('label','preference-row');const shortsSwitch=node('input');shortsSwitch.type='checkbox';shortsSwitch.setAttribute('role','switch');shortsSwitch.setAttribute('aria-label',t('Скрывать Shorts'));shortsSwitch.checked=library.hideShorts;shortsSwitch.onchange=()=>{library.hideShorts=shortsSwitch.checked;persist();applyShortsPreference();toast(library.hideShorts?t('Shorts скрыты'):t('Shorts включены'))};shortsLabel.append(node('span','',t('Скрывать Shorts')),shortsSwitch);box.append(shortsLabel,node('p','muted-text',t('Убирает вкладку Shorts и распознанные Shorts из списков. Главная берёт ролики из вкладки «Видео» каналов. В плейлистах YouTube не всегда передаёт метку Shorts, такие ролики могут остаться. Обычные короткие видео не скрываются по длительности.')));
-const updateInfo=node('p','muted-text');const showUpdate=()=>{const s=window.axrUpdates?.state;updateInfo.textContent=s?{current:t('Установлена актуальная версия ')+s.build+'.',pending:t('Доступна версия ')+s.latest+t('. Обновится автоматически после закрытия плеера.'),offline:t('Нет связи с сервером. Сейчас версия ')+s.build+'.',rollout:t('Сервер переключается на новую версию.'),updating:t('Обновление приложения...'),checking:t('Проверка обновлений...')}[s.status]:t('Проверка обновлений недоступна.')};showUpdate();box.append(node('h2','',t('Обновления')),updateInfo,button(t('Проверить обновления'),async()=>{await window.axrUpdates?.check();showUpdate()}));
-const modeLabel=node('label','',t('Режим по умолчанию ')),select=node('select');for(const [value,title]of [['video',t('Видео')],['audio',t('Только звук')]]){const option=node('option','',title);option.value=value;select.append(option)}select.value=library.mode;select.onchange=()=>{library.mode=select.value;el('mode').value=select.value;persist()};modeLabel.append(select);box.append(modeLabel);
-const label=node('label');const check=node('input');check.type='checkbox';check.style.cssText='width:20px;min-height:20px;margin-right:8px';check.checked=library.autoplay;check.onchange=()=>{library.autoplay=check.checked;persist()};label.append(check,document.createTextNode(t('Продолжать очередь автоматически')));box.append(label);
-const sponsorLabel=node('label');const sponsorCheck=node('input');sponsorCheck.type='checkbox';sponsorCheck.style.cssText='width:20px;min-height:20px;margin-right:8px';sponsorCheck.checked=library.sponsorBlock;sponsorCheck.onchange=()=>{library.sponsorBlock=sponsorCheck.checked;persist()};sponsorLabel.append(sponsorCheck,document.createTextNode(t('SponsorBlock: пропуск sponsor и selfpromo')));box.append(sponsorLabel,node('p','muted-text',t('Сегменты предоставляет сообщество SponsorBlock. Их отсутствие или сбой сервиса не включает рекламный плеер.')));
-box.append(node('h2','',t('Установка')),node('p','',t('iPhone: Safari → Поделиться → На экран «Домой». Android: меню браузера → Установить приложение.')),button(t('Установить PWA'),()=>{el('install').click();if(el('install').hidden)toast(t('Используйте меню браузера для установки'))}),node('h2','',t('Данные и приватность')),node('p','',t('Вход сохраняется в зашифрованных cookies и продлевается автоматически. Google может отозвать доступ. В тестовом режиме Google повторный вход обычно нужен через 7 дней.')),button(t('Скачать отчёт плеера'),()=>el('report').click()),button(t('Очистить историю'),()=>{if(confirm(t('Удалить историю просмотров на этом устройстве?'))){library.history=[];persist();toast(t('История очищена'))}}),node('h2','',t('Границы веб-версии')),node('p','',t('Полноценные загрузки YouTube, субтитры и синхронизация ещё не перенесены. Вход Google не снимает ограничения получения медиапотока. Фон, PiP и автозапуск зависят от браузера. Не гарантируется работа всех роликов. Мак-компьютер для воспроизведения не нужен.')));
-container.append(box)}
-function channelRows(channels){const list=node('div','subscription-list');let previous=null;for(const c of orderedChannels(channels,library.pinnedChannels)){const pinned=library.pinnedChannels.includes(c.id);if(previous!==pinned){list.append(node('h2','page-heading',pinned?t('Закреплённые'):t('Все каналы')));previous=pinned}const row=node('div','subscription-row');const open=button(c.name,()=>location.hash='channel/'+c.id+'/'+encodeURIComponent(c.name),'channel-open');const pin=button(pinned?'★':'☆',()=>{library.pinnedChannels=pinned?library.pinnedChannels.filter(id=>id!==c.id):[c.id,...library.pinnedChannels];persist();renderChannels();toast(pinned?t('Канал откреплён'):t('Канал закреплён наверху'))},'pin-channel');pin.setAttribute('aria-label',(pinned?t('Открепить: '):t('Закрепить: '))+c.name);pin.setAttribute('aria-pressed',String(pinned));row.append(open,pin);list.append(row)}return list}
-function renderChannels(){const target=el('subscription-channels');if(target)target.replaceChildren(channelRows(state.subChannels||[]))}
-function localSubscriptions(){const container=el('content');container.replaceChildren(node('h1','page-heading',t('Подписки')),node('p','intro',t('Каналы на этом устройстве. Закреплённые всегда наверху; остальные по алфавиту.')));if(!library.subscriptions.length){container.append(empty(t('Добавьте любимые каналы'),t('Войдите через Google для списка подписок YouTube или сохраните канал из плеера.'),button(t('Открыть профиль'),()=>location.hash='you')));return}state.subChannels=library.subscriptions;const list=node('div');list.id='subscription-channels';container.append(list);renderChannels()}
-async function subscriptions(){if(account.loading){el('content').replaceChildren(node('h1','page-heading',t('Подписки')),node('p','loading',t('Проверяем аккаунт YouTube...')));return}if(!account.signedIn){localSubscriptions();return}
-const key=++state.request;state.controller?.abort();const controller=new AbortController();state.controller=controller;state.subChannels=[];const container=el('content');container.replaceChildren(node('h1','page-heading',t('Подписки')),node('p','intro',t('Все каналы YouTube. Нажмите ☆, чтобы закрепить любимые наверху. Закрепления только на этом устройстве.')));const list=node('div');list.id='subscription-channels';const progress=node('p','loading',t('Загружаем каналы...'));container.append(list,progress);let page='',pages=0;const seen=new Set();
-try{do{if(seen.has(page)||++pages>150)throw Error(t('Не удалось завершить список каналов. Повторите загрузку.'));seen.add(page);const r=await fetch('/api/account/subscriptions?'+new URLSearchParams({page}),{cache:'no-store',signal:controller.signal});const data=await r.json();if(key!==state.request)return;if(!r.ok)throw Error(data.error||t('Откройте профиль и войдите через Google.'));state.subChannels=orderedChannels([...state.subChannels,...(data.items||[])],library.pinnedChannels);renderChannels();page=data.nextPage||'';progress.textContent=t('Загружено каналов: ')+state.subChannels.length+(page?t('. Загружаем остальные...'):t('. Все каналы загружены.'))}while(page);if(!state.subChannels.length)list.append(empty(t('Подписок пока нет'),t('YouTube не вернул подписки для выбранного аккаунта.')))}
-catch(e){if(key!==state.request||e.name==='AbortError')return;progress.replaceWith(empty(t('Список загружен не полностью'),e.message,button(t('Повторить загрузку'),subscriptions)))}
-}
-function home(){
-state.homeLoading=false;
-if(account.loading){el('content').replaceChildren(node('h1','page-heading',t('Главная')),node('p','loading',t('Проверяем аккаунт YouTube...')));return}
-if(account.signedIn&&!account.remembered&&account.expiresAt<=Date.now())account={...account,signedIn:false,error:t('Срок входа истёк. Подключите YouTube снова во вкладке «Вы».')};
-if(account.signedIn){if(account.recommendationsAuthorized)personalHome();else if(account.recommendationsAvailable){el('content').replaceChildren(node('h1','page-heading',t('Главная')),empty(t('Подключить рекомендации YouTube'),t('Рекомендации требуют разрешения Google на управление YouTube. AxrTube использует его только для чтения.'),button(t('Подключить рекомендации YouTube'),()=>accountAction('/oauth/google/start?recommendations=1'))),button(t('Видео из подписок'),()=>subscriptionHome(state.homePage||''),'list-row'));}else subscriptionHome(state.homePage||'');return}
-if(account.error){el('content').replaceChildren(node('h1','page-heading',t('Главная')),empty(t('Проверьте подключение YouTube'),account.error,button(t('Проверить аккаунт'),refreshAccount)),button(t('Открыть профиль'),()=>location.hash='you','list-row'));return}
-catalog({feed:'home'});
-const intro=el('content').querySelector('.intro');if(intro){intro.textContent=t('Гостевой режим. YouTube не подключён в этом браузере.');intro.after(button(t('Подключить YouTube'),()=>location.hash='you','list-row'))}
-}
-function renderSubscriptionHome(){const container=el('content');state.videos=[];state.homeChannels=new Map();container.replaceChildren(node('h1','page-heading',t('Главная')),node('p','intro',t('Подключён YouTube: ')+(account.name||t('Аккаунт YouTube'))));const links=node('div','chips');links.append(button(t('Мои подписки'),()=>location.hash='subscriptions',''),button(t('Мои плейлисты'),()=>location.hash='playlists',''),button(t('Обновить ленту'),refreshHome,''));container.append(links,node('h2','page-heading',t('Видео из подписок')),node('p','intro',t('Потяните вниз, чтобы сменить подборку каналов. ')+(library.hideShorts?t('Shorts скрыты, ролики из вкладки «Видео».'):t('Последние ролики из группы подписок, новые выше.'))));const summary=node('p','intro');summary.id='home-summary';const channels=node('div','chips');channels.id='home-channels';const videos=node('div');videos.id='home-videos';container.append(summary,channels,videos)}
-async function refreshHome(){
-if(state.route!=='home'||state.homeLoading||state.homeRefreshing||account.loading)return;
-state.homeRefreshing=true;const previous=state.videos.map(v=>v.id).sort().join(',');
-try{if(account.signedIn){const personal=account.recommendationsAuthorized;const ok=personal?await personalHome('',false,true):await subscriptionHome(state.homeNextPage||'',false,true);if(ok&&state.route==='home')toast(previous===state.videos.map(v=>v.id).sort().join(',')?t('Новых видео пока нет'):(personal?t('Рекомендации обновлены'):t('Новая подборка из ваших подписок')))}
-else if(account.error){home()}else await catalog({feed:'home'})}
-finally{state.homeRefreshing=false}
-}
-function renderPersonalHome(){const container=el('content');state.videos=[];container.replaceChildren(node('h1','page-heading',t('Главная')),node('p','intro',t('Рекомендации YouTube')));const links=node('div','chips');links.append(button(t('Мои подписки'),()=>location.hash='subscriptions',''),button(t('Мои плейлисты'),()=>location.hash='playlists',''),button(t('Обновить ленту'),refreshHome,''));const videos=node('div');videos.id='personal-videos';container.append(links,videos)}
-async function personalHome(continuation='',append=false,refresh=false){
-if(append&&state.homeLoading)return false;
-const key=++state.request;state.controller?.abort();const controller=new AbortController();state.controller=controller;state.homeLoading=true;
-const container=el('content');if(!append&&!refresh)renderPersonalHome();
-container.querySelector('.home-error')?.remove();const more=container.querySelector('.more');if(more)more.disabled=true;
-const waiting=node('p','loading',t('Загрузка...'));container.append(waiting);
-try{const r=await fetch('/api/account/home?'+new URLSearchParams({lang:i18n?.locale||'ru',...(continuation?{continuation}:{}),...(state.personalVisitor?{visitor:state.personalVisitor}:{})}),{cache:'no-store',signal:controller.signal});const data=await r.json();if(key!==state.request||state.route!=='home')return false;
-if(!r.ok){if(r.status===401){account={...account,signedIn:false,error:t('Срок входа истёк. Войдите снова во вкладке «Вы».')};home();return false}throw Error(data.code==='PERSONAL_HOME_AUTH_UNSUPPORTED'?t('YouTube не разрешил доступ к рекомендациям. Проверьте подключение в профиле.'):t('YouTube пока не вернул рекомендации. Повторите загрузку.'))}
-if(data.source!=='youtube-personal-home'||data.personalized!==true||!Array.isArray(data.videos))throw Error(t('YouTube пока не вернул рекомендации. Повторите загрузку.'));
-if(refresh)renderPersonalHome();waiting.remove();container.querySelector('.more')?.remove();
-state.personalVisitor=data.visitor||state.personalVisitor||'';state.personalContinuation=data.continuation||'';
-const seen=new Set(state.videos.map(v=>v.id));for(const raw of data.videos){const video=cleanVideo(raw);if(video&&!seen.has(video.id)){seen.add(video.id);state.videos.push(video)}}
-const target=el('personal-videos');if(state.videos.length)target.replaceChildren(grid(state.videos));else target.replaceChildren(empty(t('Здесь пока нет видео'),t('YouTube пока не вернул рекомендации. Повторите загрузку.')));
-if(state.personalContinuation){const next=state.personalContinuation;container.append(button(t('Показать ещё'),()=>personalHome(next,true),'more'))}return true;
-}catch(e){if(key!==state.request||state.route!=='home'||e.name==='AbortError')return false;waiting.remove();if(more)more.disabled=false;const error=empty(t('Лента недоступна'),e.message,button(t('Повторить'),()=>personalHome(continuation,append,refresh)));error.classList.add('home-error');container.append(error);return false}
-finally{if(key===state.request)state.homeLoading=false}
-}
-async function subscriptionHome(page='',append=false,refresh=false){
-const key=++state.request;state.controller?.abort();const container=el('content');state.homeLoading=true;
-if(!append&&!refresh)renderSubscriptionHome();
-container.querySelector('.more')?.remove();const waiting=node('p','loading',t('Загружаем видео из ваших подписок...'));container.append(waiting);
-try{const r=await fetch('/api/account/feed?'+new URLSearchParams({page,hideShorts:library.hideShorts?'1':'0'}),{cache:'no-store'});const data=await r.json();if(key!==state.request)return;
-if(!r.ok){if(r.status===401){account={...account,signedIn:false,error:t('Срок входа истёк. Войдите снова во вкладке «Вы».')};home();return false}throw Error(data.error||t('Не удалось загрузить подписки'))}
-if(refresh)renderSubscriptionHome();state.homeNextPage=data.nextPage||'';if(!append)state.homePage=page;
-waiting.remove();const seen=new Set(state.videos.map(v=>v.id));for(const v of data.videos||[]){const clean=cleanVideo({...v,published:v.publishedAt?new Date(v.publishedAt).toLocaleDateString(i18n?.locale||'ru'):v.published});if(clean&&(!library.hideShorts||!clean.isShort)&&!seen.has(clean.id)){seen.add(clean.id);state.videos.push({...clean,publishedAt:v.publishedAt})}}
-if(!data.videosOnly)state.videos.sort((a,b)=>Date.parse(b.publishedAt)-Date.parse(a.publishedAt));for(const c of data.channels||[])if(/^UC[\w-]{22}$/.test(c.id||''))state.homeChannels.set(c.id,c);
-el('home-summary').textContent=t('Загружено каналов: ')+state.homeChannels.size+'.'+(data.partial?t(' Часть каналов временно недоступна.'):'');el('home-channels').replaceChildren(...[...state.homeChannels.values()].map(c=>button(c.name,()=>location.hash='channel/'+c.id+'/'+encodeURIComponent(c.name),'')));
-el('home-videos').replaceChildren(state.videos.length?grid(state.videos):empty(t('Пока нет доступных видео'),state.homeChannels.size?t('В этой группе каналов нет доступных новых роликов.'):t('YouTube не вернул подписки для выбранного аккаунта. Проверьте аккаунт во вкладке «Вы».'),button(t('Открыть мои подписки'),()=>location.hash='subscriptions')));
-if(data.nextPage)container.append(button(t('Загрузить следующие каналы'),()=>subscriptionHome(data.nextPage,true),'more'));return true;
-}catch(e){if(key===state.request)waiting.replaceWith(empty(t('Видео подписок недоступны'),e.message,button(t('Повторить'),()=>subscriptionHome(page,append,refresh))));return false}
-finally{if(key===state.request)state.homeLoading=false}
-}
-async function accountList(kind,title,page='',append=false,id=''){
-const key=++state.request,container=el('content');if(!append)container.replaceChildren(node('h1','page-heading',title),node('p','intro',t('Данные аккаунта YouTube. Локальная медиатека не изменяется.')));
-const waiting=node('p','loading',t('Загрузка...'));container.append(waiting);
-try{const r=await fetch('/api/account/'+kind+'?'+new URLSearchParams({page,...(id?{id}:{})}),{cache:'no-store'});const data=await r.json();if(key!==state.request)return;if(!r.ok)throw Error(data.error||t('Войдите через Google во вкладке «Вы».'));waiting.remove();container.querySelector('.more')?.remove();
-if(kind==='playlist'){const videos=(data.videos||[]).map(cleanVideo).filter(Boolean);container.append(grid(videos));if(!videos.length&&!append)container.append(empty(t('Список пуст'),t('В плейлисте нет доступных видео.')))}
-else{for(const item of data.items||[])container.append(button(kind==='subscriptions'?item.name:item.title,()=>{location.hash=kind==='subscriptions'?'channel/'+item.id+'/'+encodeURIComponent(item.name):'account-playlist/'+item.id+'/'+encodeURIComponent(item.title)},'list-row'));if(!data.items?.length&&!append)container.append(empty(t('Список пуст'),t('YouTube не вернул элементы.')))}
-if(data.nextPage)container.append(button(t('Показать ещё'),event=>{event?.target?.setAttribute('disabled','');accountList(kind,title,data.nextPage,true,id)},'more'));
-}catch(e){if(key===state.request)waiting.replaceWith(empty(t('Данные аккаунта недоступны'),e.message,button(t('Повторить'),()=>accountList(kind,title,page,append,id))))}}
-function route(){state.controller?.abort();++state.request;const raw=location.hash.slice(1)||'home';const [name,arg,label]=raw.split('/');if(name==='shorts'&&library.hideShorts){location.hash='home';return}state.route=name;document.querySelectorAll('[data-tab]').forEach(n=>{if(n.dataset.tab===name||(n.dataset.tab==='you'&&['history','later','liked','queue','settings','playlists','account-playlist'].includes(name)))n.setAttribute('aria-current','page');else n.removeAttribute('aria-current')});
-state.homeLoading=false;if(state.current)setPresentation(false);window.scrollTo(0,0);
-if(name==='search'){let q;try{q=decodeURIComponent(arg||'')}catch{q=''}el('query').value=q;el('search-bar').hidden=false;el('suggestions').replaceChildren();catalog({feed:'search',q})}
-else{hideSearch();if(name==='you')you();else if(name==='settings')settings();else if(name==='subscriptions')subscriptions();else if(name==='playlists')accountList('playlists',t('Плейлисты YouTube'));else if(name==='account-playlist'){let title;try{title=decodeURIComponent(label||t('Плейлист'))}catch{title=t('Плейлист')}accountList('playlist',title,'',false,arg||'')}else if(['history','later','liked','queue'].includes(name))localList(name,{history:t('История'),later:t('Смотреть позже'),liked:t('Понравившиеся видео'),queue:t('Очередь')}[name]);else if(name==='channel'){try{state.channelTitle=decodeURIComponent(label||t('Канал'))}catch{state.channelTitle=t('Канал')}catalog({feed:'channel',channel:arg||''})}else if(name==='shorts')catalog({feed:'shorts'});else home()}}
-window.addEventListener('hashchange',route);applyShortsPreference();route();refreshAccount();
-installPullRefresh(window,document,()=>state.route==='home'&&!state.homeLoading&&!state.homeRefreshing&&!account.loading&&(!state.current||el('watch').classList.contains('minimized')),refreshHome,t);
-window.addEventListener('axr-language-change',()=>{transcriptUI?.close();transcriptButton.textContent=t('Стенограмма');syncWatch();renderQueue();route()});
-document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-accountCheckedAt>60000)refreshAccount()});
-const initial=new URL(location.href),initialID=videoId(initial.searchParams.get('video')||'');if(initialID){if(initial.searchParams.get('mode'))el('mode').value=initial.searchParams.get('mode')==='audio'?'audio':'video';state.current=cleanVideo({id:initialID,title:initialID});syncWatch();setPresentation(true);el('status').replaceChildren(document.createTextNode(t('Нажмите, чтобы начать воспроизведение. ')),button(t('Смотреть'),()=>openVideo(state.current)));}
-if(initial.searchParams.has('auth')){toast(initial.searchParams.get('auth')==='denied'?t('Вход Google отменён.'):t('Не удалось завершить вход Google. Попробуйте снова.'));initial.searchParams.delete('auth');history.replaceState(null,'',initial.href);}
-})();`;

@@ -1,7 +1,9 @@
 // YouTube connection only. Does not replace Sites identity or its reserved routes.
 const accountOrigin='https://axrtube.axrbarsic.workers.dev';
 const accountScope='https://www.googleapis.com/auth/youtube.readonly';
-const personalHomeScope='https://www.googleapis.com/auth/youtube';
+// Write scope for the discussion tab (commentThreads/comments insert). The
+// session field recommendationsAuthorized keeps its historical name.
+const personalHomeScope='https://www.googleapis.com/auth/youtube.force-ssl';
 const accountCookies={epoch:'__Host-axr-yt-epoch',pending:'__Host-axr-yt-pending',session:'__Host-axr-yt-session',refresh:'__Host-axr-yt-refresh'};
 const rememberSeconds=180*86400;
 const refreshCookieName=epoch=>/^[\w-]{43}$/.test(epoch||'')?accountCookies.refresh+'-'+epoch:accountCookies.refresh;
@@ -65,24 +67,17 @@ async function subscriptionFeed(token,page,hideShorts,catalog){
 // Only encrypted, purpose-bound HttpOnly cookies carry credentials. Never
 // expose refresh/access tokens to UI code, storage, JSON or diagnostics.
 const accountRefreshes=new Map();
-// Read-only: the current short-lived access token of a valid signed-in session, or null.
-export async function accountStreamToken(request,env={}){
-  try{
-    if(!accountConfigured(env)||new URL(request.url).origin!==accountOrigin)return null;
-    const values=cookieValues(request),epoch=values[accountCookies.epoch];
-    const session=await openAccount(env,'session',values[accountCookies.session]);
-    return session&&epoch&&session.epoch===epoch&&session.expires>Date.now()+30000&&session.recommendationsAuthorized===true?session.token:null;
-  }catch{return null}
-}
-export async function youtubeAccountResponse(request,env={},catalog=null,personalHome=null){
+export async function youtubeAccountResponse(request,env={},catalog=null,personalHome=null,comments=null){
   const u=new URL(request.url);
-  if(!u.pathname.startsWith('/api/account')||!accountConfigured(env)||u.origin!==accountOrigin||!['GET','HEAD'].includes(request.method))return youtubeAccountRoutes(request,env,catalog,personalHome);
+  const commentPost=request.method==='POST'&&u.pathname==='/api/account/comment';
+  if(!u.pathname.startsWith('/api/account')||!accountConfigured(env)||u.origin!==accountOrigin||(!['GET','HEAD'].includes(request.method)&&!commentPost))return youtubeAccountRoutes(request,env,catalog,personalHome,comments);
+  if(commentPost&&!sameOrigin(request))return accountJSON({error:'Origin rejected'},403);
   const values=cookieValues(request),epoch=values[accountCookies.epoch];
   const session=await openAccount(env,'session',values[accountCookies.session]);
-  if(session&&session.epoch===epoch&&session.expires>Date.now()+30000){const response=await youtubeAccountRoutes(request,env,catalog,personalHome);if(response.status!==401)return response;}
+  if(session&&session.epoch===epoch&&session.expires>Date.now()+30000){const response=await youtubeAccountRoutes(commentPost?request.clone():request,env,catalog,personalHome,comments);if(response.status!==401)return response;}
   const rememberedValue=values[refreshCookieName(epoch)]||values[accountCookies.refresh];
   const remembered=await openAccount(env,'refresh',rememberedValue);
-  if(!epoch||remembered?.epoch!==epoch)return youtubeAccountRoutes(request,env,catalog,personalHome);
+  if(!epoch||remembered?.epoch!==epoch)return youtubeAccountRoutes(request,env,catalog,personalHome,comments);
   try{
     const key=rememberedValue;let pending=accountRefreshes.get(key);
     if(!pending){
@@ -102,7 +97,7 @@ export async function youtubeAccountResponse(request,env={},catalog=null,persona
     }
     const {next,issued}=await pending;
     const h=new Headers(request.headers);h.set('cookie',(h.get('cookie')||'').split(';').filter(c=>!c.trim().startsWith(accountCookies.session+'=')).join(';')+'; '+accountCookies.session+'='+await sealAccount(env,'session',next));
-    const result=await youtubeAccountRoutes(new Request(request,{headers:h}),env,catalog,personalHome);
+    const result=await youtubeAccountRoutes(new Request(request,{headers:h}),env,catalog,personalHome,comments);
     const response=new Response(result.body,result);for(const c of issued)response.headers.append('set-cookie',c);return response;
   }catch(error){
     if(error.revoked){const response=accountJSON({configured:true,signedIn:false,code:'SESSION_REVOKED',recommendationsAvailable:env.GOOGLE_OAUTH_PERSONAL_HOME_ENABLED==='true'},401);for(const name of new Set([refreshCookieName(epoch),accountCookies.refresh]))response.headers.append('set-cookie',cookie(name,'',0));return response}
@@ -110,7 +105,7 @@ export async function youtubeAccountResponse(request,env={},catalog=null,persona
     return accountJSON({code:'ACCOUNT_RETRY',error:'Повторите проверку аккаунта.'},503);
   }
 }
-async function youtubeAccountRoutes(request,env={},catalog=null,personalHome=null){
+async function youtubeAccountRoutes(request,env={},catalog=null,personalHome=null,comments=null){
   const u=new URL(request.url),path=u.pathname;
   if(!path.startsWith('/oauth/google/')&&!path.startsWith('/api/account'))return null;
   if(u.origin!==accountOrigin)return accountJSON({error:'Origin rejected'},403);
@@ -157,9 +152,13 @@ async function youtubeAccountRoutes(request,env={},catalog=null,personalHome=nul
       return accountRedirect(pending.recommendations&&!recommendationsAuthorized?'/?auth=partial#you':'/#you',issued);
     }catch{return accountRedirect('/?auth=failed#you',[cookie(accountCookies.pending,'',0)]);}
   }
-  if(!['GET','HEAD'].includes(request.method))return accountJSON({error:'Method not allowed'},405);
+  const commentPost=request.method==='POST'&&path==='/api/account/comment';
+  if(commentPost&&!sameOrigin(request))return accountJSON({error:'Origin rejected'},403);
+  if(!['GET','HEAD'].includes(request.method)&&!commentPost)return accountJSON({error:'Method not allowed'},405);
   const session=await openAccount(env,'session',values[accountCookies.session]);
   if(!session||!epoch||session.epoch!==epoch)return accountJSON({configured:true,signedIn:false,recommendationsAvailable:env.GOOGLE_OAUTH_PERSONAL_HOME_ENABLED==='true'},path==='/api/account'?200:401);
+  if(comments&&/^\/api\/account\/(comments|replies|comment)$/.test(path)){const r=await comments(path,session.token,request,u);if(r)return r}
+  if(commentPost)return accountJSON({error:'Not found'},404);
   if(path==='/api/account/home')return personalHome?personalHome(session.token,u):accountJSON({code:'PERSONAL_HOME_UNAVAILABLE'},503);
   try{
     if(path==='/api/account'){

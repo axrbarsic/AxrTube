@@ -15,7 +15,7 @@ assert.equal(await openAccount(env,'session',await sealAccount(env,'session',{..
 assert.equal((await response('/oauth/google/start')).status,405);
 // HTML form POSTs under no-referrer send Origin:null. Fix the document policy,
 // never accept an opaque/missing/foreign origin to work around that browser rule.
-for(const path of ['/', '/lab']){
+for(const path of ['/']){
   const page=await app.fetch(new Request(origin+path));
   assert.equal(page.headers.get('referrer-policy'),'same-origin');
   assert(!/<meta[^>]+name=["']referrer["']/i.test(await page.text()));
