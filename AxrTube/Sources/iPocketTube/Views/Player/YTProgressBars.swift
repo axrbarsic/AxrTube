@@ -32,17 +32,23 @@ struct YTProgressLayers: View {
     let height: CGFloat
 
     var body: some View {
-        let duration = max(vm.duration, 1)
-        ZStack(alignment: .leading) {
-            ForEach(Array(vm.bufferedTimeRanges.enumerated()), id: \.offset) { _, range in
-                bar(range, duration: duration, color: .white.opacity(0.55))
+        // Unknown duration would stretch every range across the bar.
+        if vm.duration > 0 {
+            let duration = vm.duration
+            ZStack(alignment: .leading) {
+                ForEach(vm.bufferedTimeRanges, id: \.lowerBound) { range in
+                    bar(range, duration: duration, color: .white.opacity(0.55))
+                }
+                ForEach(vm.cachedTimeRanges, id: \.lowerBound) { range in
+                    bar(range, duration: duration, color: Self.cacheColor.opacity(0.85))
+                }
             }
-            ForEach(Array(vm.cachedTimeRanges.enumerated()), id: \.offset) { _, range in
-                bar(range, duration: duration, color: Self.cacheColor.opacity(0.85))
-            }
+            .frame(width: width, alignment: .leading)
+            // Short linear glide between real updates; identity by start so a
+            // growing range extends instead of being re-created.
+            .animation(.linear(duration: 0.2), value: vm.cachedTimeRanges)
+            .animation(.linear(duration: 0.2), value: vm.bufferedTimeRanges)
         }
-        .frame(width: width, alignment: .leading)
-        .animation(.linear(duration: 0.3), value: vm.cachedTimeRanges)
     }
 
     private func bar(_ range: ClosedRange<Double>, duration: Double, color: Color) -> some View {

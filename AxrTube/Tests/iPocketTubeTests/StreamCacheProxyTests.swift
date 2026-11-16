@@ -118,4 +118,64 @@ struct StreamCacheProxyTests {
         #expect(s3 == 200 && seg3 == files["https://cdn.example/itag/134/sq/3/seg.ts"])
         await proxy.endSession()
     }
+
+    @Test func progressIsHonestAndPushedLive() async throws {
+        let v = "https://m.example/hls_playlist/itag/134/v.m3u8"
+        let a = "https://m.example/hls_playlist/itag/140/a.m3u8"
+        let master = """
+        #EXTM3U
+        #EXT-X-MEDIA:URI="\(a)",TYPE=AUDIO,GROUP-ID="140",NAME="Default",DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,CODECS="avc1.4d401e",RESOLUTION=640x360,AUDIO="140"
+        \(v)
+        """
+        var files: [String: Data] = ["https://m.example/m2.m3u8": Data(master.utf8)]
+        for (pl, itag) in [(v, 134), (a, 140)] {
+            var text = "#EXTM3U\n"
+            for i in 0..<3 {
+                let seg = "https://cdn.example/itag/\(itag)/sq/\(i)/seg.ts"
+                text += "#EXTINF:5.0,\n\(seg)\n"
+                files[seg] = Data(repeating: UInt8(i), count: 70_000)
+            }
+            files[pl] = Data((text + "#EXT-X-ENDLIST\n").utf8)
+        }
+        let originFiles = files
+        FakeOrigin.state.withLock { $0 = (originFiles, false) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("axr-stream-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FakeOrigin.self]
+        let proxy = HLSCachingProxy(cache: StreamSegmentCache(root: root), configuration: config,
+                                    estimateKey: "test.\(UUID().uuidString)")
+        let entry = try #require(await proxy.startSession(
+            videoID: "honest\(UUID().uuidString.prefix(4))", masterURL: URL(string: "https://m.example/m2.m3u8")!,
+            headers: [:], preferredMaxHeight: nil
+        ))
+        let updates = await proxy.progressUpdates()
+        let masterText = String(decoding: try await get(entry).0, as: UTF8.self)
+        let paths = masterText.components(separatedBy: .newlines).compactMap { line -> String? in
+            if let r = line.range(of: "URI=\"") { return String(line[r.upperBound...].prefix { $0 != "\"" }) }
+            return line.hasPrefix("/") ? line : nil
+        }
+        #expect(paths.count == 2)
+        let videoPath = try #require(paths.first { !masterText.contains("URI=\"\($0)") })
+        let audioPath = try #require(paths.first { masterText.contains("URI=\"\($0)") })
+
+        // Video known, audio not yet: nothing is claimed as playable offline.
+        _ = try await get(local(entry, videoPath))
+        #expect(await proxy.progress() == nil)
+        _ = try await get(local(entry, audioPath))
+
+        // Updates arrive as segments land, ending complete.
+        var last: StreamCacheProgress?
+        for await value in updates {
+            last = value
+            if value?.isComplete == true { break }
+        }
+        #expect(last?.ranges == [0...15])
+
+        await proxy.clearCache()
+        #expect(await proxy.progress()?.ranges == [])
+        #expect(await proxy.progress()?.isComplete == false)
+        await proxy.endSession()
+    }
 }

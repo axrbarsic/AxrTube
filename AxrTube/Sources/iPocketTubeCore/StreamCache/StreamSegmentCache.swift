@@ -61,9 +61,11 @@ public actor StreamSegmentCache {
         return Set(names.compactMap { $0.hasSuffix(".seg") ? Int($0.dropLast(4)) : nil })
     }
 
-    public func storeSegment(_ data: Data, video: String, rendition: String, index: Int) {
+    /// False when the write failed (e.g. disk full): the segment is not cached.
+    @discardableResult
+    public func storeSegment(_ data: Data, video: String, rendition: String, index: Int) -> Bool {
         let url = segmentURL(video: video, rendition: rendition, index: index)
-        write(data, to: url)
+        return write(data, to: url)
     }
 
     // MARK: Playlists and other small files
@@ -76,10 +78,11 @@ public actor StreamSegmentCache {
         write(data, to: namedURL(video: video, name: name))
     }
 
-    private func write(_ data: Data, to url: URL) {
+    @discardableResult
+    private func write(_ data: Data, to url: URL) -> Bool {
         try? fm.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         // Atomic: a half-written file must never be served as a segment.
-        try? data.write(to: url, options: .atomic)
+        return (try? data.write(to: url, options: .atomic)) != nil
     }
 
     // MARK: Eviction

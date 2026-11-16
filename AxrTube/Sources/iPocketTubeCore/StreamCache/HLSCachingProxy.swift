@@ -23,6 +23,7 @@ public actor HLSCachingProxy {
         var cursor = 0
         var touched = Date.distantPast
         var mime = "video/mp2t"
+        var isAudio = false
     }
 
     struct Session {
@@ -31,6 +32,8 @@ public actor HLSCachingProxy {
         var master: URL
         var headers: [String: String]
         var maxHeight: Int
+        /// The exposed variant takes audio from a separate rendition.
+        var expectsAudio = false
         var playlists: [Int: Playlist] = [:]
         var others: [Int: (url: URL, name: String)] = [:]
         var retryAt: [String: Date] = [:]
@@ -45,6 +48,7 @@ public actor HLSCachingProxy {
     var workers: [Task<Void, Never>] = []
     var inFlight: [String: Task<(Data, String)?, Never>] = [:]
     var estimate: ThroughputEstimate
+    var progressContinuation: AsyncStream<StreamCacheProgress?>.Continuation?
     public static let estimateKey = "axr.streamCache.throughput"
     let estimateStorageKey: String
 
@@ -102,6 +106,39 @@ public actor HLSCachingProxy {
         inFlight.values.forEach { $0.cancel() }
         inFlight = [:]
         session = nil
+        notifyProgress()
+    }
+
+    /// Deletes every cached stream and forgets what this session had saved.
+    public func clearCache() async {
+        await cache.removeAll()
+        if let ids = session?.playlists.keys {
+            for pid in ids { session?.playlists[pid]?.done = [] }
+        }
+        notifyProgress()
+    }
+
+    // MARK: Progress
+
+    /// Pushes a new value the moment a segment is saved (single subscriber).
+    public func progressUpdates() -> AsyncStream<StreamCacheProgress?> {
+        progressContinuation?.finish()
+        let (stream, continuation) = AsyncStream.makeStream(of: StreamCacheProgress?.self,
+                                                            bufferingPolicy: .bufferingNewest(1))
+        progressContinuation = continuation
+        continuation.yield(progress())
+        return stream
+    }
+
+    func notifyProgress() {
+        progressContinuation?.yield(progress())
+    }
+
+    /// Marks a segment as on disk only after the write succeeded.
+    private func segmentStored(session id: String, playlist pid: Int, index: Int) {
+        guard session?.id == id, session?.playlists[pid] != nil else { return }
+        session?.playlists[pid]?.done.insert(index)
+        notifyProgress()
     }
 
     public func isProxied(_ url: URL?) -> Bool {
@@ -109,20 +146,25 @@ public actor HLSCachingProxy {
         return url.path.hasPrefix("/\(id)/")
     }
 
-    /// Disk coverage of the renditions the player is using right now.
+    /// Disk coverage of what the player is using right now: the video
+    /// rendition intersected with the audio rendition it plays. Nothing is
+    /// reported until every rendition needed for playback is known, so the
+    /// bar never shows more than can actually play offline.
     public func progress() -> StreamCacheProgress? {
         guard let s = session else { return nil }
-        let used = s.playlists.values.filter { !$0.segments.isEmpty && $0.touched != .distantPast }
-        guard !used.isEmpty else { return nil }
-        var ranges: [ClosedRange<Double>]?
-        var duration = 0.0
-        for pl in used {
-            let own = StreamCacheCoverage.ranges(starts: pl.starts, durations: pl.durations, done: pl.done)
-            ranges = ranges.map { StreamCacheCoverage.intersect($0, own) } ?? own
-            duration = max(duration, pl.durations.reduce(0, +))
+        let loaded = s.playlists.values.filter { !$0.segments.isEmpty && $0.touched != .distantPast }
+        guard let video = loaded.filter({ !$0.isAudio }).max(by: { $0.touched < $1.touched }) else { return nil }
+        let audio = loaded.filter(\.isAudio).max(by: { $0.touched < $1.touched })
+        if s.expectsAudio && audio == nil { return nil }
+        var ranges = StreamCacheCoverage.ranges(starts: video.starts, durations: video.durations, done: video.done)
+        var complete = video.done.count >= video.segments.count
+        if let audio {
+            ranges = StreamCacheCoverage.intersect(
+                ranges, StreamCacheCoverage.ranges(starts: audio.starts, durations: audio.durations, done: audio.done)
+            )
+            complete = complete && audio.done.count >= audio.segments.count
         }
-        let complete = used.allSatisfy { $0.done.count >= $0.segments.count }
-        return StreamCacheProgress(ranges: ranges ?? [], duration: duration, isComplete: complete)
+        return StreamCacheProgress(ranges: ranges, duration: video.durations.reduce(0, +), isComplete: complete)
     }
 
     // MARK: Origin
@@ -165,7 +207,8 @@ public actor HLSCachingProxy {
                 return (data, cachedMime)
             }
             guard let (data, mime) = try? await self.fetch(url, headers: headers) else { return nil }
-            await self.cache.storeSegment(data, video: video, rendition: rendition, index: index)
+            let stored = await self.cache.storeSegment(data, video: video, rendition: rendition, index: index)
+            if stored { await self.segmentStored(session: id, playlist: pid, index: index) }
             return (data, mime)
         }
         inFlight[key] = task
@@ -173,7 +216,6 @@ public actor HLSCachingProxy {
         inFlight[key] = nil
         guard session?.id == id else { return result }
         if let (_, mime) = result {
-            session?.playlists[pid]?.done.insert(index)
             if session?.playlists[pid]?.mime != mime, let s = session, let pl = s.playlists[pid] {
                 session?.playlists[pid]?.mime = mime
                 await cache.storeNamed(Data(mime.utf8), video: s.video, name: "mime-" + pl.rendition)

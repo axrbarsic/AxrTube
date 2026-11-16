@@ -71,7 +71,7 @@ struct YTSettingsView: View {
                 LabeledContent("Кэш просмотра", value: ByteCountFormatter.string(fromByteCount: streamCacheBytes, countStyle: .file))
                 Button("Очистить кэш просмотра", role: .destructive) {
                     Task {
-                        await StreamSegmentCache.shared.removeAll()
+                        await HLSCachingProxy.shared.clearCache()
                         streamCacheBytes = await StreamSegmentCache.shared.totalBytes()
                     }
                 }

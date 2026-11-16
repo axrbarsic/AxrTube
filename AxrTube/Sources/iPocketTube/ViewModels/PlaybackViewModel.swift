@@ -327,6 +327,7 @@ public final class PlaybackViewModel {
     /// What AVPlayer holds in memory, shown when the stream cache is not used.
     var bufferedTimeRanges: [ClosedRange<Double>] = []
     @ObservationIgnored var cacheProgressTask: Task<Void, Never>?
+    @ObservationIgnored var bufferSampleTask: Task<Void, Never>?
     var qualityTask: Task<Void, Never>? {
         get { qualityManager.qualityTask }
         set { qualityManager.qualityTask = newValue }

@@ -63,21 +63,21 @@ extension HLSCachingProxy {
         let chosenKey = HLSPlaylistText.renditionKey(for: chosen.uri)
         await cache.storeNamed(Data(chosenKey.utf8), video: s.video, name: "variant")
         log.notice("[stream-cache] variant \(chosen.height)p bw=\(chosen.bandwidth) of \(all.count)")
-        var rewritten = ""
-        rewritten = HLSPlaylistText.rewriteMaster(text, base: s.master, keep: chosen) { url in
-            "/\(id)/pl/\(self.registerPlaylist(url)).m3u8"
+        session?.expectsAudio = chosen.audioGroup != nil
+        let rewritten = HLSPlaylistText.rewriteMaster(text, base: s.master, keep: chosen) { url in
+            "/\(id)/pl/\(self.registerPlaylist(url, isAudio: url != chosen.uri)).m3u8"
         }
         return .init(status: 200, contentType: Self.playlistMime, body: Data(rewritten.utf8))
     }
 
-    private func registerPlaylist(_ url: URL) -> Int {
+    private func registerPlaylist(_ url: URL, isAudio: Bool) -> Int {
         let rendition = HLSPlaylistText.renditionKey(for: url)
         if let existing = session?.playlists.first(where: { $0.value.rendition == rendition })?.key {
             session?.playlists[existing]?.origin = url
             return existing
         }
         let pid = (session?.playlists.keys.max() ?? 0) + 1
-        session?.playlists[pid] = Playlist(origin: url, rendition: rendition)
+        session?.playlists[pid] = Playlist(origin: url, rendition: rendition, isAudio: isAudio)
         return pid
     }
 
@@ -115,6 +115,7 @@ extension HLSCachingProxy {
             // Live/sliding playlists are not cached ahead.
             session?.playlists[pid]?.touched = .distantPast
         }
+        notifyProgress()
         let rewritten = HLSPlaylistText.rewriteMedia(
             text, base: pl.origin,
             segmentURI: { "/\(id)/seg/\(pid)/\($0)" },

@@ -29,31 +29,51 @@ extension PlaybackViewModel {
         return local
     }
 
-    /// Refreshes the progress bar's cache and buffer layers once a second.
+    /// Keeps the progress bar's layers live: the disk layer is pushed by the
+    /// proxy the moment a segment is saved; the in-memory buffer (used only
+    /// without the cache) is sampled 4× a second.
     func ensureCacheProgressUpdates() {
         guard cacheProgressTask == nil else { return }
         cacheProgressTask = Task { @MainActor [weak self] in
+            let updates = await HLSCachingProxy.shared.progressUpdates()
+            for await progress in updates {
+                guard let self else { return }
+                self.applyCacheProgress(progress)
+            }
+        }
+        bufferSampleTask = Task { @MainActor [weak self] in
             while !Task.isCancelled {
-                await self?.refreshCacheProgress()
-                try? await Task.sleep(for: .seconds(1))
+                guard let self else { return }
+                self.refreshBufferedRanges()
+                try? await Task.sleep(for: .milliseconds(250))
             }
         }
     }
 
-    private func refreshCacheProgress() async {
-        let item = player.currentItem
-        let proxied = (item?.asset as? AVURLAsset)?.url.host == "127.0.0.1"
-        let progress = proxied ? await HLSCachingProxy.shared.progress() : nil
-        let cached = progress?.ranges ?? []
-        let complete = progress?.isComplete ?? false
-        let buffered: [ClosedRange<Double>] = proxied ? [] : (item?.loadedTimeRanges ?? []).compactMap {
+    private var currentItemIsProxied: Bool {
+        (player.currentItem?.asset as? AVURLAsset)?.url.host == "127.0.0.1"
+    }
+
+    private func applyCacheProgress(_ progress: StreamCacheProgress?) {
+        let shown = currentItemIsProxied ? progress : nil
+        let ranges = shown?.ranges ?? []
+        let complete = shown?.isComplete ?? false
+        if cachedTimeRanges != ranges { cachedTimeRanges = ranges }
+        if isFullyCached != complete { isFullyCached = complete }
+    }
+
+    private func refreshBufferedRanges() {
+        let buffered: [ClosedRange<Double>] = currentItemIsProxied ? [] : (player.currentItem?.loadedTimeRanges ?? []).compactMap {
             let r = $0.timeRangeValue
             let start = CMTimeGetSeconds(r.start), end = CMTimeGetSeconds(CMTimeRangeGetEnd(r))
             return start.isFinite && end.isFinite && end > start ? start...end : nil
         }
-        if cachedTimeRanges != cached { cachedTimeRanges = cached }
-        if isFullyCached != complete { isFullyCached = complete }
         if bufferedTimeRanges != buffered { bufferedTimeRanges = buffered }
+        // An item swap (AirPlay, fallback) must drop the disk layer at once.
+        if !currentItemIsProxied, !cachedTimeRanges.isEmpty || isFullyCached {
+            cachedTimeRanges = []
+            isFullyCached = false
+        }
     }
 
     func endStreamCacheSession() {
