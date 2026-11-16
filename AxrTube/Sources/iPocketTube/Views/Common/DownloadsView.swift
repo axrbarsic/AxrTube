@@ -33,10 +33,11 @@ struct DownloadsView: View {
     private var iOSBody: some View {
         VStack(spacing: 0) {
             collectionHeader
-            if videoEntries.isEmpty {
+            if videoEntries.isEmpty && PinnedStreamLibrary.shared.entries.isEmpty {
                 emptyState
             } else {
                 List {
+                    SavedStreamsSection { playerRouter.open(video: $0, api: api) }
                     ForEach(sortedEntries) { entry in
                         let isCurrent = entry.videoId == playerState.currentVideo?.id
                         let layoutVariant = VideoCardLayoutPolicy.variant(

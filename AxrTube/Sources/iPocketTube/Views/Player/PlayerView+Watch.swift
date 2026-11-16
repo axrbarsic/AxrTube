@@ -63,6 +63,15 @@ extension PlayerView {
 
     /// Metadata of the item actually playing: the player response once it
     /// matches the selected video, otherwise the tapped card's data.
+    /// «Скачать» state for the watch page; the playing video's progress is
+    /// read live from the cache layer of the progress bar.
+    func ytSaveState(for video: Video) -> YTWatchDetails.SaveState {
+        guard let saved = PinnedStreamLibrary.shared.entry(video.id) else { return .none }
+        let isPlaying = vm.currentVideo?.id == video.id
+        if saved.isComplete || (isPlaying && vm.isFullyCached) { return .saved }
+        return .saving(isPlaying ? max(saved.progress, vm.cachedFraction) : saved.progress)
+    }
+
     var watchVideo: Video {
         let selected = playerState.currentVideo ?? video
         if let info = vm.playerInfo?.video, info.id == selected.id { return info }
@@ -79,8 +88,8 @@ extension PlayerView {
             owner: ownerModel.info,
             isSubscribed: ownerModel.isSubscribed,
             isSignedIn: signedIn,
-            isDownloading: downloadService.state.isActive
-                || audioDownloadService.isDownloading(videoID: current.id),
+            saveState: ytSaveState(for: current),
+            isDownloadingAudio: audioDownloadService.isDownloading(videoID: current.id),
             actions: .init(
                 like: {
                     guard signedIn else { vm.toastMessage = "Войдите, чтобы оценить видео"; return }
@@ -98,13 +107,14 @@ extension PlayerView {
                     }
                 },
                 downloadVideo: {
-                    downloadService.download(
-                        video: current,
-                        kind: .video,
-                        storageLimitMB: store.settings.offlineStorageLimitMB
-                    )
+                    SavedStreamService.pin(current, cachedFraction: vm.cachedFraction, isComplete: vm.isFullyCached)
+                    vm.toastMessage = vm.isFullyCached ? "Сохранено в «Скачанные»" : "Скачивается в «Скачанные»"
                 },
                 downloadAudio: { audioDownloadService.download(video: current) },
+                removeSaved: {
+                    SavedStreamService.remove(current.id)
+                    vm.toastMessage = "Удалено из скачанных"
+                },
                 saveToWatchLater: {
                     let api = vm.api
                     Task {

@@ -56,7 +56,9 @@ extension HLSCachingProxy {
         let budget = estimate.variantBudget(parallelConnections: StreamCachePolicy.prefetchConnections)
         // Offline: stay on the variant downloaded last time.
         let previous = await cache.named(video: s.video, name: "variant").flatMap { String(data: $0, encoding: .utf8) }
-        let reused = online == nil ? all.first { HLSPlaylistText.renditionKey(for: $0.uri) == previous } : nil
+        // Offline, or a saved video: stay on the variant already downloaded.
+        let pinned = await cache.isPinned(s.video)
+        let reused = (online == nil || pinned) ? all.first { HLSPlaylistText.renditionKey(for: $0.uri) == previous } : nil
         guard let chosen = reused ?? HLSPlaylistText.selectVariant(all, maxHeight: s.maxHeight, bandwidthBudget: budget) else {
             return .init(status: 502)
         }
@@ -98,6 +100,8 @@ extension HLSCachingProxy {
             return .init(status: 502)
         }
         let info = HLSPlaylistText.mediaPlaylist(text, base: pl.origin)
+        await cache.storeNamed(Data(pl.rendition.utf8), video: s.video, name: pl.isAudio ? "rendition-audio" : "rendition-video")
+        await cache.storeNamed(Data(pl.origin.absoluteString.utf8), video: s.video, name: "plurl-" + pl.rendition)
         let done = await cache.cachedIndices(video: s.video, rendition: pl.rendition)
         guard session?.id == id else { return .init(status: 404) }
         var starts: [Double] = []

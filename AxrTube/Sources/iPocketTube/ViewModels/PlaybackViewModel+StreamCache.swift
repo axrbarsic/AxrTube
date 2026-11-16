@@ -60,6 +60,37 @@ extension PlaybackViewModel {
         let complete = shown?.isComplete ?? false
         if cachedTimeRanges != ranges { cachedTimeRanges = ranges }
         if isFullyCached != complete { isFullyCached = complete }
+        // A saved video downloading through the player reports its progress.
+        if let id = currentVideo?.id, shown != nil, PinnedStreamLibrary.shared.entry(id) != nil {
+            let fraction = cachedFraction
+            Task { await PinnedStreamLibrary.shared.update(id, progress: fraction, isComplete: complete) }
+        }
+    }
+
+    /// Share of the current video that is on disk (0…1), as on the bar.
+    var cachedFraction: Double {
+        guard duration > 0 else { return 0 }
+        if isFullyCached { return 1 }
+        return min(cachedTimeRanges.reduce(0) { $0 + ($1.upperBound - $1.lowerBound) } / duration, 1)
+    }
+
+    /// Plays a previously cached or saved stream without YouTube metadata —
+    /// used offline or when the metadata request fails.
+    func playSavedStreamIfAvailable(_ video: Video) async -> Bool {
+        guard let data = await StreamSegmentCache.shared.named(video: video.id, name: StreamSource.fileName),
+              let source = try? JSONDecoder().decode(StreamSource.self, from: data),
+              !player.isExternalPlaybackActive,
+              let local = await HLSCachingProxy.shared.startSession(
+                  videoID: video.id, masterURL: source.master, headers: source.headers, preferredMaxHeight: nil
+              ) else { return false }
+        ensureCacheProgressUpdates()
+        streamCacheDirectSource = (source.master, source.headers)
+        isAudioOnlyMode = settings.audioOnlyMode
+        if let known = video.duration, known > 0 { duration = known }
+        let item = AVPlayerItem(asset: AVURLAsset(url: local))
+        item.preferredForwardBufferDuration = PlaybackBufferPolicy.videoForwardBuffer
+        playLocalItem(item, video: video, label: "saved stream \(video.id)")
+        return true
     }
 
     private func refreshBufferedRanges() {

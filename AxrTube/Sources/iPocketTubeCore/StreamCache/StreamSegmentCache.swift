@@ -6,19 +6,29 @@ import Foundation
 public actor StreamSegmentCache {
     public static let shared = StreamSegmentCache(
         root: FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("AxrStreamCache", isDirectory: true)
+            .appendingPathComponent("AxrStreamCache", isDirectory: true),
+        pinnedRoot: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("AxrPinnedStreams", isDirectory: true)
     )
 
     public let root: URL
+    /// Videos the user saved ("Скачать"): outside Caches, never evicted.
+    public let pinnedRoot: URL
     /// Upper bound for all cached streams.
     public var limitBytes: Int64
     private let fm = FileManager.default
     private var protectedVideo: String?
 
-    public init(root: URL, limitBytes: Int64 = 2 * 1024 * 1024 * 1024) {
+    public init(root: URL, pinnedRoot: URL? = nil, limitBytes: Int64 = 2 * 1024 * 1024 * 1024) {
         self.root = root
+        self.pinnedRoot = pinnedRoot ?? root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + "-pinned")
         self.limitBytes = limitBytes
         try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var pinned = self.pinnedRoot
+        try? FileManager.default.createDirectory(at: pinned, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? pinned.setResourceValues(values)
     }
 
     public func setLimit(_ bytes: Int64) { limitBytes = bytes }
@@ -31,8 +41,46 @@ public actor StreamSegmentCache {
         return cleaned.isEmpty ? "_" : String(cleaned.prefix(64))
     }
 
-    private func videoDir(_ video: String) -> URL {
+    private func cacheDir(_ video: String) -> URL {
         root.appendingPathComponent(Self.safe(video), isDirectory: true)
+    }
+
+    private func pinnedDir(_ video: String) -> URL {
+        pinnedRoot.appendingPathComponent(Self.safe(video), isDirectory: true)
+    }
+
+    /// Saved videos live in the pinned root; everything else in the cache.
+    private func videoDir(_ video: String) -> URL {
+        let pinned = pinnedDir(video)
+        return fm.fileExists(atPath: pinned.path) ? pinned : cacheDir(video)
+    }
+
+    // MARK: Pinning
+
+    public func isPinned(_ video: String) -> Bool {
+        fm.fileExists(atPath: pinnedDir(video).path)
+    }
+
+    /// Moves what is already cached into permanent storage (no re-download);
+    /// later segments of this video are written there too.
+    @discardableResult
+    public func pin(_ video: String) -> Bool {
+        let target = pinnedDir(video)
+        if fm.fileExists(atPath: target.path) { return true }
+        let source = cacheDir(video)
+        if fm.fileExists(atPath: source.path) {
+            if (try? fm.moveItem(at: source, to: target)) != nil { return true }
+        }
+        return (try? fm.createDirectory(at: target, withIntermediateDirectories: true)) != nil
+    }
+
+    /// Deletes a saved video's data.
+    public func unpin(_ video: String) {
+        try? fm.removeItem(at: pinnedDir(video))
+    }
+
+    public func pinnedBytes(_ video: String) -> Int64 {
+        Self.size(of: pinnedDir(video), fm: fm)
     }
 
     private func segmentURL(video: String, rendition: String, index: Int) -> URL {
@@ -91,6 +139,7 @@ public actor StreamSegmentCache {
     public func markPlaying(_ video: String) {
         protectedVideo = video
         let dir = videoDir(video)
+        guard !isPinned(video) else { return }
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         try? fm.setAttributes([.modificationDate: Date()], ofItemAtPath: dir.path)
     }
@@ -123,13 +172,17 @@ public actor StreamSegmentCache {
         )) ?? []
         return videos.map { dir in
             let date = (try? dir.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate ?? .distantPast
-            var bytes: Int64 = 0
-            if let walker = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
-                for case let file as URL in walker {
-                    bytes += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
-                }
-            }
-            return (dir, date, bytes)
+            return (dir, date, Self.size(of: dir, fm: fm))
         }
+    }
+
+    private static func size(of dir: URL, fm: FileManager) -> Int64 {
+        var bytes: Int64 = 0
+        if let walker = fm.enumerator(at: dir, includingPropertiesForKeys: [.fileSizeKey]) {
+            for case let file as URL in walker {
+                bytes += Int64((try? file.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+            }
+        }
+        return bytes
     }
 }

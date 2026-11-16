@@ -4,12 +4,21 @@ import iPocketTubeCore
 
 /// Everything under the 16:9 player on YouTube's portrait watch page.
 struct YTWatchDetails: View {
+    /// «Скачать» state: saving builds on the stream cache, so progress is
+    /// the share already on disk.
+    enum SaveState: Equatable {
+        case none
+        case saving(Double)
+        case saved
+    }
+
     struct Actions {
         var like: () -> Void
         var dislike: () -> Void
         var share: () -> Void
         var downloadVideo: () -> Void
         var downloadAudio: () -> Void
+        var removeSaved: () -> Void
         var saveToWatchLater: () -> Void
         var transcript: () -> Void
         var description: () -> Void
@@ -25,8 +34,10 @@ struct YTWatchDetails: View {
     let owner: WatchOwnerInfo
     let isSubscribed: Bool
     let isSignedIn: Bool
-    let isDownloading: Bool
+    let saveState: SaveState
+    let isDownloadingAudio: Bool
     let actions: Actions
+    @State private var confirmRemove = false
 
     var body: some View {
         ScrollView {
@@ -42,6 +53,13 @@ struct YTWatchDetails: View {
         }
         .background(YTColor.background)
         .scrollIndicators(.hidden)
+        .confirmationDialog(
+            saveState == .saved ? "Удалить из скачанных?" : "Отменить скачивание?",
+            isPresented: $confirmRemove, titleVisibility: .visible
+        ) {
+            Button(saveState == .saved ? "Удалить" : "Отменить скачивание", role: .destructive, action: actions.removeSaved)
+            Button("Оставить", role: .cancel) {}
+        }
     }
 
     // MARK: Sections
@@ -130,14 +148,7 @@ struct YTWatchDetails: View {
                 }
                 .background(YTColor.chip, in: Capsule())
                 chip("arrowshape.turn.up.right", "Поделиться", action: actions.share)
-                Menu {
-                    Button(action: actions.downloadVideo) { Label("Видео", systemImage: "film") }
-                    Button(action: actions.downloadAudio) { Label("Только аудио", systemImage: "music.note") }
-                } label: {
-                    chipLabel(isDownloading ? "arrow.down.circle.dotted" : "arrow.down.to.line",
-                              isDownloading ? "Скачивание…" : "Скачать")
-                        .background(YTColor.chip, in: Capsule())
-                }
+                saveChip
                 .accessibilityIdentifier("watch.download")
                 chip("text.quote", "Текст видео", action: actions.transcript)
                     .accessibilityIdentifier("watch.transcript")
@@ -148,6 +159,49 @@ struct YTWatchDetails: View {
             .padding(.horizontal, 12)
         }
         .padding(.bottom, 12)
+    }
+
+    @ViewBuilder private var saveChip: some View {
+        switch saveState {
+        case .none:
+            // Tap saves the video; long press offers the audio-only file.
+            Menu {
+                Button(action: actions.downloadAudio) { Label("Только аудио", systemImage: "music.note") }
+            } label: {
+                chipLabel(isDownloadingAudio ? "arrow.down.circle.dotted" : "arrow.down.to.line",
+                          isDownloadingAudio ? "Аудио…" : "Скачать")
+                    .background(YTColor.chip, in: Capsule())
+            } primaryAction: {
+                iPocketTubeHaptics.shared.perform(.primaryAction)
+                actions.downloadVideo()
+            }
+        case .saving(let fraction):
+            Button { confirmRemove = true } label: {
+                HStack(spacing: 6) {
+                    ZStack {
+                        Circle().stroke(YTColor.divider, lineWidth: 2.5)
+                        Circle().trim(from: 0, to: max(0.02, fraction))
+                            .stroke(YTProgressLayers.cacheColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                            .rotationEffect(.degrees(-90))
+                            .animation(.linear(duration: 0.2), value: fraction)
+                    }
+                    .frame(width: 16, height: 16)
+                    Text("\(Int((fraction * 100).rounded(.down)))%")
+                        .font(.system(size: 14, weight: .medium).monospacedDigit())
+                }
+                .foregroundStyle(YTColor.primaryText)
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .background(YTColor.chip, in: Capsule())
+            }
+            .buttonStyle(YTPressStyle())
+            .accessibilityLabel("Скачивается, \(Int(fraction * 100)) процентов")
+        case .saved:
+            Button { confirmRemove = true } label: {
+                chipLabel("checkmark.circle.fill", "Скачано").background(YTColor.chip, in: Capsule())
+            }
+            .buttonStyle(YTPressStyle())
+        }
     }
 
     private var commentsTeaser: some View {

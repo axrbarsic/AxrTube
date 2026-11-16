@@ -194,6 +194,7 @@ struct YTYouView: View {
 
     private var downloadsDetail: String? {
         let count = downloadStore.entries.filter { $0.status == .completed }.count
+            + PinnedStreamLibrary.shared.entries.count
         return count > 0 ? "\(count)" : nil
     }
 

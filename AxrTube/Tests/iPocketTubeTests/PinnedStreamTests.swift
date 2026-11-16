@@ -1,0 +1,108 @@
+import Foundation
+import Testing
+@testable import iPocketTubeCore
+
+@Suite("Saved videos built from the stream cache", .serialized)
+struct PinnedStreamTests {
+    private func tempRoot() -> URL {
+        FileManager.default.temporaryDirectory.appendingPathComponent("axr-pin-\(UUID().uuidString)")
+    }
+
+    @Test func pinKeepsCachedSegmentsAndSurvivesEvictionAndClearing() async {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"), limitBytes: 1)
+        await cache.storeSegment(Data(count: 10), video: "v1", rendition: "r", index: 0)
+        #expect(await cache.pin("v1"))
+        #expect(await cache.isPinned("v1"))
+        #expect(await cache.segment(video: "v1", rendition: "r", index: 0)?.count == 10)
+        // New segments of a saved video go to permanent storage.
+        await cache.storeSegment(Data(count: 5), video: "v1", rendition: "r", index: 1)
+        await cache.evictIfNeeded()
+        await cache.removeAll()
+        #expect(await cache.cachedIndices(video: "v1", rendition: "r") == [0, 1])
+        #expect(await cache.totalBytes() == 0)
+        await cache.unpin("v1")
+        #expect(await cache.segment(video: "v1", rendition: "r", index: 0) == nil)
+    }
+
+    @MainActor
+    @Test func libraryPinsUpdatesAndRemoves() async {
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let file = root.appendingPathComponent("lib.json")
+        let library = PinnedStreamLibrary(fileURL: file, cache: cache)
+        await library.pin(Video(id: "v2", title: "T", channelTitle: "C"), progress: 0.4, isComplete: false)
+        #expect(library.pending == ["v2"])
+        await library.update("v2", progress: 1, isComplete: true)
+        #expect(library.pending.isEmpty)
+        #expect(PinnedStreamLibrary(fileURL: file, cache: cache).entry("v2")?.isComplete == true)
+        await library.remove("v2")
+        #expect(library.entries.isEmpty)
+        #expect(!(await cache.isPinned("v2")))
+    }
+
+    @Test func completerFinishesMissingSegmentsAndRefreshesExpiredURLs() async throws {
+        // Old playlist points at expired URLs; the resolver yields a new master.
+        var files: [String: Data] = [:]
+        let fresh = "https://m.example/hls_playlist/itag/134/new.m3u8"
+        files["https://m.example/new-master.m3u8"] = Data("""
+        #EXTM3U
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360
+        \(fresh)
+        """.utf8)
+        var media = "#EXTM3U\n"
+        for i in 0..<3 {
+            let seg = "https://cdn.example/new/\(i).ts"
+            media += "#EXTINF:5.0,\n\(seg)\n"
+            files[seg] = Data(repeating: UInt8(i), count: 1_000)
+        }
+        files[fresh] = Data((media + "#EXT-X-ENDLIST\n").utf8)
+        let originFiles = files
+        FakeOrigin.state.withLock { $0 = (originFiles, false) }
+
+        let root = tempRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let video = "v3"
+        let old = "https://m.example/hls_playlist/itag/134/old.m3u8"
+        let oldText = "#EXTM3U\n#EXTINF:5.0,\nhttps://cdn.example/old/0.ts\n#EXTINF:5.0,\nhttps://cdn.example/old/1.ts\n#EXTINF:5.0,\nhttps://cdn.example/old/2.ts\n#EXT-X-ENDLIST\n"
+        await cache.pin(video)
+        await cache.storeSegment(Data(repeating: 0, count: 1_000), video: video, rendition: "itag134", index: 0)
+        await cache.storeNamed(try JSONEncoder().encode(StreamSource(master: URL(string: "https://m.example/old-master.m3u8")!, headers: [:])),
+                               video: video, name: StreamSource.fileName)
+        await cache.storeNamed(Data("itag134".utf8), video: video, name: "rendition-video")
+        await cache.storeNamed(Data(oldText.utf8), video: video, name: "pl-itag134")
+        await cache.storeNamed(Data(old.utf8), video: video, name: "plurl-itag134")
+
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FakeOrigin.self]
+        let proxy = HLSCachingProxy(cache: cache, configuration: config, estimateKey: "t.\(UUID().uuidString)")
+        let completer = PinnedStreamCompleter(cache: cache, proxy: proxy, configuration: config)
+        await completer.setResolver { _ in StreamSource(master: URL(string: "https://m.example/new-master.m3u8")!, headers: [:]) }
+
+        let done = AsyncStream<Void>.makeStream()
+        let finished = Locked(false)
+        await completer.start(
+            pending: { finished.value ? [] : [video] },
+            report: { _, _, complete in
+                if complete { finished.value = true; done.continuation.yield() }
+            }
+        )
+        for await _ in done.stream { break }
+        #expect(await cache.cachedIndices(video: video, rendition: "itag134") == [0, 1, 2])
+        #expect(await cache.segment(video: video, rendition: "itag134", index: 2) == files["https://cdn.example/new/2.ts"])
+    }
+}
+
+/// Tiny thread-safe box for test callbacks.
+final class Locked<T>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: T
+    init(_ value: T) { stored = value }
+    var value: T {
+        get { lock.lock(); defer { lock.unlock() }; return stored }
+        set { lock.lock(); stored = newValue; lock.unlock() }
+    }
+}

@@ -1,6 +1,19 @@
 import Foundation
 import os
 
+/// Where a cached video's stream came from, saved so it can be replayed
+/// offline and completed later.
+public struct StreamSource: Codable, Sendable {
+    public static let fileName = "source"
+    public var master: URL
+    public var headers: [String: String]
+
+    public init(master: URL, headers: [String: String]) {
+        self.master = master
+        self.headers = headers
+    }
+}
+
 /// Local caching proxy for HLS playback on weak networks.
 ///
 /// The player loads `http://127.0.0.1:<port>/<session>/master.m3u8`. The
@@ -86,6 +99,9 @@ public actor HLSCachingProxy {
             ?? (budget == nil ? StreamCachePolicy.unknownNetworkMaxHeight : StreamCachePolicy.autoMaxHeight)
         session = Session(id: id, video: videoID, master: masterURL, headers: headers, maxHeight: maxHeight)
         await cache.markPlaying(videoID)
+        if let source = try? JSONEncoder().encode(StreamSource(master: masterURL, headers: headers)) {
+            await cache.storeNamed(source, video: videoID, name: StreamSource.fileName)
+        }
         let available = (try? URL(fileURLWithPath: NSHomeDirectory())
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage
@@ -140,6 +156,9 @@ public actor HLSCachingProxy {
         session?.playlists[pid]?.done.insert(index)
         notifyProgress()
     }
+
+    /// Video whose session is downloading right now.
+    public var activeVideoID: String? { session?.video }
 
     public func isProxied(_ url: URL?) -> Bool {
         guard let url, url.host == "127.0.0.1", let id = session?.id else { return false }

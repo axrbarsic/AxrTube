@@ -67,6 +67,7 @@ public struct RootView: View {
         .toast(message: $downloadToast, duration: 4, bottomPadding: 100)
         #endif
         #if os(iOS)
+        .task { SavedStreamService.start(api: api) }
         .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in
             cardDownloadService.prioritizePlayback(playerState.vm.player, preparing: preparing)
         }
