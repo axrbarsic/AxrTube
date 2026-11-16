@@ -320,6 +320,13 @@ public final class PlaybackViewModel {
     @ObservationIgnored weak var stallRecoveryItem: AVPlayerItem?
     /// Origin of the item currently played through the stream cache proxy.
     @ObservationIgnored var streamCacheDirectSource: (url: URL, headers: [String: String])?
+    /// Parts of the current video saved on disk by the stream cache (seconds).
+    var cachedTimeRanges: [ClosedRange<Double>] = []
+    /// The whole current video is on disk.
+    var isFullyCached = false
+    /// What AVPlayer holds in memory, shown when the stream cache is not used.
+    var bufferedTimeRanges: [ClosedRange<Double>] = []
+    @ObservationIgnored var cacheProgressTask: Task<Void, Never>?
     var qualityTask: Task<Void, Never>? {
         get { qualityManager.qualityTask }
         set { qualityManager.qualityTask = newValue }

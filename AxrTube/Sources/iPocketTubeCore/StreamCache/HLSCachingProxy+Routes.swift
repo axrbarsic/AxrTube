@@ -105,6 +105,7 @@ extension HLSCachingProxy {
         for d in info.segmentDurations { starts.append(t); t += d }
         session?.playlists[pid]?.segments = info.segments
         session?.playlists[pid]?.starts = starts
+        session?.playlists[pid]?.durations = info.segmentDurations
         session?.playlists[pid]?.done = done
         if let mime = await cache.named(video: s.video, name: "mime-" + pl.rendition).flatMap({ String(data: $0, encoding: .utf8) }) {
             session?.playlists[pid]?.mime = mime

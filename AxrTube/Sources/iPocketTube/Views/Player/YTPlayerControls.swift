@@ -138,6 +138,12 @@ struct YTPlayerControls: View {
                     + Text(formatDuration(vm.duration)).foregroundColor(.white.opacity(0.7)))
                     .font(.system(size: 12, weight: .medium).monospacedDigit())
                     .accessibilityIdentifier("player.currentTimeLabel")
+                if vm.isFullyCached {
+                    Label("В кэше", systemImage: "checkmark.circle.fill")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(YTProgressLayers.cacheColor)
+                        .accessibilityIdentifier("player.fullyCachedBadge")
+                }
                 if let chapter = vm.currentChapter {
                     Text("• \(chapter.title)")
                         .font(.system(size: 12, weight: .medium))
@@ -214,6 +220,7 @@ struct YTScrubber: View {
             let fraction = CGFloat(min(max(time / duration, 0), 1))
             ZStack(alignment: .leading) {
                 Rectangle().fill(.white.opacity(0.3)).frame(height: vm.isScrubbing ? 5 : 3)
+                YTProgressLayers(vm: vm, width: width, height: vm.isScrubbing ? 5 : 3)
                 ForEach(vm.sponsorSegments) { segment in
                     Rectangle()
                         .fill(segment.category.color)
@@ -248,17 +255,4 @@ struct YTScrubber: View {
     }
 }
 
-/// Thin red line along the bottom of the portrait player while controls are hidden.
-struct YTThinProgress: View {
-    let vm: PlaybackViewModel
-
-    var body: some View {
-        GeometryReader { geo in
-            Rectangle().fill(YTColor.brandRed)
-                .frame(width: geo.size.width * CGFloat(min(max(vm.currentTime / max(vm.duration, 1), 0), 1)), height: 2)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-        }
-        .allowsHitTesting(false)
-    }
-}
 #endif

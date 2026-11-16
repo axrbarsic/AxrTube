@@ -18,6 +18,7 @@ public actor HLSCachingProxy {
         var rendition: String
         var segments: [URL] = []
         var starts: [Double] = []
+        var durations: [Double] = []
         var done: Set<Int> = []
         var cursor = 0
         var touched = Date.distantPast
@@ -106,6 +107,22 @@ public actor HLSCachingProxy {
     public func isProxied(_ url: URL?) -> Bool {
         guard let url, url.host == "127.0.0.1", let id = session?.id else { return false }
         return url.path.hasPrefix("/\(id)/")
+    }
+
+    /// Disk coverage of the renditions the player is using right now.
+    public func progress() -> StreamCacheProgress? {
+        guard let s = session else { return nil }
+        let used = s.playlists.values.filter { !$0.segments.isEmpty && $0.touched != .distantPast }
+        guard !used.isEmpty else { return nil }
+        var ranges: [ClosedRange<Double>]?
+        var duration = 0.0
+        for pl in used {
+            let own = StreamCacheCoverage.ranges(starts: pl.starts, durations: pl.durations, done: pl.done)
+            ranges = ranges.map { StreamCacheCoverage.intersect($0, own) } ?? own
+            duration = max(duration, pl.durations.reduce(0, +))
+        }
+        let complete = used.allSatisfy { $0.done.count >= $0.segments.count }
+        return StreamCacheProgress(ranges: ranges ?? [], duration: duration, isComplete: complete)
     }
 
     // MARK: Origin

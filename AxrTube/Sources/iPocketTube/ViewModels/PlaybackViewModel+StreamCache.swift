@@ -13,6 +13,7 @@ extension PlaybackViewModel {
         for video: Video, masterURL: URL, headers: [String: String], isHLS: Bool, maxHeight: Int
     ) async -> URL {
         streamCacheDirectSource = nil
+        ensureCacheProgressUpdates()
         guard isHLS, !video.isLive, !player.isExternalPlaybackActive else {
             endStreamCacheSession()
             return masterURL
@@ -26,6 +27,33 @@ extension PlaybackViewModel {
         }
         streamCacheDirectSource = (masterURL, headers)
         return local
+    }
+
+    /// Refreshes the progress bar's cache and buffer layers once a second.
+    func ensureCacheProgressUpdates() {
+        guard cacheProgressTask == nil else { return }
+        cacheProgressTask = Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                await self?.refreshCacheProgress()
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+    }
+
+    private func refreshCacheProgress() async {
+        let item = player.currentItem
+        let proxied = (item?.asset as? AVURLAsset)?.url.host == "127.0.0.1"
+        let progress = proxied ? await HLSCachingProxy.shared.progress() : nil
+        let cached = progress?.ranges ?? []
+        let complete = progress?.isComplete ?? false
+        let buffered: [ClosedRange<Double>] = proxied ? [] : (item?.loadedTimeRanges ?? []).compactMap {
+            let r = $0.timeRangeValue
+            let start = CMTimeGetSeconds(r.start), end = CMTimeGetSeconds(CMTimeRangeGetEnd(r))
+            return start.isFinite && end.isFinite && end > start ? start...end : nil
+        }
+        if cachedTimeRanges != cached { cachedTimeRanges = cached }
+        if isFullyCached != complete { isFullyCached = complete }
+        if bufferedTimeRanges != buffered { bufferedTimeRanges = buffered }
     }
 
     func endStreamCacheSession() {

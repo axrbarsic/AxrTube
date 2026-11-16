@@ -88,3 +88,17 @@ struct StreamCachePolicyTests {
         #expect(LoopbackHTTPServer.byteRange("bytes=20-", length: 10) == nil)
     }
 }
+
+@Suite("Stream cache coverage for the progress bar")
+struct StreamCacheCoverageTests {
+    @Test func adjacentSegmentsMergeAndGapsSplit() {
+        let r = StreamCacheCoverage.ranges(starts: [0, 5, 10, 15], durations: [5, 5, 5, 5], done: [0, 1, 3])
+        #expect(r == [0...10, 15...20])
+    }
+
+    @Test func videoAndAudioIntersect() {
+        let video: [ClosedRange<Double>] = [0...10, 15...20]
+        let audio: [ClosedRange<Double>] = [0...6, 8...30]
+        #expect(StreamCacheCoverage.intersect(video, audio) == [0...6, 8...10, 15...20])
+    }
+}

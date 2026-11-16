@@ -96,6 +96,12 @@ struct StreamCacheProxyTests {
             try await Task.sleep(for: .milliseconds(50))
         }
         #expect(await cache.cachedIndices(video: video, rendition: "itag134") == [0, 1, 2, 3])
+        for _ in 0..<40 where await proxy.progress()?.isComplete != true {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        let progress = await proxy.progress()
+        #expect(progress?.isComplete == true)
+        #expect(progress?.ranges == [0...20])
 
         // Offline reopen: everything comes from disk.
         FakeOrigin.state.withLock { $0.offline = true }
