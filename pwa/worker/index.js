@@ -5,7 +5,7 @@ import {createBackgroundPlayback} from './background-playback.js';
 import {createUpdateClient,serviceWorkerSource} from './app-updates.js';
 import {youtubeAccountResponse,accountStreamToken} from './youtube-account.js';
 import {i18nClient} from './i18n.js';
-import {transcriptResponse} from './transcript.js';
+import {transcriptResponse,transcriptLab} from './transcript.js';
 import {transcriptClient,transcriptStyle} from './transcript-ui.js';
 import {personalHomeResponse} from './personal-home.js';
 import {createMediaDiagnostics,systemPlayerPage,identityTestManifest} from './media-diagnostics.js';
@@ -525,6 +525,12 @@ export default { async fetch(request,env={},ctx) {
     }else if (!['GET','HEAD'].includes(request.method)) return new Response('Method not allowed',{status:405});
     if(u.pathname==='/api/version')return json({version:APP_BUILD});
     if(u.pathname==='/api/transcript')return transcriptResponse(u);
+    if(u.pathname==='/api/transcript-lab'){
+      const ids=(u.searchParams.get('ids')||'dQw4w9WgXcQ,jNQXAC9IVRw').split(',').filter(x=>/^[\w-]{11}$/.test(x)).slice(0,5);
+      const results=[];for(const id of ids)results.push(await transcriptLab(id));
+      const e=await egressTrace();console.log('TRANSCRIPT_LAB '+JSON.stringify({...e,results}));
+      return json({...e,results});
+    }
     if(['/boot.js','/engine.js','/app.js','/app.css','/hls.js'].includes(u.pathname)&&u.searchParams.has('release')&&u.searchParams.get('release')!==APP_BUILD)return json({error:'Версия приложения изменилась',version:APP_BUILD},409);
     if(u.pathname==='/hls.js'){
       // Fixed package/version only. No user input, credentials or redirects.
