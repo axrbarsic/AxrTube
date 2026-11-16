@@ -14,6 +14,8 @@ struct YTSettingsView: View {
     @State private var showSignOutFailure = false
     @State private var showClearDownloads = false
     @State private var streamCacheBytes: Int64 = 0
+    @State private var showWebSignIn = false
+    @State private var commentAuth = WebCommentAuth.shared
 
     var body: some View {
         @Bindable var store = store
@@ -116,6 +118,7 @@ struct YTSettingsView: View {
         .task { streamCacheBytes = await StreamSegmentCache.shared.totalBytes() }
         .toolbar(.visible, for: .navigationBar)
         .sheet(isPresented: $showSignIn) { SignInView() }
+        .sheet(isPresented: $showWebSignIn) { YTWebSignInView() }
         .alert("Удалить все скачанные видео?", isPresented: $showClearDownloads) {
             Button("Удалить", role: .destructive) {
                 downloadService.cancelAll()
@@ -148,6 +151,32 @@ struct YTSettingsView: View {
                 }
             } else {
                 Button("Войти в аккаунт") { showSignIn = true }
+            }
+            commentSignInRow
+        }
+    }
+
+    /// Separate web sign-in that allows writing comments.
+    @ViewBuilder private var commentSignInRow: some View {
+        switch commentAuth.status {
+        case .signedOut:
+            Button("Вход для комментариев") { showWebSignIn = true }
+                .accessibilityIdentifier("settings.commentSignIn")
+        case .checking:
+            LabeledContent("Комментарии") { ProgressView() }
+        case .ready(let account):
+            LabeledContent("Комментарии", value: account.map { "Можно писать · \($0)" } ?? "Можно писать")
+            Button("Выйти из входа для комментариев", role: .destructive) {
+                Task { await commentAuth.signOut() }
+            }
+        case .limited(let reason):
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Комментарии недоступны")
+                Text(reason).font(.footnote).foregroundStyle(.secondary)
+            }
+            Button("Войти заново") { showWebSignIn = true }
+            Button("Выйти из входа для комментариев", role: .destructive) {
+                Task { await commentAuth.signOut() }
             }
         }
     }
