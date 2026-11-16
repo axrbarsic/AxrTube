@@ -10,6 +10,7 @@ struct AppEntry: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     #endif
 
+    @State private var commentsProbeStarted = false
     @State private var api: InnerTubeAPI
     @State private var authService: AuthService
     @State private var browseViewModel: BrowseViewModel
@@ -295,6 +296,9 @@ struct AppEntry: App {
                             consumeChannelDeepLinkFromLaunchArgs()
                             consumeQueueInjectFromLaunchArgs()
                             consumeBotGuardProbeFromLaunchArgs()
+                            #if DEBUG
+                            consumeCommentsProbeFromLaunchArgs()
+                            #endif
                             authService.handleForeground()
                             browseViewModel.refreshIfStale()
                             consumePendingRSSFeedURL()
@@ -581,6 +585,27 @@ struct AppEntry: App {
     ///   Phase 1 ✅  "[BotGuard] challenge ok, globalName='...' jsLen=..."
     ///   Full ✅     "[BotGuardProbe] ✅ PIPELINE COMPLETE tokenLen=... videoId=..."
     ///   Full ❌     "[BotGuardProbe] ❌ PIPELINE FAILED error=... videoId=..."
+    #if DEBUG
+    /// `--uitesting-comments-probe=<videoId>`: read-only check of what the
+    /// signed-in comment and notification endpoints return; writes
+    /// Documents/comments_probe.json.
+    private func consumeCommentsProbeFromLaunchArgs() {
+        guard let arg = ProcessInfo.processInfo.arguments.first(where: { $0.hasPrefix("--uitesting-comments-probe=") }),
+              !commentsProbeStarted else { return }
+        commentsProbeStarted = true
+        let videoID = String(arg.dropFirst("--uitesting-comments-probe=".count))
+        let api = api
+        Task {
+            // Let the auth snapshot reach the API first.
+            try? await Task.sleep(for: .seconds(4))
+            let data = await api.commentsCapabilityProbe(videoId: videoID)
+            guard let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?
+                .appendingPathComponent("comments_probe.json") else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+    #endif
+
     @MainActor
     private func consumeBotGuardProbeFromLaunchArgs() {
         let args = ProcessInfo.processInfo.arguments
