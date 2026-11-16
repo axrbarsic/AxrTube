@@ -45,7 +45,7 @@ struct YTYouView: View {
                     PlaylistView(playlistId: "LL", playlistTitle: "Понравившиеся", api: api, catalogContext: .mediaLibrary)
                 case .queue:
                     PlaylistView(playlistId: CurrentQueueStore.playlistID, playlistTitle: "Очередь", api: api, catalogContext: .mediaLibrary)
-                case .downloads: DownloadsView()
+                case .downloads: YTDownloadsView()
                 case .settings: SettingsView()
                 }
             }

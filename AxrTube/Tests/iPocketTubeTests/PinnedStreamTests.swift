@@ -106,3 +106,24 @@ final class Locked<T>: @unchecked Sendable {
         set { lock.lock(); stored = newValue; lock.unlock() }
     }
 }
+
+@Suite("Unified downloads list")
+struct DownloadLibraryListTests {
+    @Test func mergesSourcesActiveFirstThenNewest() {
+        let old = Date(timeIntervalSince1970: 100), new = Date(timeIntervalSince1970: 200)
+        let saved = [
+            PinnedStream(videoId: "s1", title: "S1", channelTitle: "c", thumbnailURL: nil, duration: 60,
+                         pinnedAt: old, progress: 1, isComplete: true, bytes: 1_000_000),
+            PinnedStream(videoId: "s2", title: "S2", channelTitle: "c", thumbnailURL: nil, duration: 60,
+                         pinnedAt: old, progress: 0.4, isComplete: false, bytes: 0),
+        ]
+        let file = DownloadedVideo(videoId: "f1", title: "F1", channelTitle: "c", thumbnailURL: nil, duration: 60,
+                                   fileURL: URL(fileURLWithPath: "/tmp/f1.m4a"), downloadedAt: new, kind: .audio,
+                                   fileSizeBytes: 2_000_000)
+        let items = DownloadLibraryList.items(saved: saved, files: [file])
+        #expect(items.map(\.videoID) == ["s2", "f1", "s1"])
+        #expect(DownloadLibraryList.status(items[0]) == "Скачивается · 40%")
+        #expect(DownloadLibraryList.status(items[1]).hasPrefix("Аудио · "))
+        #expect(DownloadLibraryList.status(items[2]).hasPrefix("Видео · "))
+    }
+}
