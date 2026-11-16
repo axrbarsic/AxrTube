@@ -30,11 +30,9 @@ struct YTDownloadsView: View {
                 } else {
                     header(items)
                     ForEach(items) { item in
-                        YTDownloadRow(
-                            item: item,
-                            isNowPlaying: playerState.currentVideo?.id == item.videoID,
-                            actions: actions(for: item)
-                        )
+                        let playing = playerState.currentVideo?.id == item.videoID
+                        YTDownloadRow(item: item, isNowPlaying: playing, actions: actions(for: item))
+                        if playing { YTDownloadNowPlaying(vm: playerState.vm) }
                     }
                 }
             }
