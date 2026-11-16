@@ -122,7 +122,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
         let capturedAudioDownloadService = audioDownloadService
         coordinator.contentBuilder = { [content] item in
             AnyView(
-                content(item)
+                AppearanceRoot(store: capturedStore) { content(item) }
                     .environment(capturedStore)
                     .environment(capturedAuth)
                     .environment(capturedPlayerState)
@@ -291,6 +291,16 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
                 }
             }
         }
+    }
+}
+/// Applies the app appearance (Оформление) inside a separately presented
+/// hosting controller, which does not inherit the root's preferred scheme.
+private struct AppearanceRoot<Content: View>: View {
+    let store: SettingsStore
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        content().preferredColorScheme(store.settings.appearance.colorScheme)
     }
 }
 #endif
