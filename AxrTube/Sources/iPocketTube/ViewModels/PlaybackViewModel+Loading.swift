@@ -859,8 +859,15 @@ extension PlaybackViewModel {
                 initialHeaders["Origin"] = "https://www.youtube.com"
                 initialHeaders["Referer"] = "https://www.youtube.com/"
             }
+            // Weak-network cache: play VOD HLS through the local caching proxy,
+            // which saves every segment and downloads the rest ahead in parallel.
+            let playbackURL = await streamCachePlaybackURL(
+                for: video, masterURL: initialStreamURL, headers: initialHeaders,
+                isHLS: isHLS, maxHeight: initialMaxH
+            )
+            guard !Task.isCancelled else { return }
             let playerAsset = AVURLAsset(
-                url: initialStreamURL,
+                url: playbackURL,
                 options: ["AVURLAssetHTTPHeaderFieldsKey": initialHeaders]
             )
             let item = AVPlayerItem(asset: playerAsset)
@@ -1122,7 +1129,10 @@ extension PlaybackViewModel {
         // a short window. Saves the ~1.27s exhaustiveRetry race for hot same-video replays.
         // load() calls replaceCurrentItem(nil) when a different video is requested.
         parkedVideoId = discardItem ? nil : currentVideo?.id
-        if discardItem { player.replaceCurrentItem(with: nil) }
+        if discardItem {
+            player.replaceCurrentItem(with: nil)
+            endStreamCacheSession()
+        }
         isPlaying = false
         #if canImport(UIKit)
         audioInterruptionResumeTask?.cancel()

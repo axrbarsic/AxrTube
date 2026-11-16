@@ -226,6 +226,7 @@ extension PlaybackViewModel {
             guard let self, let active = change.newValue else { return }
             Task { @MainActor [weak self] in
                 self?.isAirPlaying = active
+                if active { self?.switchToOriginForExternalPlayback() }
             }
         }
     }

@@ -318,6 +318,8 @@ public final class PlaybackViewModel {
     /// Single-flight weak-network stall watcher (see +StallRecovery).
     @ObservationIgnored var stallRecoveryTask: Task<Void, Never>?
     @ObservationIgnored weak var stallRecoveryItem: AVPlayerItem?
+    /// Origin of the item currently played through the stream cache proxy.
+    @ObservationIgnored var streamCacheDirectSource: (url: URL, headers: [String: String])?
     var qualityTask: Task<Void, Never>? {
         get { qualityManager.qualityTask }
         set { qualityManager.qualityTask = newValue }

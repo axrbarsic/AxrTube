@@ -13,6 +13,7 @@ struct YTSettingsView: View {
     @State private var showSignIn = false
     @State private var showSignOutFailure = false
     @State private var showClearDownloads = false
+    @State private var streamCacheBytes: Int64 = 0
 
     var body: some View {
         @Bindable var store = store
@@ -66,6 +67,19 @@ struct YTSettingsView: View {
                     .disabled(downloadStore.entries.isEmpty)
             }
 
+            Section {
+                LabeledContent("Кэш просмотра", value: ByteCountFormatter.string(fromByteCount: streamCacheBytes, countStyle: .file))
+                Button("Очистить кэш просмотра", role: .destructive) {
+                    Task {
+                        await StreamSegmentCache.shared.removeAll()
+                        streamCacheBytes = await StreamSegmentCache.shared.totalBytes()
+                    }
+                }
+                .disabled(streamCacheBytes == 0)
+            } footer: {
+                Text("Во время просмотра ролик докачивается целиком, чтобы играть без сети. Старые ролики удаляются сами, кэш не больше 2 ГБ.")
+            }
+
             Section("Конфиденциальность") {
                 Picker("История просмотра", selection: $store.settings.historyState) {
                     Text("Сохранять").tag(AppSettings.HistoryState.enabled)
@@ -83,6 +97,7 @@ struct YTSettingsView: View {
         }
         .navigationTitle("Настройки")
         .navigationBarTitleDisplayMode(.inline)
+        .task { streamCacheBytes = await StreamSegmentCache.shared.totalBytes() }
         .toolbar(.visible, for: .navigationBar)
         .sheet(isPresented: $showSignIn) { SignInView() }
         .alert("Удалить все скачанные видео?", isPresented: $showClearDownloads) {

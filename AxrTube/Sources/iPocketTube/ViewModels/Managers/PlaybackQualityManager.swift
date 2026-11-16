@@ -232,7 +232,15 @@ final class PlaybackQualityManager {
         // Quality preference is applied as ABR hints (preferredMaximumResolution +
         // preferredPeakBitRate), which strongly guide AVPlayer without replacing the item.
         itemObserverTask?.cancel()
-        let asset = AVURLAsset(url: hlsURL, options: uaOpts)
+        // Keep the weak-network stream cache across quality switches.
+        let playURL = await StreamCacheRouting.playbackURL(
+            info: delegate?.playerInfo, masterURL: hlsURL,
+            headers: uaOpts["AVURLAssetHTTPHeaderFieldsKey"] as? [String: String] ?? [:],
+            maxHeight: quality.maxHeight,
+            externalPlayback: (player as? AVPlayer)?.isExternalPlaybackActive ?? false
+        )
+        guard !Task.isCancelled else { return }
+        let asset = AVURLAsset(url: playURL, options: uaOpts)
         let item = AVPlayerItem(asset: asset)
         item.audioTimePitchAlgorithm = .spectral
         // Reduce startup latency after a quality switch: play as soon as 2 s is buffered.
