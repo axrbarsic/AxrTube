@@ -99,6 +99,14 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
 
     func makeCoordinator() -> Coordinator { Coordinator() }
 
+    static func interfaceStyle(_ appearance: AppSettings.Appearance) -> UIUserInterfaceStyle {
+        switch appearance {
+        case .system: .unspecified
+        case .dark: .dark
+        case .light: .light
+        }
+    }
+
     func makeUIViewController(context: Context) -> UIViewController {
         let vc = UIViewController()
         vc.view.backgroundColor = .clear
@@ -108,6 +116,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
 
     func updateUIViewController(_ vc: UIViewController, context: Context) {
         let coordinator = context.coordinator
+        coordinator.interfaceStyle = Self.interfaceStyle(store.settings.appearance)
         coordinator.latestItem = item
         coordinator.capturedPlayerState = playerState
         coordinator.capturedDismissStore = dismissStore
@@ -168,6 +177,11 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
         var capturedPlayerState: PlayerStateStore?
         var capturedDismissStore: (any FullScreenPlayerDismissible)?
         var hostedVC: LandscapeAwareHostingController?
+        /// Appearance chosen in settings, applied straight to the presented
+        /// controller: a SwiftUI preferred scheme does not reach it reliably.
+        var interfaceStyle: UIUserInterfaceStyle = .unspecified {
+            didSet { hostedVC?.overrideUserInterfaceStyle = interfaceStyle }
+        }
         var presentedID: AnyHashable?
         var isTransitioning = false
         /// Incremented on dismiss; Tasks capture the value at creation and abort if it changed.
@@ -219,6 +233,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
 
                     let hc = LandscapeAwareHostingController(rootView: contentBuilder(currentItem))
                     hc.modalPresentationStyle = .fullScreen
+                    hc.overrideUserInterfaceStyle = self.interfaceStyle
                     // Avoid a white flash during the presentation animation, before
                     // the hosted SwiftUI content's own black background renders.
                     hc.view.backgroundColor = .black
