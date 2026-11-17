@@ -68,7 +68,7 @@ public struct RootView: View {
         #endif
         #if os(iOS)
         .task {
-            SavedStreamService.start(api: api)
+            SavedStreamService.shared.start(api: api, settings: { store.settings }, signedIn: { auth.isSignedIn })
             WebCommentAuth.shared.start()
         }
         .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in

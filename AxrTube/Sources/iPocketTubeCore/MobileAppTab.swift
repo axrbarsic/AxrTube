@@ -22,7 +22,7 @@ public enum MobileProfileDestination: String, Hashable, Sendable {
     case channels, playlists, history, watchLater, liked, queue, downloads, settings
 
     public static func accountEntries(signedIn: Bool) -> [Self] {
-        signedIn ? [.watchLater, .liked, .channels] : [.channels]
+        signedIn ? [.liked, .channels] : [.channels]
     }
 
     public static let deviceEntries: [Self] = [.downloads, .queue]

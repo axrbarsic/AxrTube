@@ -69,6 +69,7 @@ public actor PinnedStreamCompleter {
 
     /// True when finished or handed back to the proxy; false to retry later.
     private func complete(_ video: String, report: Report) async -> Bool {
+        if await storedRenditions(video).isEmpty, await !bootstrap(video) { return false }
         guard let sourceData = await cache.named(video: video, name: StreamSource.fileName),
               var source = try? JSONDecoder().decode(StreamSource.self, from: sourceData) else { return false }
         var renditions = await storedRenditions(video)
@@ -90,6 +91,19 @@ public actor PinnedStreamCompleter {
             refreshed = true
         }
         return false
+    }
+
+    /// A video saved without being played: resolve its stream and store the
+    /// playlists (no segments yet) the same way a playback session would.
+    private func bootstrap(_ video: String) async -> Bool {
+        guard let resolver, let source = await resolver(video) else { return false }
+        let audioOnly = await cache.named(video: video, name: PinnedStreamLibrary.audioOnlyMarker)
+            .flatMap { String(data: $0, encoding: .utf8) } == "1"
+        await proxy.prefetchHead(videoID: video, masterURL: source.master, headers: source.headers,
+                                 preferredMaxHeight: nil, seconds: 0, audioOnly: audioOnly)
+        let ok = await !storedRenditions(video).isEmpty
+        log.notice("[pinned] \(video) bootstrap \(ok ? "ok" : "failed")")
+        return ok
     }
 
     /// Downloads missing segments with three connections. Returns true if

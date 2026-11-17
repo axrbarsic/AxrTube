@@ -332,6 +332,8 @@ public final class PlaybackViewModel {
     @ObservationIgnored var videoRequestedFor: String?
     /// The user asked for sound only for this video (tap in «Скачанные»).
     @ObservationIgnored var audioForcedFor: String?
+    /// Last video seen by the progress sampler (for «Удалять после просмотра»).
+    @ObservationIgnored var lastSampledVideoID: String?
     /// Video whose «Далее» successor was already head-prefetched.
     @ObservationIgnored var upNextPrefetchedFor: String?
     #if os(iOS)

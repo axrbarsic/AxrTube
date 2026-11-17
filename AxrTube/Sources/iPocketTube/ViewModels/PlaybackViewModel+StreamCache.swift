@@ -145,6 +145,13 @@ extension PlaybackViewModel {
             return start.isFinite && end.isFinite && end > start ? start...end : nil
         }
         if bufferedTimeRanges != buffered { bufferedTimeRanges = buffered }
+        if let id = currentVideo?.id {
+            if id != lastSampledVideoID {
+                SavedStreamService.shared.playbackMoved(from: lastSampledVideoID)
+                lastSampledVideoID = id
+            }
+            SavedStreamService.shared.playbackProgress(videoID: id, time: currentTime, duration: duration)
+        }
         // An item swap (AirPlay, fallback) must drop the disk layer at once.
         if !currentItemIsProxied, !cachedTimeRanges.isEmpty || isFullyCached {
             cachedTimeRanges = []

@@ -39,8 +39,7 @@ struct YTYouView: View {
                 case .channels: YTChannelsView(api: api).navigationTitle("Все подписки")
                 case .history: YTFeedView(type: .history, requiresSignIn: true, api: api).navigationTitle("История")
                 case .playlists: YTFeedView(type: .playlists, requiresSignIn: true, api: api).navigationTitle("Плейлисты")
-                case .watchLater:
-                    PlaylistView(playlistId: "WL", playlistTitle: "Смотреть позже", api: api, catalogContext: .mediaLibrary)
+                case .watchLater: YTDownloadsView()
                 case .liked:
                     PlaylistView(playlistId: "LL", playlistTitle: "Понравившиеся", api: api, catalogContext: .mediaLibrary)
                 case .queue:
@@ -206,7 +205,7 @@ struct YTYouView: View {
         case .watchLater: row(destination, "Смотреть позже", "clock")
         case .liked: row(destination, "Понравившиеся", "hand.thumbsup")
         case .queue: row(destination, "Очередь", "text.line.first.and.arrowtriangle.forward", detail: queueCount > 0 ? String(queueCount) : nil)
-        case .downloads: row(destination, "Скачанные", "arrow.down.to.line", detail: downloadsDetail)
+        case .downloads: row(destination, "Сохранённое", "bookmark", detail: downloadsDetail)
         case .settings: row(destination, "Настройки", "gearshape")
         }
     }

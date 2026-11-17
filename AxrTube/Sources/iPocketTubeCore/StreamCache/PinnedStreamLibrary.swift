@@ -15,6 +15,8 @@ public struct PinnedStream: Codable, Identifiable, Equatable, Sendable {
     public var bytes: Int64
     /// Saved under data saver: only the audio track is kept.
     public var audioOnly: Bool?
+    /// Played to (almost) the end.
+    public var watchedAt: Date?
 
     public var isAudioOnly: Bool { audioOnly ?? false }
 
@@ -53,6 +55,18 @@ public final class PinnedStreamLibrary {
 
     public var pending: [String] {
         entries.filter { !$0.isComplete }.map(\.videoId)
+    }
+
+    /// Saves to finish now: on a mobile network with «видео только по Wi-Fi»
+    /// only sound-only saves continue.
+    public func pending(onMobileNetwork: Bool, videoOverWiFiOnly: Bool) -> [String] {
+        entries.filter { !$0.isComplete && (!onMobileNetwork || !videoOverWiFiOnly || $0.isAudioOnly) }.map(\.videoId)
+    }
+
+    public func markWatched(_ videoID: String) {
+        guard let index = entries.firstIndex(where: { $0.videoId == videoID }), entries[index].watchedAt == nil else { return }
+        entries[index].watchedAt = Date()
+        save()
     }
 
     /// Marker the background completer reads: "1" = finish the audio only.

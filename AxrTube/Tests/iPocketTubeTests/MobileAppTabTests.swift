@@ -29,7 +29,8 @@ struct MobileAppTabTests {
     }
 
     @Test func signedInProfileAddsOnlyYouTubeCollections() {
-        #expect(MobileProfileDestination.accountEntries(signedIn: true) == [.watchLater, .liked, .channels])
+        // «Смотреть позже» is merged into «Сохранённое» (the .downloads row).
+        #expect(MobileProfileDestination.accountEntries(signedIn: true) == [.liked, .channels])
         #expect(!MobileProfileDestination.accountEntries(signedIn: true).contains(.queue))
     }
 }

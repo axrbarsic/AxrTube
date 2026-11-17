@@ -16,7 +16,7 @@ struct SavedStreamsSection: View {
                 .listRowSeparator(.hidden)
                 .listRowBackground(Color.clear)
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    Button(role: .destructive) { SavedStreamService.remove(entry.videoId) } label: {
+                    Button(role: .destructive) { SavedStreamService.shared.remove(entry.videoId) } label: {
                         Label("Удалить", systemImage: "trash")
                     }
                 }

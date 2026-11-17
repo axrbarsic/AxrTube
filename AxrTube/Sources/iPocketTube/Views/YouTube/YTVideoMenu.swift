@@ -3,15 +3,14 @@ import SwiftUI
 import iPocketTubeCore
 
 /// The "⋮" menu under a video card, with YouTube's action set.
-/// Downloading happens only from here or the watch page — never automatically.
+/// Saving happens from here or the watch page (or «Смотреть позже» sync).
 struct YTVideoMenu: View {
     let video: Video
     var currentPlaylistId: String? = nil
 
     @Environment(AuthService.self) private var authService
     @Environment(SettingsStore.self) private var store
-    @Environment(VideoDownloadService.self) private var downloadService
-    @Environment(AudioDownloadService.self) private var audioDownloadService
+    @State private var saved = SavedStreamService.shared
     @Environment(\.innerTubeAPI) private var api
 
     var body: some View {
@@ -21,34 +20,18 @@ struct YTVideoMenu: View {
             } label: {
                 Label("Добавить в очередь", systemImage: "text.badge.plus")
             }
-            if authService.isSignedIn {
-                if currentPlaylistId == "WL" {
-                    Button(role: .destructive) {
-                        Task { try? await api.removeFromWatchLater(videoId: video.id) }
-                    } label: {
-                        Label("Удалить из «Смотреть позже»", systemImage: "clock.badge.xmark")
-                    }
-                } else {
-                    Button {
-                        Task { try? await api.addToWatchLater(videoId: video.id) }
-                    } label: {
-                        Label("Сохранить в «Смотреть позже»", systemImage: "clock")
-                    }
+            // One «Сохранить»: YouTube «Смотреть позже» + on the phone.
+            if saved.isSaved(video.id) || currentPlaylistId == "WL" {
+                Button(role: .destructive) { saved.remove(video.id) } label: {
+                    Label("Удалить из сохранённого", systemImage: "bookmark.slash")
                 }
-            }
-            Button {
-                downloadService.download(
-                    video: video,
-                    kind: .video,
-                    storageLimitMB: store.settings.offlineStorageLimitMB
-                )
-            } label: {
-                Label("Скачать видео", systemImage: "arrow.down.circle")
-            }
-            Button {
-                audioDownloadService.download(video: video)
-            } label: {
-                Label("Сохранить аудио", systemImage: "music.note")
+            } else {
+                Button { saved.save(video, audioOnly: saved.wantsAudioOnlyDownload) } label: {
+                    Label("Сохранить", systemImage: "bookmark")
+                }
+                Button { saved.save(video, audioOnly: true) } label: {
+                    Label("Сохранить только звук", systemImage: "headphones")
+                }
             }
             if let url = URL(string: "https://www.youtube.com/watch?v=\(video.id)") {
                 ShareLink(item: url) { Label("Поделиться", systemImage: "square.and.arrow.up") }

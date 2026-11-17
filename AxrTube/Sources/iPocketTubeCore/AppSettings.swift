@@ -75,6 +75,10 @@ public struct AppSettings: Codable {
     public var prefetchUpNextEnabled: Bool
     /// «Экономия трафика»: stream only the audio track.
     public var dataSaver: DataSaverMode
+    /// Download new «Смотреть позже» videos to the phone automatically.
+    public var watchLaterAutoDownload: Bool
+    /// Remove a saved video from the phone once it is watched.
+    public var deleteSavedAfterWatching: Bool
 
     public enum DataSaverMode: String, Codable, CaseIterable, Sendable {
         case off, cellular, always
@@ -403,6 +407,8 @@ public struct AppSettings: Codable {
         appearance           = .system
         prefetchUpNextEnabled = false
         dataSaver = .cellular
+        watchLaterAutoDownload = true
+        deleteSavedAfterWatching = false
         enabledSections      = BrowseSection.defaultSections.map(\.type)
         historyState         = .enabled
         sponsorBlockEnabled  = true
@@ -497,6 +503,8 @@ extension AppSettings {
         case appearance
         case prefetchUpNextEnabled
         case dataSaver
+        case watchLaterAutoDownload
+        case deleteSavedAfterWatching
         case enabledSections
         case historyState
         case sponsorBlockEnabled
@@ -576,6 +584,8 @@ extension AppSettings {
         deArrowEnabled               = c.safeDecode(Bool.self,              forKey: .deArrowEnabled,               default: d.deArrowEnabled)
         poTokenServiceURL            = c.safeDecode(URL?.self,              forKey: .poTokenServiceURL,            default: d.poTokenServiceURL)
         audioOnlyMode                = migrateAudioOnly ? false : legacyAudioOnly
+        watchLaterAutoDownload       = c.safeDecode(Bool.self, forKey: .watchLaterAutoDownload, default: d.watchLaterAutoDownload)
+        deleteSavedAfterWatching     = c.safeDecode(Bool.self, forKey: .deleteSavedAfterWatching, default: d.deleteSavedAfterWatching)
         offlineAutoSaveMode          = c.safeDecode(OfflineAutoSaveMode.self, forKey: .offlineAutoSaveMode,       default: d.offlineAutoSaveMode)
         offlineStorageLimitMB        = c.safeDecode(Int.self,               forKey: .offlineStorageLimitMB,        default: d.offlineStorageLimitMB)
         downloadsWiFiOnly            = c.safeDecode(Bool.self,              forKey: .downloadsWiFiOnly,            default: d.downloadsWiFiOnly)

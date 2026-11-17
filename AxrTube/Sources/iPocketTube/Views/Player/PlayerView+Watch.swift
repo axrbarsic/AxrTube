@@ -125,15 +125,20 @@ extension PlayerView {
                     }
                 },
                 downloadVideo: {
-                    SavedStreamService.pin(current, cachedFraction: vm.cachedFraction, isComplete: vm.isFullyCached,
-                                           audioOnly: vm.isAudioOnlyMode)
+                    SavedStreamService.shared.save(current, audioOnly: vm.isAudioOnlyMode,
+                                                   cachedFraction: vm.cachedFraction, isComplete: vm.isFullyCached)
                     let what = vm.isAudioOnlyMode ? " (только звук)" : ""
-                    vm.toastMessage = (vm.isFullyCached ? "Сохранено в «Скачанные»" : "Скачивается в «Скачанные»") + what
+                    vm.toastMessage = "Сохранено" + what
                 },
-                downloadAudio: { audioDownloadService.download(video: current) },
+                downloadAudio: {
+                    SavedStreamService.shared.save(current, audioOnly: true,
+                                                   cachedFraction: vm.isAudioOnlyMode ? vm.cachedFraction : 0,
+                                                   isComplete: vm.isAudioOnlyMode && vm.isFullyCached)
+                    vm.toastMessage = "Сохранено (только звук)"
+                },
                 removeSaved: {
-                    SavedStreamService.remove(current.id)
-                    vm.toastMessage = "Удалено из скачанных"
+                    SavedStreamService.shared.remove(current.id)
+                    vm.toastMessage = "Удалено из сохранённого"
                 },
                 saveToWatchLater: {
                     let api = vm.api

@@ -2,8 +2,9 @@
 import SwiftUI
 import iPocketTubeCore
 
-/// «Скачанные» on iPhone: one YouTube-style list for videos saved from the
-/// stream cache and for file downloads (video and audio-only).
+/// «Сохранённое» on iPhone: YouTube «Смотреть позже» merged with what is on
+/// the phone — saves from the stream cache and older file downloads — in
+/// one YouTube-style list with filters.
 struct YTDownloadsView: View {
     @Environment(DownloadStore.self) private var downloadStore
     @Environment(VideoDownloadService.self) private var downloadService
@@ -16,19 +17,30 @@ struct YTDownloadsView: View {
     @State private var pendingDelete: DownloadLibraryItem?
     @State private var confirmDeleteAll = false
     @State private var transcriptVideo: Video?
+    @State private var saved = SavedStreamService.shared
+    @State private var filter: DownloadLibraryList.Filter = .all
 
     private var items: [DownloadLibraryItem] {
-        DownloadLibraryList.items(saved: library.entries, files: downloadStore.entries)
+        DownloadLibraryList.items(saved: library.entries, files: downloadStore.entries, watchLater: saved.watchLater)
     }
 
     var body: some View {
-        let items = items
+        let all = items
+        let items = all.filter(filter.includes)
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0) {
-                if items.isEmpty {
+                if all.isEmpty {
                     empty
                 } else {
-                    header(items)
+                    header(all)
+                    chips
+                    if items.isEmpty {
+                        Text("Ничего не найдено")
+                            .font(.system(size: 14))
+                            .foregroundStyle(YTColor.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 40)
+                    }
                     ForEach(items) { item in
                         let playing = playerState.currentVideo?.id == item.videoID
                         YTDownloadRow(item: item, isNowPlaying: playing, actions: actions(for: item))
@@ -39,17 +51,28 @@ struct YTDownloadsView: View {
             .padding(.bottom, 24)
         }
         .background(YTColor.background)
-        .navigationTitle("Скачанные")
+        .refreshable { await saved.syncWatchLater(force: true) }
+        .task { await saved.syncWatchLater() }
+        .navigationTitle("Сохранённое")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
-            if !items.isEmpty {
-                Menu {
-                    Button("Удалить все скачанные", role: .destructive) { confirmDeleteAll = true }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
+            Menu {
+                @Bindable var store = settingsStore
+                Toggle(isOn: $store.settings.watchLaterAutoDownload) {
+                    Label("Скачивать «Смотреть позже»", systemImage: "arrow.down.circle")
                 }
+                Toggle(isOn: $store.settings.deleteSavedAfterWatching) {
+                    Label("Удалять после просмотра", systemImage: "checkmark.circle")
+                }
+                if !all.isEmpty {
+                    Divider()
+                    Button("Удалить всё с телефона", role: .destructive) { confirmDeleteAll = true }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
             }
+            .accessibilityIdentifier("saved.menu")
         }
         .confirmationDialog("Удалить «\(pendingDelete?.title ?? "")»?", isPresented: Binding(
             get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }
@@ -60,8 +83,8 @@ struct YTDownloadsView: View {
             }
             Button("Отмена", role: .cancel) { pendingDelete = nil }
         }
-        .confirmationDialog("Удалить все скачанные ролики?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
-            Button("Удалить все", role: .destructive) { delete(items) }
+        .confirmationDialog("Удалить все ролики с телефона?", isPresented: $confirmDeleteAll, titleVisibility: .visible) {
+            Button("Удалить все", role: .destructive) { delete(all.filter { $0.source != .watchLater }, keepWatchLater: true) }
             Button("Отмена", role: .cancel) {}
         }
         .fullScreenCover(item: $transcriptVideo) { video in
@@ -74,6 +97,31 @@ struct YTDownloadsView: View {
             } else {
                 CurrentPlaybackTranscriptPanel { transcriptVideo = nil }
             }
+        }
+    }
+
+    private var chips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(DownloadLibraryList.Filter.allCases, id: \.self) { item in
+                    let selected = item == filter
+                    Button {
+                        iPocketTubeHaptics.shared.perform(.segmentSelection)
+                        filter = item
+                    } label: {
+                        Text(item.title)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(selected ? YTColor.chipSelectedText : YTColor.primaryText)
+                            .padding(.horizontal, 12)
+                            .frame(height: 32)
+                            .background(selected ? YTColor.chipSelected : YTColor.chip,
+                                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 8)
         }
     }
 
@@ -91,10 +139,10 @@ struct YTDownloadsView: View {
             Image(systemName: "arrow.down.circle")
                 .font(.system(size: 48, weight: .light))
                 .foregroundStyle(YTColor.secondaryText)
-            Text("Нет скачанных роликов")
+            Text("Здесь пусто")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(YTColor.primaryText)
-            Text("Нажмите «Скачать» под видео — ролик будет доступен без интернета.")
+            Text("Нажмите «Сохранить» под видео: ролик попадёт в «Смотреть позже» и будет доступен без интернета.")
                 .font(.system(size: 14))
                 .foregroundStyle(YTColor.secondaryText)
                 .multilineTextAlignment(.center)
@@ -120,6 +168,7 @@ struct YTDownloadsView: View {
                 }
             },
             retry: item.state == .failed ? file.map { entry in { retry(entry) } } : nil,
+            download: item.source == .watchLater ? { saved.download(watchLaterVideo(item)) } : nil,
             delete: { pendingDelete = item }
         )
     }
@@ -133,7 +182,8 @@ struct YTDownloadsView: View {
     /// the watch page with the picture.
     private func play(_ item: DownloadLibraryItem, file: DownloadedVideo?, withVideo: Bool) {
         iPocketTubeHaptics.shared.perform(.downloadSelection)
-        guard let video = file?.video ?? library.entry(item.videoID)?.video else { return }
+        guard let video = file?.video ?? library.entry(item.videoID)?.video
+                ?? (item.source == .watchLater ? watchLaterVideo(item) : nil) else { return }
         if withVideo {
             playerRouter.openWithVideo(video: video)
         } else {
@@ -152,12 +202,24 @@ struct YTDownloadsView: View {
         }
     }
 
-    private func delete(_ items: [DownloadLibraryItem]) {
+    private func watchLaterVideo(_ item: DownloadLibraryItem) -> Video {
+        saved.watchLater.first { $0.id == item.videoID }
+            ?? Video(id: item.videoID, title: item.title, channelTitle: item.channelTitle,
+                     thumbnailURL: item.thumbnailURL, duration: item.duration)
+    }
+
+    /// Removes from «Сохранённое» (phone and «Смотреть позже»). `keepWatchLater`
+    /// only frees the phone ("Удалить всё с телефона").
+    private func delete(_ items: [DownloadLibraryItem], keepWatchLater: Bool = false) {
         iPocketTubeHaptics.shared.perform(.primaryAction)
         let files = items.compactMap(fileEntry)
-        for item in items where item.source == .saved {
-            if playerState.currentVideo?.id == item.videoID { playerState.stop(discardItem: true) }
-            SavedStreamService.remove(item.videoID)
+        for item in items where item.source == .saved || item.source == .watchLater {
+            if playerState.currentVideo?.id == item.videoID, item.source == .saved { playerState.stop(discardItem: true) }
+            if keepWatchLater {
+                Task { await PinnedStreamLibrary.shared.remove(item.videoID) }
+            } else {
+                saved.remove(item.videoID)
+            }
         }
         guard !files.isEmpty else { return }
         let ids = Set(files.map(\.videoId))

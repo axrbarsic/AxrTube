@@ -54,10 +54,10 @@ struct YTWatchDetails: View {
         .background(YTColor.background)
         .scrollIndicators(.hidden)
         .confirmationDialog(
-            saveState == .saved ? "Удалить из скачанных?" : "Отменить скачивание?",
+            saveState == .saved ? "Удалить из сохранённого?" : "Отменить сохранение?",
             isPresented: $confirmRemove, titleVisibility: .visible
         ) {
-            Button(saveState == .saved ? "Удалить" : "Отменить скачивание", role: .destructive, action: actions.removeSaved)
+            Button(saveState == .saved ? "Удалить" : "Отменить сохранение", role: .destructive, action: actions.removeSaved)
             Button("Оставить", role: .cancel) {}
         }
     }
@@ -152,9 +152,6 @@ struct YTWatchDetails: View {
                 .accessibilityIdentifier("watch.download")
                 chip("text.quote", "Текст видео", action: actions.transcript)
                     .accessibilityIdentifier("watch.transcript")
-                if isSignedIn {
-                    chip("bookmark", "Сохранить", action: actions.saveToWatchLater)
-                }
             }
             .padding(.horizontal, 12)
         }
@@ -166,10 +163,9 @@ struct YTWatchDetails: View {
         case .none:
             // Tap saves the video; long press offers the audio-only file.
             Menu {
-                Button(action: actions.downloadAudio) { Label("Только аудио", systemImage: "music.note") }
+                Button(action: actions.downloadAudio) { Label("Сохранить только звук", systemImage: "headphones") }
             } label: {
-                chipLabel(isDownloadingAudio ? "arrow.down.circle.dotted" : "arrow.down.to.line",
-                          isDownloadingAudio ? "Аудио…" : "Скачать")
+                chipLabel("bookmark", "Сохранить")
                     .background(YTColor.chip, in: Capsule())
             } primaryAction: {
                 iPocketTubeHaptics.shared.perform(.primaryAction)
@@ -198,7 +194,7 @@ struct YTWatchDetails: View {
             .accessibilityLabel("Скачивается, \(Int(fraction * 100)) процентов")
         case .saved:
             Button { confirmRemove = true } label: {
-                chipLabel("checkmark.circle.fill", "Скачано").background(YTColor.chip, in: Capsule())
+                chipLabel("bookmark.fill", "Сохранено").background(YTColor.chip, in: Capsule())
             }
             .buttonStyle(YTPressStyle())
         }

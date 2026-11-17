@@ -10,6 +10,7 @@ struct YTDownloadRow: View {
         var transcript: () -> Void
         var pauseOrResume: (() -> Void)?
         var retry: (() -> Void)?
+        var download: (() -> Void)? = nil
         var delete: () -> Void
     }
 
@@ -113,11 +114,14 @@ struct YTDownloadRow: View {
                     }
                 }
             }
+            if let download = actions.download {
+                Button(action: download) { Label("Скачать на телефон", systemImage: "arrow.down.circle") }
+            }
             if let retry = actions.retry {
                 Button(action: retry) { Label("Повторить", systemImage: "arrow.clockwise") }
             }
             Button(role: .destructive, action: actions.delete) {
-                Label("Удалить из скачанных", systemImage: "trash")
+                Label("Удалить из сохранённого", systemImage: "trash")
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -142,6 +146,7 @@ struct YTDownloadRow: View {
         case .ready: YTColor.secondaryText
         case .downloading, .paused: YTProgressLayers.cacheColor
         case .failed: YTColor.brandRed
+        case .notDownloaded: YTColor.secondaryText
         }
     }
 }

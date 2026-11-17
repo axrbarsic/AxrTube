@@ -127,3 +127,90 @@ struct DownloadLibraryListTests {
         #expect(DownloadLibraryList.status(items[2]).hasPrefix("Видео · "))
     }
 }
+
+@Suite("«Сохранённое»: watch later + phone")
+struct SavedLibraryTests {
+    private func pinned(_ id: String, complete: Bool = true, audio: Bool = false, watched: Bool = false) -> PinnedStream {
+        var p = PinnedStream(videoId: id, title: id, channelTitle: "c", thumbnailURL: nil, duration: 60,
+                             pinnedAt: Date(timeIntervalSince1970: 100), progress: complete ? 1 : 0.5,
+                             isComplete: complete, bytes: 1_000)
+        p.audioOnly = audio
+        p.watchedAt = watched ? Date() : nil
+        return p
+    }
+
+    @Test func watchLaterRowsAppearOnlyWhenNotOnThePhone() {
+        let items = DownloadLibraryList.items(
+            saved: [pinned("a")], files: [],
+            watchLater: [Video(id: "a", title: "a", channelTitle: "c"), Video(id: "w", title: "w", channelTitle: "c")]
+        )
+        #expect(items.map(\.videoID) == ["a", "w"])
+        #expect(items[1].source == .watchLater && items[1].state == .notDownloaded && items[1].isPlayable)
+    }
+
+    @Test func filtersSelectTheRightRows() {
+        let items = DownloadLibraryList.items(saved: [pinned("v"), pinned("s", audio: true), pinned("d", watched: true)], files: [])
+        #expect(items.filter(DownloadLibraryList.Filter.audio.includes).map(\.videoID) == ["s"])
+        #expect(!items.filter(DownloadLibraryList.Filter.unwatched.includes).map(\.videoID).contains("d"))
+        #expect(DownloadLibraryList.status(items.first { $0.videoID == "d" }!).hasSuffix("просмотрено"))
+    }
+
+    @MainActor
+    @Test func videoSavesWaitForWiFiWhenAsked() async {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("axr-lib-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let library = PinnedStreamLibrary(fileURL: root.appendingPathComponent("l.json"), cache: cache)
+        await library.pin(Video(id: "video", title: "v", channelTitle: "c"), progress: 0, isComplete: false)
+        await library.pin(Video(id: "sound", title: "s", channelTitle: "c"), progress: 0, isComplete: false, audioOnly: true)
+        #expect(Set(library.pending(onMobileNetwork: true, videoOverWiFiOnly: true)) == ["sound"])
+        #expect(Set(library.pending(onMobileNetwork: true, videoOverWiFiOnly: false)) == ["sound", "video"])
+        #expect(Set(library.pending(onMobileNetwork: false, videoOverWiFiOnly: true)) == ["sound", "video"])
+        library.markWatched("video")
+        #expect(library.entry("video")?.watchedAt != nil)
+    }
+
+    @Test func neverPlayedVideoIsSavedThroughTheResolver() async throws {
+        let v = "https://m.example/hls_playlist/itag/134/v.m3u8"
+        let a = "https://m.example/hls_playlist/itag/140/a.m3u8"
+        var files: [String: Data] = ["https://m.example/fresh.m3u8": Data("""
+        #EXTM3U
+        #EXT-X-MEDIA:URI="\(a)",TYPE=AUDIO,GROUP-ID="140",NAME="Default",DEFAULT=YES
+        #EXT-X-STREAM-INF:BANDWIDTH=900000,RESOLUTION=640x360,AUDIO="140"
+        \(v)
+        """.utf8)]
+        for (pl, itag) in [(v, 134), (a, 140)] {
+            var text = "#EXTM3U\n"
+            for i in 0..<2 {
+                let seg = "https://cdn.example/b/\(itag)/\(i).ts"
+                text += "#EXTINF:5.0,\n\(seg)\n"
+                files[seg] = Data(repeating: UInt8(i), count: 500)
+            }
+            files[pl] = Data((text + "#EXT-X-ENDLIST\n").utf8)
+        }
+        let originFiles = files
+        FakeOrigin.state.withLock { $0 = (originFiles, false) }
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("axr-boot-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = URLSessionConfiguration.ephemeral
+        config.protocolClasses = [FakeOrigin.self]
+        let cache = StreamSegmentCache(root: root.appendingPathComponent("c"), pinnedRoot: root.appendingPathComponent("p"))
+        let proxy = HLSCachingProxy(cache: cache, configuration: config, estimateKey: "t.\(UUID().uuidString)")
+        let completer = PinnedStreamCompleter(cache: cache, proxy: proxy, configuration: config)
+        await completer.setResolver { _ in StreamSource(master: URL(string: "https://m.example/fresh.m3u8")!, headers: [:]) }
+        await cache.pin("fresh")
+        await cache.storeNamed(Data("1".utf8), video: "fresh", name: PinnedStreamLibrary.audioOnlyMarker)
+
+        let done = AsyncStream<Void>.makeStream()
+        let finished = Locked(false)
+        await completer.start(
+            pending: { finished.value ? [] : ["fresh"] },
+            report: { _, _, complete in if complete { finished.value = true; done.continuation.yield() } }
+        )
+        for await _ in done.stream { break }
+        // Sound-only save: the audio track only, never the video.
+        #expect(await cache.cachedIndices(video: "fresh", rendition: "itag140") == [0, 1])
+        #expect(await cache.cachedIndices(video: "fresh", rendition: "itag134").isEmpty)
+        #expect(await cache.isPinned("fresh"))
+    }
+}

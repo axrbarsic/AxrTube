@@ -8,7 +8,7 @@ import Foundation
 extension HLSCachingProxy {
     public func prefetchHead(
         videoID: String, masterURL: URL, headers: [String: String],
-        preferredMaxHeight: Int?, seconds: Double = 60
+        preferredMaxHeight: Int?, seconds: Double = 60, audioOnly: Bool = false
     ) async {
         guard session?.video != videoID, NetworkPathObserver.shared.isAvailable,
               let (masterData, _) = try? await fetch(masterURL, headers: headers),
@@ -26,10 +26,10 @@ extension HLSCachingProxy {
         let videoKey = HLSPlaylistText.renditionKey(for: chosen.uri)
         await cache.storeNamed(Data(videoKey.utf8), video: videoID, name: "variant")
 
-        var renditions: [(url: URL, isAudio: Bool)] = [(chosen.uri, false)]
-        if let audio = Self.audioRendition(in: master, base: masterURL, group: chosen.audioGroup) {
-            renditions.append((audio, true))
-        }
+        var renditions: [(url: URL, isAudio: Bool)] = []
+        let audio = Self.audioRendition(in: master, base: masterURL, group: chosen.audioGroup)
+        if !(audioOnly && audio != nil) { renditions.append((chosen.uri, false)) }
+        if let audio { renditions.append((audio, true)) }
         for rendition in renditions {
             guard session?.video != videoID else { return }  // it started playing: the session owns it
             let key = HLSPlaylistText.renditionKey(for: rendition.url)
