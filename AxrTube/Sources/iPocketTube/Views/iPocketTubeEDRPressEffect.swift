@@ -1,10 +1,6 @@
 import SwiftUI
 import iPocketTubeCore
 
-#if os(iOS)
-import UIKit
-import QuartzCore
-
 /// Colour of an EDR highlight (components before the brightness lift).
 struct EDRTint: Equatable, Sendable {
     var red: CGFloat, green: CGFloat, blue: CGFloat
@@ -13,6 +9,10 @@ struct EDRTint: Equatable, Sendable {
     static let red = EDRTint(red: 1.0, green: 0.16, blue: 0.12)
     static let blue = EDRTint(red: 0.24, green: 0.65, blue: 1.0)
 }
+
+#if os(iOS)
+import UIKit
+import QuartzCore
 
 private struct iPocketTubePressPulseEvent: Identifiable {
     let id = UUID()
