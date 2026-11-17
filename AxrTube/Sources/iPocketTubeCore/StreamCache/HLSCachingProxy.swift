@@ -83,6 +83,12 @@ public actor HLSCachingProxy {
     var inFlight: [String: Task<(Data, String)?, Never>] = [:]
     var estimate: ThroughputEstimate
     var progressContinuation: AsyncStream<StreamCacheProgress?>.Continuation?
+    /// «Лимит кэша просмотра» from settings.
+    var cacheCeiling: Int64 = 2 * 1024 * 1024 * 1024
+
+    public func setCacheCeiling(megabytes: Int) {
+        cacheCeiling = Int64(max(megabytes, 256)) * 1024 * 1024
+    }
     public static let estimateKey = "axr.streamCache.throughput"
     let estimateStorageKey: String
 
@@ -129,7 +135,7 @@ public actor HLSCachingProxy {
             .resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?
             .volumeAvailableCapacityForImportantUsage
         let current = await cache.totalBytes()
-        await cache.setLimit(StreamCachePolicy.limitBytes(availableCapacity: available, current: current))
+        await cache.setLimit(StreamCachePolicy.limitBytes(availableCapacity: available, current: current, ceiling: cacheCeiling))
         await cache.evictIfNeeded()
         workers = (0..<StreamCachePolicy.prefetchConnections).map { _ in
             Task { [weak self] in await self?.workLoop(session: id) }

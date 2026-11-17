@@ -71,6 +71,9 @@ public struct RootView: View {
             SavedStreamService.shared.start(api: api, settings: { store.settings }, signedIn: { auth.isSignedIn })
             WebCommentAuth.shared.start()
         }
+        .task(id: store.settings.offlineStorageLimitMB) {
+            await HLSCachingProxy.shared.setCacheCeiling(megabytes: store.settings.offlineStorageLimitMB)
+        }
         .onChange(of: playerState.vm.isLoading, initial: true) { _, preparing in
             cardDownloadService.prioritizePlayback(playerState.vm.player, preparing: preparing)
         }

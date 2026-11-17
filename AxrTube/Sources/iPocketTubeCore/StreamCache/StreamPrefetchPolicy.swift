@@ -67,9 +67,10 @@ public enum StreamCachePolicy {
         min(30, pow(2, Double(min(attempt, 5))))
     }
 
-    /// Cache limit: 2 GB, but never leave the phone with less than ~3 GB free.
-    public static func limitBytes(availableCapacity: Int64?, current: Int64) -> Int64 {
-        let ceiling: Int64 = 2 * 1024 * 1024 * 1024
+    /// Cache limit: the user's ceiling (2 GB by default), but never leave the
+    /// phone with less than ~3 GB free.
+    public static func limitBytes(availableCapacity: Int64?, current: Int64,
+                                  ceiling: Int64 = 2 * 1024 * 1024 * 1024) -> Int64 {
         guard let available = availableCapacity else { return ceiling }
         let reserve: Int64 = 3 * 1024 * 1024 * 1024
         let allowed = current + available - reserve

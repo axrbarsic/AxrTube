@@ -58,15 +58,12 @@ struct YTDownloadsView: View {
         .toolbar(.visible, for: .navigationBar)
         .toolbar {
             Menu {
-                @Bindable var store = settingsStore
-                Toggle(isOn: $store.settings.watchLaterAutoDownload) {
-                    Label("Скачивать «Смотреть позже»", systemImage: "arrow.down.circle")
-                }
-                Toggle(isOn: $store.settings.deleteSavedAfterWatching) {
-                    Label("Удалять после просмотра", systemImage: "checkmark.circle")
+                NavigationLink {
+                    YTStorageSettingsView()
+                } label: {
+                    Label("Хранилище", systemImage: "internaldrive")
                 }
                 if !all.isEmpty {
-                    Divider()
                     Button("Удалить всё с телефона", role: .destructive) { confirmDeleteAll = true }
                 }
             } label: {

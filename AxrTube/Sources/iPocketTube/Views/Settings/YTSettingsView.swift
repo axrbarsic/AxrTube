@@ -9,10 +9,8 @@ struct YTSettingsView: View {
     @Environment(AuthService.self) private var auth
     @Environment(SettingsStore.self) private var store
     @Environment(DownloadStore.self) private var downloadStore
-    @Environment(VideoDownloadService.self) private var downloadService
     @State private var showSignIn = false
     @State private var showSignOutFailure = false
-    @State private var showClearDownloads = false
     @State private var streamCacheBytes: Int64 = 0
     @State private var showWebSignIn = false
     @State private var commentAuth = WebCommentAuth.shared
@@ -30,7 +28,7 @@ struct YTSettingsView: View {
                 Toggle("Показывать Shorts", isOn: $store.settings.showShorts)
             }
 
-            Section {
+            Section("Воспроизведение") {
                 Toggle("Автовоспроизведение", isOn: $store.settings.autoplayEnabled)
                 Picker("Качество видео", selection: $store.settings.preferredQuality) {
                     ForEach(AppSettings.VideoQuality.allCases, id: \.self) { quality in
@@ -44,12 +42,6 @@ struct YTSettingsView: View {
                 }
                 Toggle("Фоновое воспроизведение", isOn: $store.settings.backgroundPlaybackEnabled)
                 Toggle("Картинка в картинке", isOn: $store.settings.pipEnabled)
-                Toggle("Загружать следующее видео", isOn: $store.settings.prefetchUpNextEnabled)
-                    .accessibilityIdentifier("settings.prefetchUpNext")
-            } header: {
-                Text("Воспроизведение")
-            } footer: {
-                Text("«Загружать следующее видео»: когда текущий ролик уже в кэше, заранее скачивается первая минута следующего из «Далее» — он начнётся сразу даже на слабой сети.")
             }
 
             Section {
@@ -57,10 +49,28 @@ struct YTSettingsView: View {
                     ForEach(AppSettings.DataSaverMode.allCases, id: \.self) { Text($0.displayName).tag($0) }
                 }
                 .accessibilityIdentifier("settings.dataSaver")
+                Toggle("Видео только по Wi-Fi", isOn: $store.settings.downloadsWiFiOnly)
+                Toggle("Загружать следующее видео", isOn: $store.settings.prefetchUpNextEnabled)
+                    .accessibilityIdentifier("settings.prefetchUpNext")
             } header: {
-                Text("Экономия трафика")
+                Text("Сеть и трафик")
             } footer: {
-                Text("В этом режиме ролики идут только звуком: видео не скачивается совсем, трафика уходит примерно в 5–20 раз меньше (около 1 МБ в минуту). Картинку для отдельного ролика можно включить кнопкой «Включить видео» в плеере.")
+                Text("Экономия трафика: ролики идут только звуком (около 1 МБ в минуту), картинку для отдельного ролика включает «Включить видео» в плеере. Видео только по Wi-Fi: на сотовой сети сохранённые ролики с видео ждут Wi-Fi, а «только звук» качаются сразу. Загружать следующее видео: когда текущий ролик уже в кэше, заранее качается первая минута следующего из «Далее».")
+            }
+
+            Section {
+                Toggle("Скачивать «Смотреть позже»", isOn: $store.settings.watchLaterAutoDownload)
+                Toggle("Удалять после просмотра", isOn: $store.settings.deleteSavedAfterWatching)
+                NavigationLink {
+                    YTStorageSettingsView()
+                } label: {
+                    LabeledContent("Хранилище", value: YTStorageSettingsView.format(PinnedStreamLibrary.shared.totalBytes + streamCacheBytes + downloadStore.totalSizeBytes))
+                }
+                .accessibilityIdentifier("settings.storage")
+            } header: {
+                Text("Сохранённое")
+            } footer: {
+                Text("«Сохранить» кладёт ролик в «Смотреть позже» и на телефон. Новые ролики из «Смотреть позже» с других устройств скачиваются сами, последние \(SavedStreamService.autoDownloadLimit).")
             }
 
             Section {
@@ -74,28 +84,6 @@ struct YTSettingsView: View {
                 Text("AxrTube")
             } footer: {
                 Text("«Только русские» действует на главной, в рекомендациях и в поиске.")
-            }
-
-            Section("Скачивания") {
-                Toggle("Только по Wi-Fi", isOn: $store.settings.downloadsWiFiOnly)
-                Picker("Лимит хранилища", selection: $store.settings.offlineStorageLimitMB) {
-                    ForEach([1024, 2048, 4096, 8192, 16384], id: \.self) { Text("\($0 / 1024) ГБ").tag($0) }
-                }
-                Button("Удалить все скачанные", role: .destructive) { showClearDownloads = true }
-                    .disabled(downloadStore.entries.isEmpty)
-            }
-
-            Section {
-                LabeledContent("Кэш просмотра", value: ByteCountFormatter.string(fromByteCount: streamCacheBytes, countStyle: .file))
-                Button("Очистить кэш просмотра", role: .destructive) {
-                    Task {
-                        await HLSCachingProxy.shared.clearCache()
-                        streamCacheBytes = await StreamSegmentCache.shared.totalBytes()
-                    }
-                }
-                .disabled(streamCacheBytes == 0)
-            } footer: {
-                Text("Во время просмотра ролик докачивается целиком, чтобы играть без сети. Старые ролики удаляются сами, кэш не больше 2 ГБ. Ролики, сохранённые кнопкой «Скачать», при очистке не удаляются.")
             }
 
             Section("Конфиденциальность") {
@@ -119,13 +107,6 @@ struct YTSettingsView: View {
         .toolbar(.visible, for: .navigationBar)
         .sheet(isPresented: $showSignIn) { SignInView() }
         .sheet(isPresented: $showWebSignIn) { YTWebSignInView() }
-        .alert("Удалить все скачанные видео?", isPresented: $showClearDownloads) {
-            Button("Удалить", role: .destructive) {
-                downloadService.cancelAll()
-                downloadStore.clearAll()
-            }
-            Button("Отмена", role: .cancel) {}
-        }
         .alert("Не удалось выйти", isPresented: $showSignOutFailure) {
             Button("OK", role: .cancel) {}
         } message: {
