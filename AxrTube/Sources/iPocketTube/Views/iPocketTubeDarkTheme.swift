@@ -68,6 +68,39 @@ struct iPocketTubeThemePalette: Equatable, Sendable {
         disabled: .init(0.390, 0.470, 0.420)
     )
 
+    /// iPhone follows YouTube's palette so screens shared with the TV/Mac
+    /// builds look like the rest of the iPhone app; other platforms keep the
+    /// original iPocketTube look.
+    #if os(iOS)
+    static let activeDark = youTubeDark
+    static let activeLight = youTubeLight
+    #else
+    static let activeDark = dark
+    static let activeLight = light
+    #endif
+
+    private static func hex(_ value: UInt32, _ alpha: Double = 1) -> iPocketTubeThemeRGBA {
+        .init(Double((value >> 16) & 0xFF) / 255, Double((value >> 8) & 0xFF) / 255, Double(value & 0xFF) / 255, alpha)
+    }
+
+    static let youTubeDark = Self(
+        background: hex(0x0F0F0F), backgroundDepth: hex(0x0F0F0F),
+        panel: hex(0x1F1F1F), panelElevated: hex(0x272727), tabBar: hex(0x0F0F0F),
+        primaryText: hex(0xF1F1F1), secondaryText: hex(0xAAAAAA),
+        accent: hex(0x3EA6FF), accentSoft: hex(0x65B8FF), accentForeground: hex(0x0F0F0F),
+        stroke: hex(0x3F3F3F), success: hex(0x2BA640), warning: hex(0xF9A825),
+        error: hex(0xFF4E45), disabled: hex(0x717171)
+    )
+
+    static let youTubeLight = Self(
+        background: hex(0xFFFFFF), backgroundDepth: hex(0xFFFFFF),
+        panel: hex(0xF2F2F2), panelElevated: hex(0xF2F2F2), tabBar: hex(0xFFFFFF),
+        primaryText: hex(0x0F0F0F), secondaryText: hex(0x606060),
+        accent: hex(0x065FD4), accentSoft: hex(0x3EA6FF), accentForeground: hex(0xFFFFFF),
+        stroke: hex(0xE5E5E5), success: hex(0x2BA640), warning: hex(0xC77C02),
+        error: hex(0xCC0000), disabled: hex(0x909090)
+    )
+
     static let light = Self(
         background: .init(0.975, 0.978, 0.985),
         backgroundDepth: .init(0.895, 0.918, 0.950),
@@ -123,7 +156,7 @@ private extension Color {
 /// app target: they encode iPocketTube identity rather than reusable foundation.
 enum iPocketTubeVisualTokens {
     private static func adaptive(_ keyPath: KeyPath<iPocketTubeThemePalette, iPocketTubeThemeRGBA>) -> Color {
-        .iPocketTubeAdaptive(light: iPocketTubeThemePalette.light[keyPath: keyPath], dark: iPocketTubeThemePalette.dark[keyPath: keyPath])
+        .iPocketTubeAdaptive(light: iPocketTubeThemePalette.activeLight[keyPath: keyPath], dark: iPocketTubeThemePalette.activeDark[keyPath: keyPath])
     }
 
     static let background = adaptive(\.background)
@@ -159,6 +192,9 @@ struct iPocketTubeBackdrop: View {
     var body: some View {
         ZStack {
             iPocketTubeVisualTokens.background
+            #if os(iOS)
+            // Flat background like YouTube on iPhone.
+            #else
             if theme == .matrix {
                 LinearGradient(
                     colors: [
@@ -201,6 +237,7 @@ struct iPocketTubeBackdrop: View {
                     context.stroke(path, with: .color(iPocketTubeVisualTokens.mint.opacity(colorScheme == .dark ? 0.05 : 0.035)), lineWidth: 0.5)
                 }
             }
+            #endif
         }
         .overlay(iPocketTubeVisualTokens.background.opacity(backdropOverlayOpacity))
         .accessibilityHidden(true)
@@ -339,6 +376,9 @@ private struct iPocketTubeCardSurfaceModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .padding(contentPadding)
+            #if os(iOS)
+            .background(iPocketTubeVisualTokens.panel, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            #else
             .background(
                 reduceTransparency ? AnyShapeStyle(iPocketTubeVisualTokens.panel) : AnyShapeStyle(.thinMaterial),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -348,6 +388,7 @@ private struct iPocketTubeCardSurfaceModifier: ViewModifier {
                     .stroke(iPocketTubeVisualTokens.stroke, lineWidth: 0.8)
             }
             .shadow(color: iPocketTubeVisualTokens.mint.opacity(0.07), radius: 12)
+            #endif
     }
 }
 
