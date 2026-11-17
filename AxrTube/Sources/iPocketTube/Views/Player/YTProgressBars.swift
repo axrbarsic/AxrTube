@@ -9,6 +9,7 @@ struct YTThinProgress: View {
     static let height: CGFloat = 4
 
     let vm: PlaybackViewModel
+    @Environment(SettingsStore.self) private var settingsStore
 
     var body: some View {
         GeometryReader { geo in
@@ -19,6 +20,10 @@ struct YTThinProgress: View {
                     .frame(width: geo.size.width * CGFloat(min(max(vm.currentTime / max(vm.duration, 1), 0), 1)), height: Self.height)
             }
             .frame(maxHeight: .infinity, alignment: .bottom)
+            // Short bright flash when the whole video is on disk.
+            .ytEDRFlash(on: vm.isFullyCached,
+                        enabled: vm.isFullyCached && settingsStore.settings.experimentalEDRPressGlowEnabled,
+                        tint: .blue)
         }
         .allowsHitTesting(false)
     }

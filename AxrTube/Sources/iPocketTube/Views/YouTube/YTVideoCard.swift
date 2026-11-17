@@ -148,9 +148,11 @@ struct YTVideoCard: View {
 /// Subtle dim on press, like YouTube's cell highlight.
 struct YTPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
+        // A light squeeze, like iOS system buttons, instead of dimming.
         configuration.label
-            .opacity(configuration.isPressed ? 0.6 : 1)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 

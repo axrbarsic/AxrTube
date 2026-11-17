@@ -38,6 +38,8 @@ struct YTWatchDetails: View {
     let isDownloadingAudio: Bool
     let actions: Actions
     @State private var confirmRemove = false
+    @Environment(SettingsStore.self) private var settingsStore
+    private var edr: Bool { settingsStore.settings.experimentalEDRPressGlowEnabled }
 
     var body: some View {
         ScrollView {
@@ -119,6 +121,7 @@ struct YTWatchDetails: View {
                     .background(isSubscribed ? YTColor.chip : YTColor.chipSelected, in: Capsule())
             }
             .buttonStyle(YTPressStyle())
+            .ytEDRPress(edr && !isSubscribed, tint: .red)
             .disabled((owner.channelId ?? video.channelId ?? "").isEmpty)
             .accessibilityIdentifier("watch.subscribe")
         }
@@ -147,8 +150,10 @@ struct YTWatchDetails: View {
                         .accessibilityLabel("Не нравится")
                 }
                 .background(YTColor.chip, in: Capsule())
+                .ytEDRPress(edr, tint: .white)
                 chip("arrowshape.turn.up.right", "Поделиться", action: actions.share)
                 saveChip
+                    .ytEDRPress(edr, tint: .blue)
                 .accessibilityIdentifier("watch.download")
                 chip("text.quote", "Текст видео", action: actions.transcript)
                     .accessibilityIdentifier("watch.transcript")

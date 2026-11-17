@@ -5,6 +5,15 @@ import iPocketTubeCore
 import UIKit
 import QuartzCore
 
+/// Colour of an EDR highlight (components before the brightness lift).
+struct EDRTint: Equatable, Sendable {
+    var red: CGFloat, green: CGFloat, blue: CGFloat
+    static let mint = EDRTint(red: 0.19, green: 1.0, blue: 0.43)
+    static let white = EDRTint(red: 1, green: 1, blue: 1)
+    static let red = EDRTint(red: 1.0, green: 0.16, blue: 0.12)
+    static let blue = EDRTint(red: 0.24, green: 0.65, blue: 1.0)
+}
+
 private struct iPocketTubePressPulseEvent: Identifiable {
     let id = UUID()
     let startedAt: Date
@@ -13,6 +22,9 @@ private struct iPocketTubePressPulseEvent: Identifiable {
 private struct iPocketTubeEDRPressModifier: ViewModifier {
     let enabled: Bool
     let cornerRadius: CGFloat
+    var tint: EDRTint = .mint
+    /// Legacy screens glow only in dark mode; YouTube screens in both.
+    var darkOnly = true
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -23,7 +35,7 @@ private struct iPocketTubeEDRPressModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .background {
-                if enabled, colorScheme == .dark {
+                if enabled, !darkOnly || colorScheme == .dark {
                     TimelineView(.animation(minimumInterval: 1.0 / 120.0, paused: events.isEmpty)) { timeline in
                         let heat = events
                             .map { iPocketTubePressPulseEnvelope.heat(
@@ -35,7 +47,8 @@ private struct iPocketTubeEDRPressModifier: ViewModifier {
                             iPocketTubeEDRPulseLayer(
                                 heat: heat,
                                 cornerRadius: cornerRadius,
-                                permitsEDR: true
+                                permitsEDR: true,
+                                tint: tint
                             )
                         } else {
                             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
@@ -53,7 +66,7 @@ private struct iPocketTubeEDRPressModifier: ViewModifier {
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { _ in
-                        guard enabled, colorScheme == .dark, !gestureActive else { return }
+                        guard enabled, !darkOnly || colorScheme == .dark, !gestureActive else { return }
                         gestureActive = true
                         triggerPulse()
                     }
@@ -86,6 +99,7 @@ private struct iPocketTubeEDRPulseLayer: UIViewRepresentable {
     let heat: Double
     let cornerRadius: CGFloat
     let permitsEDR: Bool
+    var tint: EDRTint = .mint
 
     func makeUIView(context: Context) -> iPocketTubeEDRPulseView {
         iPocketTubeEDRPulseView()
@@ -95,6 +109,7 @@ private struct iPocketTubeEDRPulseLayer: UIViewRepresentable {
         view.heat = CGFloat(heat)
         view.cornerRadius = cornerRadius
         view.permitsEDR = permitsEDR
+        view.tint = tint
     }
 }
 
@@ -102,6 +117,7 @@ private final class iPocketTubeEDRPulseView: UIView {
     var heat: CGFloat = 0 { didSet { setNeedsDisplay() } }
     var cornerRadius: CGFloat = 14 { didSet { setNeedsDisplay() } }
     var permitsEDR = true { didSet { configureDynamicRange(); setNeedsDisplay() } }
+    var tint: EDRTint = .mint { didSet { if tint != oldValue { setNeedsDisplay() } } }
 
     private static let extendedP3 = CGColorSpace(name: CGColorSpace.extendedLinearDisplayP3)
         ?? CGColorSpaceCreateDeviceRGB()
@@ -189,13 +205,105 @@ private final class iPocketTubeEDRPulseView: UIView {
         let lift = max(headroom, 1)
         return CGColor(
             colorSpace: Self.extendedP3,
-            components: [0.19 * lift, 1.0 * lift, 0.43 * lift, alpha]
+            components: [tint.red * lift, tint.green * lift, tint.blue * lift, alpha]
         ) ?? UIColor.systemGreen.withAlphaComponent(alpha).cgColor
+    }
+}
+/// Pulses once whenever `trigger` changes (e.g. a video finished caching).
+private struct EDRFlashModifier<T: Equatable>: ViewModifier {
+    let trigger: T
+    let enabled: Bool
+    let cornerRadius: CGFloat
+    let tint: EDRTint
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var startedAt: Date?
+
+    func body(content: Content) -> some View {
+        content
+            .overlay {
+                if enabled, let startedAt, EDRSupport.available {
+                    TimelineView(.animation(minimumInterval: 1.0 / 120.0)) { timeline in
+                        iPocketTubeEDRPulseLayer(
+                            heat: iPocketTubePressPulseEnvelope.heat(
+                                elapsed: timeline.date.timeIntervalSince(startedAt), reduceMotion: reduceMotion
+                            ),
+                            cornerRadius: cornerRadius, permitsEDR: true, tint: tint
+                        )
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+            }
+            .onChange(of: trigger) { _, _ in
+                guard enabled else { return }
+                let now = Date()
+                startedAt = now
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(900))
+                    if startedAt == now { startedAt = nil }
+                }
+            }
+    }
+}
+
+/// Glows steadily while `active` (e.g. the scrubber thumb under a finger).
+private struct EDRHoldModifier: ViewModifier {
+    let active: Bool
+    let cornerRadius: CGFloat
+    let tint: EDRTint
+
+    func body(content: Content) -> some View {
+        content.background {
+            if active, EDRSupport.available {
+                iPocketTubeEDRPulseLayer(heat: 0.9, cornerRadius: cornerRadius, permitsEDR: true, tint: tint)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
+enum EDRSupport {
+    /// EDR needs headroom above SDR white; iOS removes it in Low Power Mode.
+    @MainActor static var available: Bool {
+        #if targetEnvironment(simulator)
+        false
+        #else
+        !ProcessInfo.processInfo.isLowPowerModeEnabled && UIScreen.main.potentialEDRHeadroom > 1.01
+        #endif
     }
 }
 #endif
 
 extension View {
+    /// YouTube-screen press highlight in `tint`, light and dark mode.
+    @ViewBuilder
+    func ytEDRPress(_ enabled: Bool, tint: EDRTint, cornerRadius: CGFloat = 18) -> some View {
+        #if os(iOS)
+        modifier(iPocketTubeEDRPressModifier(enabled: enabled, cornerRadius: cornerRadius, tint: tint, darkOnly: false))
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func ytEDRFlash<T: Equatable>(on trigger: T, enabled: Bool, tint: EDRTint, cornerRadius: CGFloat = 2) -> some View {
+        #if os(iOS)
+        modifier(EDRFlashModifier(trigger: trigger, enabled: enabled, cornerRadius: cornerRadius, tint: tint))
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func ytEDRHold(_ active: Bool, tint: EDRTint, cornerRadius: CGFloat) -> some View {
+        #if os(iOS)
+        modifier(EDRHoldModifier(active: active, cornerRadius: cornerRadius, tint: tint))
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func iPocketTubeEDRPressEffect(enabled: Bool, cornerRadius: CGFloat = 14) -> some View {
         #if os(iOS)

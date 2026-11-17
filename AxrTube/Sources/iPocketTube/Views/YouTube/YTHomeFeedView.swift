@@ -213,6 +213,9 @@ struct YTFeedMessage: View {
 
 /// Grey placeholder card shown while the first page loads.
 struct YTVideoCardSkeleton: View {
+    @State private var dim = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Rectangle().fill(YTColor.placeholder).aspectRatio(16 / 9, contentMode: .fit)
@@ -226,6 +229,12 @@ struct YTVideoCardSkeleton: View {
             .padding(.horizontal, 12)
         }
         .padding(.bottom, 18)
+        // Gentle breathing while loading, like YouTube's placeholders.
+        .opacity(dim ? 0.55 : 1)
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true }
+        }
         .accessibilityHidden(true)
     }
 }

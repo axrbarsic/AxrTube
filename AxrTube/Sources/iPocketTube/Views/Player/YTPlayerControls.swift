@@ -211,6 +211,7 @@ struct YTPlayerControls: View {
 /// Red YouTube scrubber with SponsorBlock segments and chapter gaps.
 struct YTScrubber: View {
     let vm: PlaybackViewModel
+    @Environment(SettingsStore.self) private var settingsStore
 
     var body: some View {
         GeometryReader { geo in
@@ -234,6 +235,8 @@ struct YTScrubber: View {
                 }
                 Circle().fill(YTColor.brandRed)
                     .frame(width: vm.isScrubbing ? 20 : 14, height: vm.isScrubbing ? 20 : 14)
+                    .ytEDRHold(vm.isScrubbing && settingsStore.settings.experimentalEDRPressGlowEnabled,
+                               tint: .red, cornerRadius: 10)
                     .offset(x: width * fraction - (vm.isScrubbing ? 10 : 7))
             }
             .frame(maxHeight: .infinity)

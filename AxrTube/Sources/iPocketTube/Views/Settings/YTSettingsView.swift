@@ -26,6 +26,8 @@ struct YTSettingsView: View {
                 }
                 .accessibilityIdentifier("settings.appearance")
                 Toggle("Показывать Shorts", isOn: $store.settings.showShorts)
+                Toggle("Яркие эффекты", isOn: $store.settings.experimentalEDRPressGlowEnabled)
+                    .accessibilityIdentifier("settings.edrEffects")
             }
 
             Section("Воспроизведение") {
