@@ -102,7 +102,7 @@ private struct LandscapePresenter<Item: Identifiable & Hashable>: UIViewControll
     static func interfaceStyle(_ appearance: AppSettings.Appearance) -> UIUserInterfaceStyle {
         switch appearance {
         case .system: .unspecified
-        case .dark: .dark
+        case .dark, .matrix: .dark
         case .light: .light
         }
     }

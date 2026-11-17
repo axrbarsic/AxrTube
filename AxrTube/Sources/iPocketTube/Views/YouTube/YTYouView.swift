@@ -96,7 +96,7 @@ struct YTYouView: View {
                 Button { showSignIn = true } label: {
                     Label("Войти", systemImage: "person.crop.circle")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x3EA6FF))
+                        .foregroundStyle(YTColor.accent)
                         .padding(.horizontal, 14)
                         .frame(height: 36)
                         .overlay(Capsule().stroke(YTColor.divider))

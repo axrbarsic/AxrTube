@@ -123,11 +123,17 @@ struct iPocketTubeThemePalette: Equatable, Sendable {
 private extension Color {
     static func iPocketTubeAdaptive(
         light: iPocketTubeThemeRGBA,
-        dark: iPocketTubeThemeRGBA
+        dark: iPocketTubeThemeRGBA,
+        matrix: iPocketTubeThemeRGBA? = nil
     ) -> Color {
         #if canImport(UIKit)
         Color(uiColor: UIColor { traits in
-            let value = traits.userInterfaceStyle == .dark ? dark : light
+            #if os(iOS)
+            let darkValue = YTTheme.isMatrix ? (matrix ?? dark) : dark
+            #else
+            let darkValue = dark
+            #endif
+            let value = traits.userInterfaceStyle == .dark ? darkValue : light
             return UIColor(
                 red: CGFloat(value.red),
                 green: CGFloat(value.green),
@@ -156,7 +162,9 @@ private extension Color {
 /// app target: they encode iPocketTube identity rather than reusable foundation.
 enum iPocketTubeVisualTokens {
     private static func adaptive(_ keyPath: KeyPath<iPocketTubeThemePalette, iPocketTubeThemeRGBA>) -> Color {
-        .iPocketTubeAdaptive(light: iPocketTubeThemePalette.activeLight[keyPath: keyPath], dark: iPocketTubeThemePalette.activeDark[keyPath: keyPath])
+        .iPocketTubeAdaptive(light: iPocketTubeThemePalette.activeLight[keyPath: keyPath],
+                             dark: iPocketTubeThemePalette.activeDark[keyPath: keyPath],
+                             matrix: iPocketTubeThemePalette.dark[keyPath: keyPath])
     }
 
     static let background = adaptive(\.background)
@@ -193,7 +201,8 @@ struct iPocketTubeBackdrop: View {
         ZStack {
             iPocketTubeVisualTokens.background
             #if os(iOS)
-            // Flat background like YouTube on iPhone.
+            // Flat background like YouTube on iPhone; «Матрица» keeps its original backdrop.
+            if YTTheme.isMatrix { matrixBackdrop }
             #else
             if theme == .matrix {
                 LinearGradient(
@@ -335,6 +344,41 @@ struct iPocketTubeBackdrop: View {
             EmptyView()
         }
     }
+
+    #if os(iOS)
+    /// The original «Матрица» backdrop: green depth gradient, corner glow, grid.
+    @ViewBuilder private var matrixBackdrop: some View {
+        LinearGradient(
+            colors: [
+                iPocketTubeVisualTokens.backgroundDepth.opacity(0.72),
+                iPocketTubeVisualTokens.background.opacity(0.42),
+                iPocketTubeVisualTokens.backgroundDepth.opacity(0.34)
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+        if !reduceTransparency {
+            RadialGradient(
+                colors: [iPocketTubeVisualTokens.mint.opacity(glowOpacity), .clear],
+                center: .topLeading,
+                startRadius: 0,
+                endRadius: 430
+            )
+            Canvas { context, size in
+                var path = Path()
+                stride(from: 8.0, through: size.height, by: 23.0).forEach { y in
+                    path.move(to: CGPoint(x: 0, y: y))
+                    path.addLine(to: CGPoint(x: size.width, y: y))
+                }
+                stride(from: 16.0, through: size.width, by: 64.0).forEach { x in
+                    path.move(to: CGPoint(x: x, y: 0))
+                    path.addLine(to: CGPoint(x: x, y: size.height))
+                }
+                context.stroke(path, with: .color(iPocketTubeVisualTokens.mint.opacity(0.05)), lineWidth: 0.5)
+            }
+        }
+    }
+    #endif
 
     private var backdropOverlayOpacity: Double {
         switch theme {

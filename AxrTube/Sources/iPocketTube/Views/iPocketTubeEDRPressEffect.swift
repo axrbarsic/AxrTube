@@ -280,7 +280,8 @@ extension View {
     @ViewBuilder
     func ytEDRPress(_ enabled: Bool, tint: EDRTint, cornerRadius: CGFloat = 18) -> some View {
         #if os(iOS)
-        modifier(iPocketTubeEDRPressModifier(enabled: enabled, cornerRadius: cornerRadius, tint: tint, darkOnly: false))
+        modifier(iPocketTubeEDRPressModifier(enabled: enabled, cornerRadius: cornerRadius,
+                                             tint: YTTheme.isMatrix ? .mint : tint, darkOnly: false))
         #else
         self
         #endif
@@ -298,7 +299,7 @@ extension View {
     @ViewBuilder
     func ytEDRHold(_ active: Bool, tint: EDRTint, cornerRadius: CGFloat) -> some View {
         #if os(iOS)
-        modifier(EDRHoldModifier(active: active, cornerRadius: cornerRadius, tint: tint))
+        modifier(EDRHoldModifier(active: active, cornerRadius: cornerRadius, tint: YTTheme.isMatrix ? .mint : tint))
         #else
         self
         #endif

@@ -91,7 +91,7 @@ struct YTSignInPrompt: View {
                 .font(.subheadline.weight(.semibold))
                 .padding(.horizontal, 18)
                 .padding(.vertical, 9)
-                .foregroundStyle(Color(hex: 0x3EA6FF))
+                .foregroundStyle(YTColor.accent)
                 .overlay(Capsule().stroke(YTColor.divider))
         }
         .padding(32)

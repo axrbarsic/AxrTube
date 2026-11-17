@@ -34,6 +34,9 @@ public struct RootView: View {
         // Without this, onChange(of: cardDownloadService.state) may not fire
         // when the state changes on an environment-injected @Observable object.
         let _ = cardDownloadService.state
+        #if os(iOS)
+        let _ = (YTTheme.isMatrix = store.settings.appearance == .matrix)
+        #endif
         Group {
             #if os(tvOS)
             MainTVTabView()
@@ -45,6 +48,9 @@ public struct RootView: View {
         }
         .iPocketTubeScreenSurface()
         #if os(iOS)
+        // Dynamic colours re-resolve only on trait changes; «Матрица» shares the
+        // dark trait, so rebuild the tree when the theme changes.
+        .id(store.settings.appearance == .matrix)
         .preferredColorScheme(store.settings.appearance.colorScheme)
         #else
         .preferredColorScheme(store.settings.themeName.colorScheme)

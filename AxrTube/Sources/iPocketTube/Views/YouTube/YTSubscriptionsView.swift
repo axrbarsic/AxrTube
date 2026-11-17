@@ -114,7 +114,7 @@ struct YTSubscriptionsView: View {
                 }
                 Button("Все") { showAllChannels = true }
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(Color(hex: 0x3EA6FF))
+                    .foregroundStyle(YTColor.accent)
                     .padding(.horizontal, 14)
             }
             .padding(.vertical, 10)

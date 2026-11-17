@@ -31,7 +31,7 @@ extension PlayerView {
                     if !description.isEmpty {
                         Text(descriptionAttributedString(description))
                             .font(.system(size: 14))
-                            .tint(Color(hex: 0x3EA6FF))
+                            .tint(YTColor.accent)
                             .textSelection(.enabled)
                     } else {
                         Text("Описания нет").foregroundStyle(YTColor.secondaryText)
@@ -79,7 +79,7 @@ extension PlayerView {
                                 Text(chapter.title).font(.system(size: 13, weight: .medium)).lineLimit(2)
                                 Text(formatDuration(chapter.startTime))
                                     .font(.system(size: 12))
-                                    .foregroundStyle(Color(hex: 0x3EA6FF))
+                                    .foregroundStyle(YTColor.accent)
                             }
                             .padding(10)
                             .frame(width: 160, alignment: .leading)

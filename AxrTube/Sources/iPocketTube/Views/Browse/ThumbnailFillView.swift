@@ -17,11 +17,23 @@ struct ThumbnailFillView: View {
     var body: some View {
         GeometryReader { geo in
             CachedRemoteImage(urls: [primaryURL].compactMap { $0 } + fallbackURLs) { image in
-                Image(uiImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: geo.size.width, height: geo.size.height)
-                    .clipped()
+                if YTTheme.isMatrix {
+                    // «Матрица»: monochrome thumbnails tinted green, as originally.
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .saturation(0)
+                        .contrast(1.06)
+                        .colorMultiply(YTTheme.matrixThumbnailTint)
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                } else {
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: geo.size.width, height: geo.size.height)
+                        .clipped()
+                }
             } placeholder: {
                 Color.secondary.opacity(0.15)
             }

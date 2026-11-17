@@ -101,7 +101,7 @@ struct YTCommentsSheet: View {
                     if loadingReplies.contains(comment.id) { ProgressView().controlSize(.small) }
                     Text(page.replyLabels[comment.id] ?? "Ответы")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x3EA6FF))
+                        .foregroundStyle(YTColor.accent)
                 }
             }
             .buttonStyle(.plain)

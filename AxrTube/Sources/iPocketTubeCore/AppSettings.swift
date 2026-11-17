@@ -93,12 +93,13 @@ public struct AppSettings: Codable {
     }
 
     public enum Appearance: String, Codable, CaseIterable, Sendable {
-        case system, dark, light
+        /// «Матрица»: the original dark-green iPocketTube look on top of the dark scheme.
+        case system, dark, light, matrix
 
         public var colorScheme: ColorScheme? {
             switch self {
             case .system: nil
-            case .dark: .dark
+            case .dark, .matrix: .dark
             case .light: .light
             }
         }
@@ -108,6 +109,7 @@ public struct AppSettings: Codable {
             case .system: "Как на устройстве"
             case .dark: "Тёмная тема"
             case .light: "Светлая тема"
+            case .matrix: "Матрица"
             }
         }
     }
